@@ -8,3 +8,5 @@ authors = ["Dariusz Dajka <dariusz.dajka@gmail.com>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.44"
+lazy_static = "1.4.0"
