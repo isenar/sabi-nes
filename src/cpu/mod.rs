@@ -87,6 +87,17 @@ impl Cpu {
                     self.inx();
                 }
 
+                0x85 => {
+                    // STA
+                    self.sta(AddressingMode::ZeroPage);
+                    self.program_counter += 1;
+                }
+                0x95 => {
+                    // STA
+                    self.sta(AddressingMode::ZeroPageX);
+                    self.program_counter += 1;
+                }
+
                 _ => todo!(),
             }
         }
@@ -116,6 +127,8 @@ impl Cpu {
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
     }
+
+    fn sta(&mut self, mode: AddressingMode) {}
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         if result == 0 {
@@ -183,7 +196,7 @@ impl Cpu {
                 let base = self.mem_read(self.program_counter);
                 let lo = self.mem_read(base.into());
                 let hi = self.mem_read(base.wrapping_add(1).into());
-                let deref_base = (hi as u16) << 8 | (lo as u16);
+                let deref_base = u16::from_le_bytes([lo, hi]);
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
@@ -201,7 +214,7 @@ mod tests {
         #[test]
         fn immediate_load() {
             let mut cpu = Cpu::default();
-            let data = vec![0xa9, 0x05, 0x00];
+            let data = [0xa9, 0x05, 0x00];
 
             cpu.load_and_run(&data);
 
@@ -213,11 +226,22 @@ mod tests {
         #[test]
         fn zero_flag() {
             let mut cpu = Cpu::default();
-            let data = vec![0xa9, 0x00, 0x00];
+            let data = [0xa9, 0x00, 0x00];
 
             cpu.load_and_run(&data);
 
             assert_eq!(cpu.status & 0b000_0010, 0b10);
+        }
+
+        #[test]
+        fn load_from_memory() {
+            let mut cpu = Cpu::default();
+            let data = [0xa5, 0x10, 0x00];
+
+            cpu.mem_write(0x10, 0x55);
+            cpu.load_and_run(&data);
+
+            assert_eq!(cpu.register_a, 0x55);
         }
     }
 
@@ -227,7 +251,7 @@ mod tests {
         #[test]
         fn moves_reg_a_value_to_reg_x() {
             let mut cpu = Cpu::default();
-            let data = vec![0xa9, 0x0a, 0xaa, 0x00];
+            let data = [0xa9, 0x0a, 0xaa, 0x00];
 
             cpu.load_and_run(&data);
 
@@ -242,7 +266,7 @@ mod tests {
         #[test]
         fn inx_overflow() {
             let mut cpu = Cpu::default();
-            let data = vec![0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00];
+            let data = [0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00];
 
             cpu.load_and_run(&data);
 
@@ -256,7 +280,7 @@ mod tests {
         #[test]
         fn simple_5_ops_working_together() {
             let mut cpu = Cpu::default();
-            let data = vec![0xa9, 0xc0, 0xaa, 0xe8, 0x00];
+            let data = [0xa9, 0xc0, 0xaa, 0xe8, 0x00];
 
             cpu.load_and_run(&data);
 
