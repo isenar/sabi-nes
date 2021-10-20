@@ -1,1 +1,1 @@
-mod cpu;
+pub mod cpu;
