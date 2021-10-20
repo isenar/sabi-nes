@@ -1,6 +1,9 @@
 mod addressing_mode;
+mod opcodes;
 
+use crate::cpu::opcodes::OPCODES_MAPPING;
 use addressing_mode::AddressingMode;
+use anyhow::{anyhow, Result};
 
 const PROGRAM_ROM_BEGIN_ADDR: usize = 0x8000;
 
@@ -12,7 +15,7 @@ pub struct Cpu {
     pub status: u8,
     pub program_counter: u16,
 
-    memory: [u8; 0xFFFF],
+    memory: [u8; 0xffff],
 }
 
 impl Default for Cpu {
@@ -23,12 +26,11 @@ impl Default for Cpu {
             register_y: 0,
             status: 0,
             program_counter: 0,
-            memory: [0; 0xFFFF],
+            memory: [0; 0xffff],
         }
     }
 }
 
-#[allow(unused)]
 impl Cpu {
     pub fn mem_read(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
@@ -38,10 +40,12 @@ impl Cpu {
         self.memory[addr as usize] = value;
     }
 
-    pub fn load_and_run(&mut self, data: &[u8]) {
+    pub fn load_and_run(&mut self, data: &[u8]) -> Result<()> {
         self.load(data);
         self.reset();
-        self.run();
+        self.run()?;
+
+        Ok(())
     }
 
     pub fn load(&mut self, data: &[u8]) {
@@ -50,55 +54,30 @@ impl Cpu {
         self.mem_write_u16(0xFFFC, PROGRAM_ROM_BEGIN_ADDR as u16);
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         loop {
-            let opcode = self.mem_read(self.program_counter);
+            let code = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
-            match opcode {
-                0x00 => {
-                    // BRK
-                    return;
-                }
+            let opcode = OPCODES_MAPPING
+                .get(&code)
+                .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
-                0xA5 => {
-                    // TODO
-                    self.lda(AddressingMode::ZeroPage);
-                    self.program_counter += 1;
+            match opcode.name {
+                "BRK" => {
+                    return Ok(());
                 }
-
-                0xA9 => {
-                    // LDA -> save param to register A
-                    self.lda(AddressingMode::Immediate);
-                    self.program_counter += 1;
+                "TAX" => self.tax(),
+                "INX" => self.inx(),
+                "LDA" => {
+                    self.lda(opcode.mode);
+                    self.program_counter += opcode.bytes as u16 - 1;
                 }
-                0xAA => {
-                    // TAX -> save register A value to register X
-                    self.tax()
+                "STA" => {
+                    self.sta(opcode.mode);
+                    self.program_counter += opcode.bytes as u16 - 1;
                 }
-
-                0xAD => {
-                    self.lda(AddressingMode::Absolute);
-                    self.program_counter += 2;
-                }
-
-                0xE8 => {
-                    // INX -> increment register X
-                    self.inx();
-                }
-
-                0x85 => {
-                    // STA
-                    self.sta(AddressingMode::ZeroPage);
-                    self.program_counter += 1;
-                }
-                0x95 => {
-                    // STA
-                    self.sta(AddressingMode::ZeroPageX);
-                    self.program_counter += 1;
-                }
-
-                _ => todo!(),
+                _ => todo!("Unsupported opcode name: {}", opcode.name),
             }
         }
     }
@@ -106,6 +85,7 @@ impl Cpu {
     pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
+        self.register_y = 0;
         self.status = 0;
 
         self.program_counter = self.mem_read_u16(0xFFFC);
@@ -128,7 +108,10 @@ impl Cpu {
         self.register_x = self.register_x.wrapping_add(1);
     }
 
-    fn sta(&mut self, mode: AddressingMode) {}
+    fn sta(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_a);
+    }
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         if result == 0 {
@@ -200,6 +183,7 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
+            AddressingMode::Implied => unreachable!(),
         }
     }
 }
@@ -216,7 +200,7 @@ mod tests {
             let mut cpu = Cpu::default();
             let data = [0xa9, 0x05, 0x00];
 
-            cpu.load_and_run(&data);
+            cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 0x05);
             assert_eq!(cpu.status & 0b000_0010, 0b00);
@@ -228,7 +212,7 @@ mod tests {
             let mut cpu = Cpu::default();
             let data = [0xa9, 0x00, 0x00];
 
-            cpu.load_and_run(&data);
+            cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.status & 0b000_0010, 0b10);
         }
@@ -239,7 +223,7 @@ mod tests {
             let data = [0xa5, 0x10, 0x00];
 
             cpu.mem_write(0x10, 0x55);
-            cpu.load_and_run(&data);
+            cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 0x55);
         }
@@ -253,7 +237,7 @@ mod tests {
             let mut cpu = Cpu::default();
             let data = [0xa9, 0x0a, 0xaa, 0x00];
 
-            cpu.load_and_run(&data);
+            cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 10);
             assert_eq!(cpu.register_x, 10);
@@ -268,7 +252,7 @@ mod tests {
             let mut cpu = Cpu::default();
             let data = [0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00];
 
-            cpu.load_and_run(&data);
+            cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_x, 1);
         }
@@ -282,7 +266,7 @@ mod tests {
             let mut cpu = Cpu::default();
             let data = [0xa9, 0xc0, 0xaa, 0xe8, 0x00];
 
-            cpu.load_and_run(&data);
+            cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_x, 0xc1);
         }
