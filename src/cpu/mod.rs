@@ -12,8 +12,9 @@ type Address = u16;
 type ProgramCounter = Address;
 type Value = u8;
 
-const PROGRAM_ROM_BEGIN_ADDR: usize = 0x8000;
-const PROGRAM_ROM_END_ADDR: usize = 0xffff;
+const PROGRAM_ROM_BEGIN_ADDR: Address = 0x8000;
+const PROGRAM_ROM_END_ADDR: Address = 0xffff;
+const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
 #[derive(Debug)]
 pub struct Cpu {
@@ -23,7 +24,7 @@ pub struct Cpu {
     pub status_flags: StatusFlags,
     pub program_counter: ProgramCounter,
 
-    memory: [Value; PROGRAM_ROM_END_ADDR],
+    memory: [Value; PROGRAM_ROM_END_ADDR as usize],
 }
 
 impl Default for Cpu {
@@ -57,9 +58,10 @@ impl Cpu {
     }
 
     pub fn load(&mut self, data: &[Value]) {
-        self.memory[PROGRAM_ROM_BEGIN_ADDR..(PROGRAM_ROM_BEGIN_ADDR + data.len())]
+        self.memory
+            [PROGRAM_ROM_BEGIN_ADDR as usize..(PROGRAM_ROM_BEGIN_ADDR as usize + data.len())]
             .copy_from_slice(data);
-        self.mem_write_u16(0xFFFC, PROGRAM_ROM_BEGIN_ADDR as Address);
+        self.mem_write_u16(RESET_VECTOR_BEGIN_ADDR, PROGRAM_ROM_BEGIN_ADDR);
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -95,7 +97,7 @@ impl Cpu {
         self.register_x = 0;
         self.register_y = 0;
         self.status_flags = StatusFlags::default();
-        self.program_counter = self.mem_read_u16(0xFFFC);
+        self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
     }
 
     fn lda(&mut self, mode: AddressingMode) {
