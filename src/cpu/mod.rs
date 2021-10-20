@@ -46,7 +46,7 @@ impl Cpu {
 
     pub fn load(&mut self, data: &[u8]) {
         self.memory[PROGRAM_ROM_BEGIN_ADDR..(PROGRAM_ROM_BEGIN_ADDR + data.len())]
-            .copy_from_slice(&data[..]);
+            .copy_from_slice(data);
         self.mem_write_u16(0xFFFC, PROGRAM_ROM_BEGIN_ADDR as u16);
     }
 
@@ -152,28 +152,24 @@ impl Cpu {
             AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
             AddressingMode::ZeroPageX => {
                 let pos = self.mem_read(self.program_counter);
-                let addr = pos.wrapping_add(self.register_x.into());
+                let addr = pos.wrapping_add(self.register_x);
 
                 addr.into()
             }
 
             AddressingMode::ZeroPageY => {
                 let pos = self.mem_read(self.program_counter);
-                let addr = pos.wrapping_add(self.register_y.into());
+                let addr = pos.wrapping_add(self.register_y);
 
                 addr.into()
             }
             AddressingMode::AbsoluteX => {
                 let base = self.mem_read_u16(self.program_counter);
-                let addr = base.wrapping_add(self.register_x.into());
-
-                addr
+                base.wrapping_add(self.register_x.into())
             }
             AddressingMode::AbsoluteY => {
                 let base = self.mem_read_u16(self.program_counter);
-                let addr = base.wrapping_add(self.register_y.into());
-
-                addr
+                base.wrapping_add(self.register_y.into())
             }
             AddressingMode::IndirectX => {
                 let base = self.mem_read(self.program_counter);
@@ -187,10 +183,9 @@ impl Cpu {
                 let base = self.mem_read(self.program_counter);
                 let lo = self.mem_read(base.into());
                 let hi = self.mem_read(base.wrapping_add(1).into());
-
                 let deref_base = (hi as u16) << 8 | (lo as u16);
-                let deref = deref_base.wrapping_add(self.register_y as u16);
-                deref
+
+                deref_base.wrapping_add(self.register_y as u16)
             }
         }
     }
