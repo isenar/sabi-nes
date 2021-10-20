@@ -27,6 +27,10 @@ impl Opcode {
             mode,
         }
     }
+
+    pub fn len(&self) -> u16 {
+        (self.bytes - 1).into()
+    }
 }
 
 const OPCODES: &[Opcode] = &[

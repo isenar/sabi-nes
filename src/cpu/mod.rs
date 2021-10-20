@@ -1,21 +1,29 @@
 mod addressing_mode;
 mod opcodes;
+mod status_flags;
 
+use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
-use addressing_mode::AddressingMode;
+use crate::cpu::status_flags::StatusFlags;
 use anyhow::{anyhow, Result};
 
+type Register = u8;
+type Address = u16;
+type ProgramCounter = Address;
+type Value = u8;
+
 const PROGRAM_ROM_BEGIN_ADDR: usize = 0x8000;
+const PROGRAM_ROM_END_ADDR: usize = 0xffff;
 
 #[derive(Debug)]
 pub struct Cpu {
-    pub register_a: u8,
-    pub register_x: u8,
-    pub register_y: u8,
-    pub status: u8,
-    pub program_counter: u16,
+    pub register_a: Register,
+    pub register_x: Register,
+    pub register_y: Register,
+    pub status_flags: StatusFlags,
+    pub program_counter: ProgramCounter,
 
-    memory: [u8; 0xffff],
+    memory: [Value; PROGRAM_ROM_END_ADDR],
 }
 
 impl Default for Cpu {
@@ -24,7 +32,7 @@ impl Default for Cpu {
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            status: 0,
+            status_flags: StatusFlags::default(),
             program_counter: 0,
             memory: [0; 0xffff],
         }
@@ -32,15 +40,15 @@ impl Default for Cpu {
 }
 
 impl Cpu {
-    pub fn mem_read(&self, addr: u16) -> u8 {
+    pub fn mem_read(&self, addr: u16) -> Value {
         self.memory[addr as usize]
     }
 
-    pub fn mem_write(&mut self, addr: u16, value: u8) {
+    pub fn mem_write(&mut self, addr: Address, value: Value) {
         self.memory[addr as usize] = value;
     }
 
-    pub fn load_and_run(&mut self, data: &[u8]) -> Result<()> {
+    pub fn load_and_run(&mut self, data: &[Value]) -> Result<()> {
         self.load(data);
         self.reset();
         self.run()?;
@@ -48,10 +56,10 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn load(&mut self, data: &[u8]) {
+    pub fn load(&mut self, data: &[Value]) {
         self.memory[PROGRAM_ROM_BEGIN_ADDR..(PROGRAM_ROM_BEGIN_ADDR + data.len())]
             .copy_from_slice(data);
-        self.mem_write_u16(0xFFFC, PROGRAM_ROM_BEGIN_ADDR as u16);
+        self.mem_write_u16(0xFFFC, PROGRAM_ROM_BEGIN_ADDR as Address);
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -71,11 +79,11 @@ impl Cpu {
                 "INX" => self.inx(),
                 "LDA" => {
                     self.lda(opcode.mode);
-                    self.program_counter += opcode.bytes as u16 - 1;
+                    self.program_counter += opcode.len();
                 }
                 "STA" => {
                     self.sta(opcode.mode);
-                    self.program_counter += opcode.bytes as u16 - 1;
+                    self.program_counter += opcode.len();
                 }
                 _ => todo!("Unsupported opcode name: {}", opcode.name),
             }
@@ -86,8 +94,7 @@ impl Cpu {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
-        self.status = 0;
-
+        self.status_flags = StatusFlags::default();
         self.program_counter = self.mem_read_u16(0xFFFC);
     }
 
@@ -114,34 +121,25 @@ impl Cpu {
     }
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
-        if result == 0 {
-            self.status |= 0b0000_0010;
-        } else {
-            self.status &= 0b1111_1101;
-        }
-
-        if result & 0b1000_0000 != 0 {
-            self.status |= 0b1000_0000;
-        } else {
-            self.status &= 0b0111_1111;
-        }
+        self.status_flags.zero = result == 0;
+        self.status_flags.negative = result & 0b1000_0000 != 0;
     }
 
-    fn mem_read_u16(&self, pos: u16) -> u16 {
-        let lo = self.mem_read(pos);
-        let hi = self.mem_read(pos + 1);
+    fn mem_read_u16(&self, addr: Address) -> u16 {
+        let lo = self.mem_read(addr);
+        let hi = self.mem_read(addr + 1);
 
         u16::from_le_bytes([lo, hi])
     }
 
-    fn mem_write_u16(&mut self, pos: u16, data: u16) {
-        let hi = (data >> 8) as u8;
-        let lo = (data & 0xff) as u8;
-        self.mem_write(pos, lo);
-        self.mem_write(pos + 1, hi);
+    fn mem_write_u16(&mut self, addr: Address, data: u16) {
+        let [lo, hi] = data.to_le_bytes();
+
+        self.mem_write(addr, lo);
+        self.mem_write(addr + 1, hi);
     }
 
-    fn get_operand_address(&self, mode: AddressingMode) -> u16 {
+    fn get_operand_address(&self, mode: AddressingMode) -> Address {
         match mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.mem_read(self.program_counter).into(),
@@ -203,18 +201,18 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 0x05);
-            assert_eq!(cpu.status & 0b000_0010, 0b00);
-            assert_eq!(cpu.status & 0b1000_0000, 0b00);
+            assert!(!cpu.status_flags.zero);
+            assert!(!cpu.status_flags.negative);
         }
 
         #[test]
-        fn zero_flag() {
+        fn zero_flag_set() {
             let mut cpu = Cpu::default();
             let data = [0xa9, 0x00, 0x00];
 
             cpu.load_and_run(&data).expect("Failed to load and run");
 
-            assert_eq!(cpu.status & 0b000_0010, 0b10);
+            assert!(cpu.status_flags.zero);
         }
 
         #[test]
