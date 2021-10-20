@@ -1,1 +1,3 @@
-# sabi-nes
+# SabiNES
+
+A toy NES emulator written in Rust.
