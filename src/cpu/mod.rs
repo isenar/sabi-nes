@@ -74,6 +74,10 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
+                "AND" => {
+                    self.and(opcode.mode);
+                    self.program_counter += opcode.len();
+                }
                 "BRK" => {
                     return Ok(());
                 }
@@ -81,14 +85,14 @@ impl Cpu {
                 "INX" => self.inx(),
                 "LDA" => {
                     self.lda(opcode.mode);
-                    self.program_counter += opcode.len();
                 }
                 "STA" => {
                     self.sta(opcode.mode);
-                    self.program_counter += opcode.len();
                 }
                 _ => todo!("Unsupported opcode name: {}", opcode.name),
             }
+
+            self.program_counter += opcode.len();
         }
     }
 
@@ -98,6 +102,13 @@ impl Cpu {
         self.register_y = 0;
         self.status_flags = StatusFlags::default();
         self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
+    }
+
+    fn and(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_a &= value;
     }
 
     fn lda(&mut self, mode: AddressingMode) {
