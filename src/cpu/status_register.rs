@@ -29,3 +29,15 @@ bitflags! {
         const NEGATIVE          = 0b1000_0000;
     }
 }
+
+impl StatusRegister {
+    pub fn update_zero_and_negative_flags(&mut self, value: u8) {
+        let value_bits = StatusRegister::from_bits_truncate(value);
+
+        self.set(StatusRegister::ZERO, value_bits.is_empty());
+        self.set(
+            StatusRegister::NEGATIVE,
+            value_bits.contains(StatusRegister::NEGATIVE),
+        );
+    }
+}

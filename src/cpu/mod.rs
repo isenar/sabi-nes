@@ -116,12 +116,14 @@ impl Cpu {
         let value = self.mem_read(addr);
 
         self.register_a = value;
-        self.update_zero_and_negative_flags(self.register_a);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_a);
     }
 
     fn tax(&mut self) {
         self.register_x = self.register_a;
-        self.update_zero_and_negative_flags(self.register_x);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
     }
 
     fn inx(&mut self) {
@@ -131,12 +133,6 @@ impl Cpu {
     fn sta(&mut self, mode: AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
-    }
-
-    fn update_zero_and_negative_flags(&mut self, result: u8) {
-        self.status_register.set(StatusRegister::ZERO, result == 0);
-        self.status_register
-            .set(StatusRegister::NEGATIVE, result & 0b1000_0000 != 0);
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
