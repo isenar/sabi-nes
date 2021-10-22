@@ -1,11 +1,11 @@
 mod addressing_mode;
 mod opcodes;
-mod status_flags;
+pub mod status_register;
 
 use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
-use crate::cpu::status_flags::StatusFlags;
-use anyhow::{anyhow, Result};
+use crate::cpu::status_register::StatusRegister;
+use anyhow::{anyhow, bail, Result};
 
 type Register = u8;
 type Address = u16;
@@ -21,7 +21,7 @@ pub struct Cpu {
     pub register_a: Register,
     pub register_x: Register,
     pub register_y: Register,
-    pub status_flags: StatusFlags,
+    pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
 
     memory: [Value; PROGRAM_ROM_END_ADDR as usize],
@@ -33,7 +33,7 @@ impl Default for Cpu {
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            status_flags: StatusFlags::default(),
+            status_register: StatusRegister::empty(),
             program_counter: 0,
             memory: [0; 0xffff],
         }
@@ -89,7 +89,7 @@ impl Cpu {
                 "STA" => {
                     self.sta(opcode.mode);
                 }
-                _ => todo!("Unsupported opcode name: {}", opcode.name),
+                _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
             self.program_counter += opcode.len();
@@ -100,7 +100,7 @@ impl Cpu {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
-        self.status_flags = StatusFlags::default();
+        self.status_register = StatusRegister::empty();
         self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
     }
 
@@ -134,8 +134,9 @@ impl Cpu {
     }
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
-        self.status_flags.zero = result == 0;
-        self.status_flags.negative = result & 0b1000_0000 != 0;
+        self.status_register.set(StatusRegister::ZERO, result == 0);
+        self.status_register
+            .set(StatusRegister::NEGATIVE, result & 0b1000_0000 != 0);
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
@@ -194,7 +195,9 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
-            AddressingMode::Implied => unreachable!(),
+            AddressingMode::Implied => {
+                unreachable!("Implied mode is never passed to get operand address")
+            }
         }
     }
 }
@@ -214,8 +217,8 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 0x05);
-            assert!(!cpu.status_flags.zero);
-            assert!(!cpu.status_flags.negative);
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
         }
 
         #[test]
@@ -225,7 +228,7 @@ mod tests {
 
             cpu.load_and_run(&data).expect("Failed to load and run");
 
-            assert!(cpu.status_flags.zero);
+            assert!(cpu.status_register.contains(StatusRegister::ZERO));
         }
 
         #[test]
