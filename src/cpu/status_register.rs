@@ -40,4 +40,20 @@ impl StatusRegister {
             value_bits.contains(StatusRegister::NEGATIVE),
         );
     }
+
+    pub fn clear_carry_flag(&mut self) {
+        self.remove(StatusRegister::CARRY);
+    }
+
+    pub fn clear_decimal_flag(&mut self) {
+        self.remove(StatusRegister::DECIMAL);
+    }
+
+    pub fn clear_interrupt_flag(&mut self) {
+        self.remove(StatusRegister::INTERRUPT_DISABLE);
+    }
+
+    pub fn clear_overflow_flag(&mut self) {
+        self.remove(StatusRegister::OVERFLOW);
+    }
 }

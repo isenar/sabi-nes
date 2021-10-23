@@ -78,17 +78,16 @@ impl Cpu {
                     self.and(opcode.mode);
                     self.program_counter += opcode.len();
                 }
-                "BRK" => {
-                    return Ok(());
-                }
-                "TAX" => self.tax(),
+                "BRK" => return Ok(()),
+                "CLC" => self.status_register.clear_carry_flag(),
+                "CLD" => self.status_register.clear_decimal_flag(),
+                "CLI" => self.status_register.clear_interrupt_flag(),
+                "CLV" => self.status_register.clear_overflow_flag(),
                 "INX" => self.inx(),
-                "LDA" => {
-                    self.lda(opcode.mode);
-                }
-                "STA" => {
-                    self.sta(opcode.mode);
-                }
+                "LDA" => self.lda(opcode.mode),
+                "STA" => self.sta(opcode.mode),
+                "TAX" => self.tax(),
+
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
