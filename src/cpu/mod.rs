@@ -84,6 +84,7 @@ impl Cpu {
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
                 "INX" => self.inx(),
+                "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
                 "STA" => self.sta(opcode.mode),
                 "TAX" => self.tax(),
@@ -127,6 +128,10 @@ impl Cpu {
 
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
+    }
+
+    fn iny(&mut self) {
+        self.register_y = self.register_y.wrapping_add(1);
     }
 
     fn sta(&mut self, mode: AddressingMode) {

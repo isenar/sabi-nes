@@ -37,6 +37,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x00, "BRK", 1, 7, AddressingMode::Implied),
     Opcode::new(0xaa, "TAX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xe8, "INX", 1, 2, AddressingMode::Implied),
+    Opcode::new(0xc8, "INY", 1, 2, AddressingMode::Implied),
     Opcode::new(0x18, "CLC", 1, 2, AddressingMode::Implied),
     Opcode::new(0xd8, "CLD", 1, 2, AddressingMode::Implied),
     Opcode::new(0x58, "CLI", 1, 2, AddressingMode::Implied),
