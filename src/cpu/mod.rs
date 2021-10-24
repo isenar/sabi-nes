@@ -95,6 +95,7 @@ impl Cpu {
                 "STX" => self.stx(opcode.mode),
                 "STY" => self.sty(opcode.mode),
                 "TAX" => self.tax(),
+                "TAY" => self.tay(),
 
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
@@ -134,6 +135,12 @@ impl Cpu {
         self.register_x = self.register_a;
         self.status_register
             .update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn tay(&mut self) {
+        self.register_y = self.register_a;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
     }
 
     fn inx(&mut self) {
