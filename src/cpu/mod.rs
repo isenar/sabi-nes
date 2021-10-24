@@ -87,6 +87,10 @@ impl Cpu {
                 "CLD" => self.status_register.clear_decimal_flag(),
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
+                "DEC" => self.dec(opcode.mode),
+                "DEX" => self.dex(),
+                "DEY" => self.dey(),
+                "INC" => self.inc(opcode.mode),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
@@ -172,6 +176,36 @@ impl Cpu {
         self.register_a = self.register_y;
         self.status_register
             .update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn dec(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let dec_value = self.mem_read(addr).wrapping_sub(1);
+
+        self.mem_write(addr, dec_value);
+        self.status_register
+            .update_zero_and_negative_flags(dec_value);
+    }
+
+    fn dex(&mut self) {
+        self.register_x = self.register_x.wrapping_sub(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn dey(&mut self) {
+        self.register_y = self.register_y.wrapping_sub(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn inc(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let inc_value = self.mem_read(addr).wrapping_add(1);
+
+        self.mem_write(addr, inc_value);
+        self.status_register
+            .update_zero_and_negative_flags(inc_value);
     }
 
     fn inx(&mut self) {
