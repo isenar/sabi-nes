@@ -89,6 +89,7 @@ impl Cpu {
                 "CLV" => self.status_register.clear_overflow_flag(),
                 "DEC" => self.dec(opcode.mode),
                 "DEX" => self.dex(),
+                "DEY" => self.dey(),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
@@ -189,6 +190,12 @@ impl Cpu {
         self.register_x = self.register_x.wrapping_sub(1);
         self.status_register
             .update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn dey(&mut self) {
+        self.register_y = self.register_y.wrapping_sub(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
     }
 
     fn inx(&mut self) {
