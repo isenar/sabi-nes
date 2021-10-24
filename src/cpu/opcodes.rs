@@ -35,8 +35,6 @@ impl Opcode {
 
 const OPCODES: &[Opcode] = &[
     Opcode::new(0x00, "BRK", 1, 7, AddressingMode::Implied),
-    Opcode::new(0xe8, "INX", 1, 2, AddressingMode::Implied),
-    Opcode::new(0xc8, "INY", 1, 2, AddressingMode::Implied),
     // -- flag clear/set instructions
     Opcode::new(0x18, "CLC", 1, 2, AddressingMode::Implied),
     Opcode::new(0xd8, "CLD", 1, 2, AddressingMode::Implied),
@@ -104,6 +102,13 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x08, "PHP", 1, 3, AddressingMode::Implied),
     Opcode::new(0x68, "PLA", 1, 4, AddressingMode::Implied),
     Opcode::new(0x28, "PLP", 1, 4, AddressingMode::Implied),
+    // -- increment/decrement instructions --
+    Opcode::new(0xce, "DEC", 3, 6, AddressingMode::Absolute),
+    Opcode::new(0xde, "DEC", 3, 7, AddressingMode::AbsoluteX),
+    Opcode::new(0xc6, "DEC", 2, 5, AddressingMode::ZeroPage),
+    Opcode::new(0xd6, "DEC", 2, 6, AddressingMode::ZeroPageX),
+    Opcode::new(0xe8, "INX", 1, 2, AddressingMode::Implied),
+    Opcode::new(0xc8, "INY", 1, 2, AddressingMode::Implied),
 ];
 
 lazy_static! {
