@@ -23,6 +23,7 @@ pub struct Cpu {
     pub register_y: Register,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
+    pub stack_pointer: u8,
 
     memory: [Value; PROGRAM_ROM_END_ADDR as usize],
 }
@@ -35,6 +36,7 @@ impl Default for Cpu {
             register_y: 0,
             status_register: StatusRegister::empty(),
             program_counter: 0,
+            stack_pointer: 0,
             memory: [0; 0xffff],
         }
     }
@@ -95,6 +97,11 @@ impl Cpu {
                 "STX" => self.stx(opcode.mode),
                 "STY" => self.sty(opcode.mode),
                 "TAX" => self.tax(),
+                "TAY" => self.tay(),
+                "TSX" => self.tsx(),
+                "TXA" => self.txa(),
+                "TXS" => self.stack_pointer = self.register_x,
+                "TYA" => self.tya(),
 
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
@@ -134,6 +141,30 @@ impl Cpu {
         self.register_x = self.register_a;
         self.status_register
             .update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn tay(&mut self) {
+        self.register_y = self.register_a;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn tsx(&mut self) {
+        self.register_x = self.stack_pointer;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn txa(&mut self) {
+        self.register_a = self.register_x;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn tya(&mut self) {
+        self.register_a = self.register_y;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_a);
     }
 
     fn inx(&mut self) {
