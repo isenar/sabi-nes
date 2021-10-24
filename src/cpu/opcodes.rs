@@ -107,6 +107,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xde, "DEC", 3, 7, AddressingMode::AbsoluteX),
     Opcode::new(0xc6, "DEC", 2, 5, AddressingMode::ZeroPage),
     Opcode::new(0xd6, "DEC", 2, 6, AddressingMode::ZeroPageX),
+    Opcode::new(0xca, "DEX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xe8, "INX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xc8, "INY", 1, 2, AddressingMode::Implied),
 ];

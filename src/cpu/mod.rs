@@ -88,6 +88,7 @@ impl Cpu {
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
                 "DEC" => self.dec(opcode.mode),
+                "DEX" => self.dex(),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
@@ -182,6 +183,12 @@ impl Cpu {
         self.mem_write(addr, dec_value);
         self.status_register
             .update_zero_and_negative_flags(dec_value);
+    }
+
+    fn dex(&mut self) {
+        self.register_x = self.register_x.wrapping_sub(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
     }
 
     fn inx(&mut self) {
