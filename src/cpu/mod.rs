@@ -1,9 +1,11 @@
 mod addressing_mode;
 mod opcodes;
-pub mod status_register;
+mod stack_pointer;
+mod status_register;
 
 use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
+use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use anyhow::{anyhow, bail, Result};
 
@@ -23,7 +25,7 @@ pub struct Cpu {
     pub register_y: Register,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
-    pub stack_pointer: u8,
+    pub stack_pointer: StackPointer,
 
     memory: [Value; PROGRAM_ROM_END_ADDR as usize],
 }
@@ -36,7 +38,7 @@ impl Default for Cpu {
             register_y: 0,
             status_register: StatusRegister::empty(),
             program_counter: 0,
-            stack_pointer: 0,
+            stack_pointer: StackPointer::default(),
             memory: [0; 0xffff],
         }
     }
@@ -90,6 +92,7 @@ impl Cpu {
                 "LDA" => self.lda(opcode.mode),
                 "LDX" => self.ldx(opcode.mode),
                 "LDY" => self.ldy(opcode.mode),
+                "PHA" => self.stack_push(self.register_a),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -100,7 +103,7 @@ impl Cpu {
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
                 "TXA" => self.txa(),
-                "TXS" => self.stack_pointer = self.register_x,
+                "TXS" => self.stack_pointer.set(self.register_x),
                 "TYA" => self.tya(),
 
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
@@ -116,6 +119,7 @@ impl Cpu {
         self.register_y = 0;
         self.status_register = StatusRegister::empty();
         self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
+        self.stack_pointer.reset();
     }
 
     fn and(&mut self, mode: AddressingMode) {
@@ -150,7 +154,7 @@ impl Cpu {
     }
 
     fn tsx(&mut self) {
-        self.register_x = self.stack_pointer;
+        self.register_x = self.stack_pointer.value();
         self.status_register
             .update_zero_and_negative_flags(self.register_x);
     }
@@ -261,6 +265,12 @@ impl Cpu {
     fn store_value(&mut self, value: Value, mode: AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, value);
+    }
+
+    fn stack_push(&mut self, value: Value) {
+        self.mem_write(self.stack_pointer.address(), value);
+
+        self.stack_pointer.decrement();
     }
 }
 
