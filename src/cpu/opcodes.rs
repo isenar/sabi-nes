@@ -103,6 +103,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x48, "PHA", 1, 3, AddressingMode::Implied),
     Opcode::new(0x08, "PHP", 1, 3, AddressingMode::Implied),
     Opcode::new(0x68, "PLA", 1, 4, AddressingMode::Implied),
+    Opcode::new(0x28, "PLP", 1, 4, AddressingMode::Implied),
 ];
 
 lazy_static! {

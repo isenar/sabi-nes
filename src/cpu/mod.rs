@@ -95,6 +95,7 @@ impl Cpu {
                 "PHA" => self.stack_push(self.register_a),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
+                "PLP" => self.plp(),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -187,6 +188,12 @@ impl Cpu {
         self.register_a = value;
         self.status_register
             .update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn plp(&mut self) {
+        let value = self.pop_stack();
+
+        self.status_register = StatusRegister::from_bits_truncate(value);
     }
 
     fn php(&mut self) {
