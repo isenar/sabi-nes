@@ -1,11 +1,11 @@
 mod addressing_mode;
 mod opcodes;
-mod status_flags;
+pub mod status_register;
 
 use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
-use crate::cpu::status_flags::StatusFlags;
-use anyhow::{anyhow, Result};
+use crate::cpu::status_register::StatusRegister;
+use anyhow::{anyhow, bail, Result};
 
 type Register = u8;
 type Address = u16;
@@ -21,7 +21,7 @@ pub struct Cpu {
     pub register_a: Register,
     pub register_x: Register,
     pub register_y: Register,
-    pub status_flags: StatusFlags,
+    pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
 
     memory: [Value; PROGRAM_ROM_END_ADDR as usize],
@@ -33,7 +33,7 @@ impl Default for Cpu {
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            status_flags: StatusFlags::default(),
+            status_register: StatusRegister::empty(),
             program_counter: 0,
             memory: [0; 0xffff],
         }
@@ -74,21 +74,28 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
-                "BRK" => {
-                    return Ok(());
+                "AND" => {
+                    self.and(opcode.mode);
+                    self.program_counter += opcode.len();
                 }
-                "TAX" => self.tax(),
+                "BRK" => return Ok(()),
+                "CLC" => self.status_register.clear_carry_flag(),
+                "CLD" => self.status_register.clear_decimal_flag(),
+                "CLI" => self.status_register.clear_interrupt_flag(),
+                "CLV" => self.status_register.clear_overflow_flag(),
                 "INX" => self.inx(),
-                "LDA" => {
-                    self.lda(opcode.mode);
-                    self.program_counter += opcode.len();
-                }
-                "STA" => {
-                    self.sta(opcode.mode);
-                    self.program_counter += opcode.len();
-                }
-                _ => todo!("Unsupported opcode name: {}", opcode.name),
+                "INY" => self.iny(),
+                "LDA" => self.lda(opcode.mode),
+                "SEC" => self.status_register.set_carry_flag(),
+                "SED" => self.status_register.set_decimal_flag(),
+                "SEI" => self.status_register.set_interrupt_flag(),
+                "STA" => self.sta(opcode.mode),
+                "TAX" => self.tax(),
+
+                _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
+
+            self.program_counter += opcode.len();
         }
     }
 
@@ -96,8 +103,15 @@ impl Cpu {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
-        self.status_flags = StatusFlags::default();
+        self.status_register = StatusRegister::empty();
         self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
+    }
+
+    fn and(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_a &= value;
     }
 
     fn lda(&mut self, mode: AddressingMode) {
@@ -105,26 +119,27 @@ impl Cpu {
         let value = self.mem_read(addr);
 
         self.register_a = value;
-        self.update_zero_and_negative_flags(self.register_a);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_a);
     }
 
     fn tax(&mut self) {
         self.register_x = self.register_a;
-        self.update_zero_and_negative_flags(self.register_x);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
     }
 
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
     }
 
+    fn iny(&mut self) {
+        self.register_y = self.register_y.wrapping_add(1);
+    }
+
     fn sta(&mut self, mode: AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
-    }
-
-    fn update_zero_and_negative_flags(&mut self, result: u8) {
-        self.status_flags.zero = result == 0;
-        self.status_flags.negative = result & 0b1000_0000 != 0;
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
@@ -183,7 +198,9 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
-            AddressingMode::Implied => unreachable!(),
+            AddressingMode::Implied => {
+                unreachable!("Implied mode is never passed to get operand address")
+            }
         }
     }
 }
@@ -203,8 +220,8 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 0x05);
-            assert!(!cpu.status_flags.zero);
-            assert!(!cpu.status_flags.negative);
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
         }
 
         #[test]
@@ -214,7 +231,7 @@ mod tests {
 
             cpu.load_and_run(&data).expect("Failed to load and run");
 
-            assert!(cpu.status_flags.zero);
+            assert!(cpu.status_register.contains(StatusRegister::ZERO));
         }
 
         #[test]
@@ -269,6 +286,40 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_x, 0xc1);
+        }
+    }
+
+    mod flags {
+        use super::*;
+
+        #[test]
+        fn carry_flag_enabled() {
+            let mut cpu = Cpu::default();
+            let data = [0x38, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
+        }
+
+        #[test]
+        fn decimal_flag_enabled() {
+            let mut cpu = Cpu::default();
+            let data = [0xf8, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.status_register, StatusRegister::DECIMAL);
+        }
+
+        #[test]
+        fn interrupt_flag_enabled() {
+            let mut cpu = Cpu::default();
+            let data = [0x78, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.status_register, StatusRegister::INTERRUPT_DISABLE);
         }
     }
 }
