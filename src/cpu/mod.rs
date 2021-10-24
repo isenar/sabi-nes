@@ -92,6 +92,7 @@ impl Cpu {
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
                 "STA" => self.sta(opcode.mode),
+                "STX" => self.stx(opcode.mode),
                 "TAX" => self.tax(),
 
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
@@ -160,6 +161,11 @@ impl Cpu {
     fn sta(&mut self, mode: AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
+    }
+
+    fn stx(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_x);
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
