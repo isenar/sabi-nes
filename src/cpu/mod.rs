@@ -93,6 +93,7 @@ impl Cpu {
                 "LDX" => self.ldx(opcode.mode),
                 "LDY" => self.ldy(opcode.mode),
                 "PHA" => self.stack_push(self.register_a),
+                "PHP" => self.php(),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -177,6 +178,13 @@ impl Cpu {
 
     fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
+    }
+
+    fn php(&mut self) {
+        let mut status_register_with_b_flags = self.status_register.clone();
+        status_register_with_b_flags.insert(StatusRegister::BREAK | StatusRegister::BREAK2);
+
+        self.stack_push(status_register_with_b_flags.bits());
     }
 
     fn sta(&mut self, mode: AddressingMode) {

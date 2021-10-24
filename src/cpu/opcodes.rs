@@ -101,6 +101,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x98, "TYA", 1, 2, AddressingMode::Implied),
     // -- stack instructions --
     Opcode::new(0x48, "PHA", 1, 3, AddressingMode::Implied),
+    Opcode::new(0x08, "PHP", 1, 3, AddressingMode::Implied),
 ];
 
 lazy_static! {
