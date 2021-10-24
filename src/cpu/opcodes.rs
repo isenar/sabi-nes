@@ -89,6 +89,10 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x8e, "STX", 3, 4, AddressingMode::Absolute),
     Opcode::new(0x86, "STX", 2, 3, AddressingMode::ZeroPage),
     Opcode::new(0x96, "STX", 2, 4, AddressingMode::ZeroPageY),
+    // STY
+    Opcode::new(0x8c, "STY", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0x84, "STY", 2, 3, AddressingMode::ZeroPage),
+    Opcode::new(0x94, "STY", 2, 4, AddressingMode::ZeroPageX),
 ];
 
 lazy_static! {

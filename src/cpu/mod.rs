@@ -93,6 +93,7 @@ impl Cpu {
                 "SEI" => self.status_register.set_interrupt_flag(),
                 "STA" => self.sta(opcode.mode),
                 "STX" => self.stx(opcode.mode),
+                "STY" => self.sty(opcode.mode),
                 "TAX" => self.tax(),
 
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
@@ -118,30 +119,15 @@ impl Cpu {
     }
 
     fn lda(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        let value = self.mem_read(addr);
-
-        self.register_a = value;
-        self.status_register
-            .update_zero_and_negative_flags(self.register_a);
+        self.register_a = self.load_value(mode);
     }
 
     fn ldx(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        let value = self.mem_read(addr);
-
-        self.register_x = value;
-        self.status_register
-            .update_zero_and_negative_flags(self.register_x);
+        self.register_x = self.load_value(mode);
     }
 
     fn ldy(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        let value = self.mem_read(addr);
-
-        self.register_y = value;
-        self.status_register
-            .update_zero_and_negative_flags(self.register_y);
+        self.register_y = self.load_value(mode);
     }
 
     fn tax(&mut self) {
@@ -159,13 +145,15 @@ impl Cpu {
     }
 
     fn sta(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        self.mem_write(addr, self.register_a);
+        self.store_value(self.register_a, mode);
     }
 
     fn stx(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        self.mem_write(addr, self.register_x);
+        self.store_value(self.register_x, mode);
+    }
+
+    fn sty(&mut self, mode: AddressingMode) {
+        self.store_value(self.register_y, mode);
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
@@ -228,6 +216,20 @@ impl Cpu {
                 unreachable!("Implied mode is never passed to get operand address")
             }
         }
+    }
+
+    fn load_value(&mut self, mode: AddressingMode) -> Value {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.status_register.update_zero_and_negative_flags(value);
+
+        value
+    }
+
+    fn store_value(&mut self, value: Value, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, value);
     }
 }
 
