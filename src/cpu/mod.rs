@@ -90,6 +90,7 @@ impl Cpu {
                 "DEC" => self.dec(opcode.mode),
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
+                "INC" => self.inc(opcode.mode),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
@@ -196,6 +197,15 @@ impl Cpu {
         self.register_y = self.register_y.wrapping_sub(1);
         self.status_register
             .update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn inc(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let inc_value = self.mem_read(addr).wrapping_add(1);
+
+        self.mem_write(addr, inc_value);
+        self.status_register
+            .update_zero_and_negative_flags(inc_value);
     }
 
     fn inx(&mut self) {
