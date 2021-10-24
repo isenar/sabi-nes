@@ -94,6 +94,7 @@ impl Cpu {
                 "LDY" => self.ldy(opcode.mode),
                 "PHA" => self.stack_push(self.register_a),
                 "PHP" => self.php(),
+                "PLA" => self.pla(),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -180,8 +181,16 @@ impl Cpu {
         self.register_y = self.register_y.wrapping_add(1);
     }
 
+    fn pla(&mut self) {
+        let value = self.pop_stack();
+
+        self.register_a = value;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_a);
+    }
+
     fn php(&mut self) {
-        let mut status_register_with_b_flags = self.status_register.clone();
+        let mut status_register_with_b_flags = self.status_register;
         status_register_with_b_flags.insert(StatusRegister::BREAK | StatusRegister::BREAK2);
 
         self.stack_push(status_register_with_b_flags.bits());
@@ -279,6 +288,11 @@ impl Cpu {
         self.mem_write(self.stack_pointer.address(), value);
 
         self.stack_pointer.decrement();
+    }
+
+    fn pop_stack(&mut self) -> Value {
+        self.stack_pointer.increment();
+        self.mem_read(self.stack_pointer.address())
     }
 }
 
