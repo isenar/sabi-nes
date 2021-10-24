@@ -71,6 +71,12 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xbe, "LDX", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
     Opcode::new(0xa6, "LDX", 2, 3, AddressingMode::ZeroPage),
     Opcode::new(0xb6, "LDX", 2, 3, AddressingMode::ZeroPageY),
+    // LDY
+    Opcode::new(0xa0, "LDY", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0xac, "LDY", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0xbc, "LDY", 3, 4, AddressingMode::AbsoluteX), // +1 cycle if page boundary crossed
+    Opcode::new(0xa4, "LDY", 2, 3, AddressingMode::ZeroPage),
+    Opcode::new(0xb4, "LDY", 2, 4, AddressingMode::ZeroPageX),
     // STA
     Opcode::new(0x85, "STA", 2, 3, AddressingMode::ZeroPage),
     Opcode::new(0x95, "STA", 2, 4, AddressingMode::ZeroPageX),

@@ -87,6 +87,7 @@ impl Cpu {
                 "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
                 "LDX" => self.ldx(opcode.mode),
+                "LDY" => self.ldy(opcode.mode),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -131,6 +132,15 @@ impl Cpu {
         self.register_x = value;
         self.status_register
             .update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn ldy(&mut self, mode: AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        self.register_y = value;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
     }
 
     fn tax(&mut self) {
