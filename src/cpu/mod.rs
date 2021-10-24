@@ -7,7 +7,7 @@ use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 
 type Register = u8;
 type Address = u16;
@@ -78,24 +78,22 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
-                "AND" => {
-                    self.and(opcode.mode);
-                    self.program_counter += opcode.len();
-                }
+                "AND" => self.and(opcode.mode)?,
+                "ASL" => self.asl(opcode.mode)?,
                 "BRK" => return Ok(()),
                 "CLC" => self.status_register.clear_carry_flag(),
                 "CLD" => self.status_register.clear_decimal_flag(),
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
-                "DEC" => self.dec(opcode.mode),
+                "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
-                "INC" => self.inc(opcode.mode),
+                "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
-                "LDA" => self.lda(opcode.mode),
-                "LDX" => self.ldx(opcode.mode),
-                "LDY" => self.ldy(opcode.mode),
+                "LDA" => self.lda(opcode.mode)?,
+                "LDX" => self.ldx(opcode.mode)?,
+                "LDY" => self.ldy(opcode.mode)?,
                 "PHA" => self.stack_push(self.register_a),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
@@ -103,16 +101,15 @@ impl Cpu {
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
-                "STA" => self.sta(opcode.mode),
-                "STX" => self.stx(opcode.mode),
-                "STY" => self.sty(opcode.mode),
+                "STA" => self.sta(opcode.mode)?,
+                "STX" => self.stx(opcode.mode)?,
+                "STY" => self.sty(opcode.mode)?,
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
                 "TXA" => self.txa(),
                 "TXS" => self.stack_pointer.set(self.register_x),
                 "TYA" => self.tya(),
-
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -129,23 +126,57 @@ impl Cpu {
         self.stack_pointer.reset();
     }
 
-    fn and(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn and(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in AND instruction"))?;
         let value = self.mem_read(addr);
 
         self.register_a &= value;
+
+        Ok(())
     }
 
-    fn lda(&mut self, mode: AddressingMode) {
-        self.register_a = self.load_value(mode);
+    fn asl(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self.get_operand_address(mode);
+        let shifted = match addr {
+            Some(addr) => {
+                let shifted_left = self.mem_read(addr) << 1;
+                self.mem_write(addr, shifted_left);
+
+                shifted_left
+            }
+            None => {
+                self.register_a <<= 1;
+                self.register_a
+            }
+        };
+
+        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register.set(
+            StatusRegister::CARRY,
+            StatusRegister::from(shifted).contains(StatusRegister::CARRY),
+        );
+
+        Ok(())
     }
 
-    fn ldx(&mut self, mode: AddressingMode) {
-        self.register_x = self.load_value(mode);
+    fn lda(&mut self, mode: AddressingMode) -> Result<()> {
+        self.register_a = self.load_value(mode)?;
+
+        Ok(())
     }
 
-    fn ldy(&mut self, mode: AddressingMode) {
-        self.register_y = self.load_value(mode);
+    fn ldx(&mut self, mode: AddressingMode) -> Result<()> {
+        self.register_x = self.load_value(mode)?;
+
+        Ok(())
+    }
+
+    fn ldy(&mut self, mode: AddressingMode) -> Result<()> {
+        self.register_y = self.load_value(mode).with_context(|| "In LDY")?;
+
+        Ok(())
     }
 
     fn tax(&mut self) {
@@ -178,13 +209,18 @@ impl Cpu {
             .update_zero_and_negative_flags(self.register_a);
     }
 
-    fn dec(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn dec(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in DEC instruction"))?;
+
         let dec_value = self.mem_read(addr).wrapping_sub(1);
 
         self.mem_write(addr, dec_value);
         self.status_register
             .update_zero_and_negative_flags(dec_value);
+
+        Ok(())
     }
 
     fn dex(&mut self) {
@@ -199,13 +235,18 @@ impl Cpu {
             .update_zero_and_negative_flags(self.register_y);
     }
 
-    fn inc(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn inc(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in INC instruction"))?;
+
         let inc_value = self.mem_read(addr).wrapping_add(1);
 
         self.mem_write(addr, inc_value);
         self.status_register
             .update_zero_and_negative_flags(inc_value);
+
+        Ok(())
     }
 
     fn inx(&mut self) {
@@ -237,16 +278,16 @@ impl Cpu {
         self.stack_push(status_register_with_b_flags.bits());
     }
 
-    fn sta(&mut self, mode: AddressingMode) {
-        self.store_value(self.register_a, mode);
+    fn sta(&mut self, mode: AddressingMode) -> Result<()> {
+        self.store_value(self.register_a, mode)
     }
 
-    fn stx(&mut self, mode: AddressingMode) {
-        self.store_value(self.register_x, mode);
+    fn stx(&mut self, mode: AddressingMode) -> Result<()> {
+        self.store_value(self.register_x, mode)
     }
 
-    fn sty(&mut self, mode: AddressingMode) {
-        self.store_value(self.register_y, mode);
+    fn sty(&mut self, mode: AddressingMode) -> Result<()> {
+        self.store_value(self.register_y, mode)
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
@@ -263,8 +304,8 @@ impl Cpu {
         self.mem_write(addr + 1, hi);
     }
 
-    fn get_operand_address(&self, mode: AddressingMode) -> Address {
-        match mode {
+    fn get_operand_address(&self, mode: AddressingMode) -> Option<Address> {
+        Some(match mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.mem_read(self.program_counter).into(),
             AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
@@ -305,24 +346,35 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
+            AddressingMode::Accumulator => return None,
             AddressingMode::Implied => {
                 unreachable!("Implied mode is never passed to get operand address")
             }
-        }
+        })
     }
 
-    fn load_value(&mut self, mode: AddressingMode) -> Value {
-        let addr = self.get_operand_address(mode);
+    fn load_value(&mut self, mode: AddressingMode) -> Result<Value> {
+        let addr = self.get_operand_address(mode).ok_or_else(|| {
+            anyhow!(
+                "Could not get operand address when loading value ({:?})",
+                mode
+            )
+        })?;
         let value = self.mem_read(addr);
 
         self.status_register.update_zero_and_negative_flags(value);
 
-        value
+        Ok(value)
     }
 
-    fn store_value(&mut self, value: Value, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn store_value(&mut self, value: Value, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address when storing value ({:?}", mode))?;
+
         self.mem_write(addr, value);
+
+        Ok(())
     }
 
     fn stack_push(&mut self, value: Value) {

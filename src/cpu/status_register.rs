@@ -30,6 +30,12 @@ bitflags! {
     }
 }
 
+impl From<u8> for StatusRegister {
+    fn from(value: u8) -> Self {
+        Self::from_bits_truncate(value)
+    }
+}
+
 impl StatusRegister {
     pub fn update_zero_and_negative_flags(&mut self, value: u8) {
         let value_bits = StatusRegister::from_bits_truncate(value);
