@@ -95,6 +95,8 @@ const OPCODES: &[Opcode] = &[
     // -- transfer instructions --
     Opcode::new(0xaa, "TAX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xa8, "TAY", 1, 2, AddressingMode::Implied),
+    Opcode::new(0xba, "TSX", 1, 2, AddressingMode::Implied),
+    Opcode::new(0x8a, "TXA", 1, 2, AddressingMode::Implied),
 ];
 
 lazy_static! {
