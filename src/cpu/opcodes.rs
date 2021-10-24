@@ -38,10 +38,14 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xaa, "TAX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xe8, "INX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xc8, "INY", 1, 2, AddressingMode::Implied),
+    // Flags
     Opcode::new(0x18, "CLC", 1, 2, AddressingMode::Implied),
     Opcode::new(0xd8, "CLD", 1, 2, AddressingMode::Implied),
     Opcode::new(0x58, "CLI", 1, 2, AddressingMode::Implied),
     Opcode::new(0xb8, "CLV", 1, 2, AddressingMode::Implied),
+    Opcode::new(0x38, "SEC", 1, 2, AddressingMode::Implied),
+    Opcode::new(0xf8, "SED", 1, 2, AddressingMode::Implied),
+    Opcode::new(0x78, "SEI", 1, 2, AddressingMode::Implied),
     // AND
     Opcode::new(0x29, "AND", 2, 2, AddressingMode::Immediate),
     Opcode::new(0x25, "AND", 2, 3, AddressingMode::ZeroPage),

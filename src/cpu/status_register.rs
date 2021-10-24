@@ -41,18 +41,37 @@ impl StatusRegister {
         );
     }
 
+    #[inline]
+    pub fn set_carry_flag(&mut self) {
+        self.insert(StatusRegister::CARRY);
+    }
+
+    #[inline]
+    pub fn set_decimal_flag(&mut self) {
+        self.insert(StatusRegister::DECIMAL);
+    }
+
+    #[inline]
+    pub fn set_interrupt_flag(&mut self) {
+        self.insert(StatusRegister::INTERRUPT_DISABLE);
+    }
+
+    #[inline]
     pub fn clear_carry_flag(&mut self) {
         self.remove(StatusRegister::CARRY);
     }
 
+    #[inline]
     pub fn clear_decimal_flag(&mut self) {
         self.remove(StatusRegister::DECIMAL);
     }
 
+    #[inline]
     pub fn clear_interrupt_flag(&mut self) {
         self.remove(StatusRegister::INTERRUPT_DISABLE);
     }
 
+    #[inline]
     pub fn clear_overflow_flag(&mut self) {
         self.remove(StatusRegister::OVERFLOW);
     }

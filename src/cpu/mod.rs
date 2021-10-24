@@ -86,6 +86,9 @@ impl Cpu {
                 "INX" => self.inx(),
                 "INY" => self.iny(),
                 "LDA" => self.lda(opcode.mode),
+                "SEC" => self.status_register.set_carry_flag(),
+                "SED" => self.status_register.set_decimal_flag(),
+                "SEI" => self.status_register.set_interrupt_flag(),
                 "STA" => self.sta(opcode.mode),
                 "TAX" => self.tax(),
 
@@ -283,6 +286,40 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_x, 0xc1);
+        }
+    }
+
+    mod flags {
+        use super::*;
+
+        #[test]
+        fn carry_flag_enabled() {
+            let mut cpu = Cpu::default();
+            let data = [0x38, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
+        }
+
+        #[test]
+        fn decimal_flag_enabled() {
+            let mut cpu = Cpu::default();
+            let data = [0xf8, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.status_register, StatusRegister::DECIMAL);
+        }
+
+        #[test]
+        fn interrupt_flag_enabled() {
+            let mut cpu = Cpu::default();
+            let data = [0x78, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.status_register, StatusRegister::INTERRUPT_DISABLE);
         }
     }
 }
