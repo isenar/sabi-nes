@@ -100,6 +100,8 @@ impl Cpu {
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
                 "TXA" => self.txa(),
+                "TXS" => self.stack_pointer = self.register_x,
+                "TYA" => self.tya(),
 
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
@@ -155,6 +157,12 @@ impl Cpu {
 
     fn txa(&mut self) {
         self.register_a = self.register_x;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn tya(&mut self) {
+        self.register_a = self.register_y;
         self.status_register
             .update_zero_and_negative_flags(self.register_a);
     }
