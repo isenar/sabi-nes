@@ -38,7 +38,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xaa, "TAX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xe8, "INX", 1, 2, AddressingMode::Implied),
     Opcode::new(0xc8, "INY", 1, 2, AddressingMode::Implied),
-    // Flags
+    // -- flag clear/set instructions
     Opcode::new(0x18, "CLC", 1, 2, AddressingMode::Implied),
     Opcode::new(0xd8, "CLD", 1, 2, AddressingMode::Implied),
     Opcode::new(0x58, "CLI", 1, 2, AddressingMode::Implied),
@@ -55,6 +55,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x39, "AND", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
     Opcode::new(0x21, "AND", 2, 6, AddressingMode::IndirectX),
     Opcode::new(0x31, "AND", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
+    // -- load/set instructions --
     // LDA
     Opcode::new(0xa9, "LDA", 2, 2, AddressingMode::Immediate),
     Opcode::new(0xa5, "LDA", 2, 3, AddressingMode::ZeroPage),
@@ -64,6 +65,12 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xb9, "LDA", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
     Opcode::new(0xa1, "LDA", 2, 6, AddressingMode::IndirectX),
     Opcode::new(0xb1, "LDA", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
+    // LDX
+    Opcode::new(0xa2, "LDX", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0xae, "LDX", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0xbe, "LDX", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
+    Opcode::new(0xa6, "LDX", 2, 3, AddressingMode::ZeroPage),
+    Opcode::new(0xb6, "LDX", 2, 3, AddressingMode::ZeroPageY),
     // STA
     Opcode::new(0x85, "STA", 2, 3, AddressingMode::ZeroPage),
     Opcode::new(0x95, "STA", 2, 4, AddressingMode::ZeroPageX),
