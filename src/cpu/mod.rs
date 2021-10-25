@@ -7,6 +7,7 @@ use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
+use crate::utils::NthBit;
 use anyhow::{anyhow, bail, Context, Result};
 
 type Register = u8;
@@ -94,6 +95,7 @@ impl Cpu {
                 "LDA" => self.lda(opcode.mode)?,
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
+                "LSR" => self.lsr(opcode.mode)?,
                 "PHA" => self.stack_push(self.register_a),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
@@ -141,22 +143,53 @@ impl Cpu {
         let addr = self.get_operand_address(mode);
         let shifted = match addr {
             Some(addr) => {
-                let shifted_left = self.mem_read(addr) << 1;
+                let value = self.mem_read(addr);
+                let shifted_left = value << 1;
+
                 self.mem_write(addr, shifted_left);
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(7));
 
                 shifted_left
             }
             None => {
+                let old_reg_a = self.register_a;
                 self.register_a <<= 1;
+                self.status_register
+                    .set(StatusRegister::CARRY, old_reg_a.nth_bit(7));
+
                 self.register_a
             }
         };
 
         self.status_register.update_zero_and_negative_flags(shifted);
-        self.status_register.set(
-            StatusRegister::CARRY,
-            StatusRegister::from(shifted).contains(StatusRegister::CARRY),
-        );
+
+        Ok(())
+    }
+
+    fn lsr(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self.get_operand_address(mode);
+        let shifted = match addr {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                let shifted = value >> 1;
+
+                self.mem_write(addr, shifted);
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(0));
+
+                shifted
+            }
+            None => {
+                let old_reg_a = self.register_a;
+                self.register_a >>= 1;
+                self.status_register
+                    .set(StatusRegister::CARRY, old_reg_a.nth_bit(0));
+                self.register_a
+            }
+        };
+
+        self.status_register.update_zero_and_negative_flags(shifted);
 
         Ok(())
     }
