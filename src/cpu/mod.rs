@@ -606,14 +606,36 @@ mod tests {
             assert!(cpu.status_register.is_empty());
         }
 
-        // #[test]
-        // fn stx_zero_page() {
-        //     let cpu = CpuRunner::new().build()
-        //
-        //     let data = [];
-        //
-        //     cpu.load_and_run()
-        // }
+        #[test]
+        fn stx_zero_page() {
+            // 1. Store 0x12 in memory location 0xee (setup)
+            // 2. Store register X value (0) in memory location 0xee
+            let data = [0x86, 0xee, 0x00];
+            let cpu = CpuBuilder::new().write(0xee, 0x12).build_and_run(&data);
+
+            assert_eq!(cpu.mem_read(0xee), 0x00);
+            // STX does not modify any flags
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn sty_zero_page_x() {
+            // 1. store 0x01 in memory location 0x01
+            // 2. store 0x02 in memory location 0x03
+            // 3. load register X with value from address 0x01
+            // 4. load register Y with value from address 0x03
+            // 5. call STY with ZeroPageX addressing mode (store registry value Y in byte X on page zero
+            let data = [0xa6, 0x01, 0xa4, 0x03, 0x94, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0x01, 0x02)
+                .write(0x03, 0x04)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.register_x, 0x02);
+            assert_eq!(cpu.register_y, 0x04);
+            assert_eq!(cpu.mem_read(0x02), 0x04);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
     }
 
     mod tax {
