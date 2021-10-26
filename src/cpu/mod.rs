@@ -100,7 +100,8 @@ impl Cpu {
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
-                "ROL" => self.rol(opcode.mode)?,
+                "ROL" => self.rol(opcode.mode),
+                "ROR" => self.ror(opcode.mode),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -192,42 +193,80 @@ impl Cpu {
 
         // "The N flag is always reset"
         self.status_register.clear_negative_flag();
-
         self.status_register.update_zero_and_negative_flags(shifted);
 
         Ok(())
     }
 
-    fn rol(&mut self, mode: AddressingMode) -> Result<()> {
-        // rotate 1 bit left with input carry being stored at bit 0
-        // and
-
+    fn rol(&mut self, mode: AddressingMode) {
         let address = self.get_operand_address(mode);
-        let shifted = match address {
+        let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
+
+        let (previous, shifted) = match address {
             Some(addr) => {
                 let value = self.mem_read(addr);
-                let shifted = (value << 1) | value.nth_bit(7) as u8;
+                let shifted = (value << 1) | carry;
                 self.mem_write(addr, shifted);
 
-                self.status_register
-                    .set(StatusRegister::CARRY, value.nth_bit(7));
-
-                shifted
+                (value, shifted)
             }
             None => {
-                let prev_acc_bits = self.register_a;
-                self.register_a = (self.register_a << 1) | prev_acc_bits.nth_bit(7) as u8;
+                let current_acc = self.register_a;
+                self.register_a = (self.register_a << 1) | carry;
 
-                self.status_register
-                    .set(StatusRegister::CARRY, prev_acc_bits.nth_bit(7));
-
-                self.register_a
+                (current_acc, self.register_a)
             }
         };
 
+        self.status_register
+            .set(StatusRegister::CARRY, previous.nth_bit(7));
         self.status_register.update_zero_and_negative_flags(shifted);
+    }
 
-        Ok(())
+    fn ror(&mut self, mode: AddressingMode) {
+        // shift right, with bit 0 in carry, store carry bit in bit 7
+        // set C to input bit 0
+        // set N to input C
+        // set Z if result == 0
+
+        let address = self.get_operand_address(mode);
+        let input_carry = self.status_register.contains(StatusRegister::CARRY);
+
+        let (previous, shifted) = match address {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                // shift right
+                let mut shifted = value >> 1;
+                // set bit 7 with input carry
+                if input_carry {
+                    shifted |= 0b1000_0000;
+                }
+
+                self.mem_write(addr, shifted);
+
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(0));
+
+                (value, shifted)
+            }
+            None => {
+                let prev_acc_bits = self.register_a;
+                let mut shifted = self.register_a >> 1;
+                if input_carry {
+                    shifted |= 0b1000_000;
+                }
+
+                self.register_a = shifted;
+
+                (prev_acc_bits, self.register_a)
+            }
+        };
+
+        self.status_register
+            .set(StatusRegister::CARRY, previous.nth_bit(0));
+        self.status_register
+            .set(StatusRegister::NEGATIVE, input_carry);
+        self.status_register.set(StatusRegister::ZERO, shifted == 0);
     }
 
     fn lda(&mut self, mode: AddressingMode) -> Result<()> {

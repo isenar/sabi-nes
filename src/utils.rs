@@ -3,6 +3,7 @@ pub trait NthBit {
 }
 
 impl NthBit for u8 {
+    #[inline]
     fn nth_bit(&self, bit_n: u8) -> bool {
         self >> bit_n & 1 == 1
     }
