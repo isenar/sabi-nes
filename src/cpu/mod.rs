@@ -780,6 +780,34 @@ mod tests {
                 StatusRegister::OVERFLOW | StatusRegister::NEGATIVE
             );
         }
+
+        #[test]
+        fn eor_absolute() {
+            // 1. Store 0b1010_0000 in address 0xbeef
+            // 2. Load 0b1101_0110 to accumulator
+            // 3. perform bitwise XOR on the accumulator with value under address 0xbeef
+            let data = [0xa9, 0b1101_0110, 0x4d, 0xef, 0xbe, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xbeef, 0b1010_0000)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0b0111_0110);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn ora_zero_page() {
+            // 1. Store 0b1101_0110 in address 0xcc
+            // 2. Load 0b1101_0110 to accumulator
+            // 3. perform bitwise OR on the accumulator with value under address 0xcc
+            let data = [0xa9, 0b1101_0110, 0x05, 0xcc, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xcc, 0b0011_1011)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0b1111_1111);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
     }
 
     mod shifts {
