@@ -21,25 +21,24 @@ const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
 #[derive(Debug)]
 pub struct Cpu {
-    pub register_a: Register,
-    pub register_x: Register,
-    pub register_y: Register,
-    pub status_register: StatusRegister,
-    pub program_counter: ProgramCounter,
-    pub stack_pointer: StackPointer,
-
+    accumulator: Register,
+    register_x: Register,
+    register_y: Register,
+    status_register: StatusRegister,
+    program_counter: ProgramCounter,
+    stack_pointer: StackPointer,
     memory: [Value; PROGRAM_ROM_END_ADDR as usize],
 }
 
 impl Default for Cpu {
     fn default() -> Self {
         Self {
-            register_a: 0,
+            accumulator: 0,
             register_x: 0,
             register_y: 0,
             status_register: StatusRegister::empty(),
             program_counter: 0,
-            stack_pointer: StackPointer::default(),
+            stack_pointer: StackPointer::new(),
             memory: [0; 0xffff],
         }
     }
@@ -96,7 +95,7 @@ impl Cpu {
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
                 "LSR" => self.lsr(opcode.mode)?,
-                "PHA" => self.stack_push(self.register_a),
+                "PHA" => self.stack_push(self.accumulator),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
@@ -122,7 +121,7 @@ impl Cpu {
     }
 
     pub fn reset(&mut self) {
-        self.register_a = 0;
+        self.accumulator = 0;
         self.register_x = 0;
         self.register_y = 0;
         self.status_register = StatusRegister::empty();
@@ -136,7 +135,7 @@ impl Cpu {
             .ok_or_else(|| anyhow!("Could not fetch address for {} in AND instruction"))?;
         let value = self.mem_read(addr);
 
-        self.register_a &= value;
+        self.accumulator &= value;
 
         Ok(())
     }
@@ -155,12 +154,12 @@ impl Cpu {
                 shifted_left
             }
             None => {
-                let old_reg_a = self.register_a;
-                self.register_a <<= 1;
+                let old_reg_a = self.accumulator;
+                self.accumulator <<= 1;
                 self.status_register
                     .set(StatusRegister::CARRY, old_reg_a.nth_bit(7));
 
-                self.register_a
+                self.accumulator
             }
         };
 
@@ -183,11 +182,11 @@ impl Cpu {
                 shifted
             }
             None => {
-                let old_reg_a = self.register_a;
-                self.register_a >>= 1;
+                let old_reg_a = self.accumulator;
+                self.accumulator >>= 1;
                 self.status_register
                     .set(StatusRegister::CARRY, old_reg_a.nth_bit(0));
-                self.register_a
+                self.accumulator
             }
         };
 
@@ -210,10 +209,10 @@ impl Cpu {
                 (value, shifted)
             }
             None => {
-                let current_acc = self.register_a;
-                self.register_a = (self.register_a << 1) | carry;
+                let current_acc = self.accumulator;
+                self.accumulator = (self.accumulator << 1) | carry;
 
-                (current_acc, self.register_a)
+                (current_acc, self.accumulator)
             }
         };
 
@@ -243,15 +242,15 @@ impl Cpu {
                 (value, shifted)
             }
             None => {
-                let prev_acc_bits = self.register_a;
-                let mut shifted = self.register_a >> 1;
+                let prev_acc_bits = self.accumulator;
+                let mut shifted = self.accumulator >> 1;
                 if input_carry {
                     shifted |= 0b1000_0000;
                 }
 
-                self.register_a = shifted;
+                self.accumulator = shifted;
 
-                (prev_acc_bits, self.register_a)
+                (prev_acc_bits, self.accumulator)
             }
         };
 
@@ -263,7 +262,7 @@ impl Cpu {
     }
 
     fn lda(&mut self, mode: AddressingMode) -> Result<()> {
-        self.register_a = self.load_value(mode)?;
+        self.accumulator = self.load_value(mode)?;
 
         Ok(())
     }
@@ -281,13 +280,13 @@ impl Cpu {
     }
 
     fn tax(&mut self) {
-        self.register_x = self.register_a;
+        self.register_x = self.accumulator;
         self.status_register
             .update_zero_and_negative_flags(self.register_x);
     }
 
     fn tay(&mut self) {
-        self.register_y = self.register_a;
+        self.register_y = self.accumulator;
         self.status_register
             .update_zero_and_negative_flags(self.register_y);
     }
@@ -299,15 +298,15 @@ impl Cpu {
     }
 
     fn txa(&mut self) {
-        self.register_a = self.register_x;
+        self.accumulator = self.register_x;
         self.status_register
-            .update_zero_and_negative_flags(self.register_a);
+            .update_zero_and_negative_flags(self.accumulator);
     }
 
     fn tya(&mut self) {
-        self.register_a = self.register_y;
+        self.accumulator = self.register_y;
         self.status_register
-            .update_zero_and_negative_flags(self.register_a);
+            .update_zero_and_negative_flags(self.accumulator);
     }
 
     fn dec(&mut self, mode: AddressingMode) -> Result<()> {
@@ -361,9 +360,9 @@ impl Cpu {
     fn pla(&mut self) {
         let value = self.pop_stack();
 
-        self.register_a = value;
+        self.accumulator = value;
         self.status_register
-            .update_zero_and_negative_flags(self.register_a);
+            .update_zero_and_negative_flags(self.accumulator);
     }
 
     fn plp(&mut self) {
@@ -380,7 +379,7 @@ impl Cpu {
     }
 
     fn sta(&mut self, mode: AddressingMode) -> Result<()> {
-        self.store_value(self.register_a, mode)
+        self.store_value(self.accumulator, mode)
     }
 
     fn stx(&mut self, mode: AddressingMode) -> Result<()> {
@@ -445,7 +444,7 @@ impl Cpu {
                 let hi = self.mem_read(base.wrapping_add(1).into());
                 let deref_base = u16::from_le_bytes([lo, hi]);
 
-                deref_base.wrapping_add(self.register_y as u16)
+                deref_base.wrapping_add(self.register_y.into())
             }
             AddressingMode::Accumulator | AddressingMode::Implied => return None,
         })
@@ -543,7 +542,7 @@ mod tests {
             let data = [0xa9, 0x05, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 0x05);
+            assert_eq!(cpu.accumulator, 0x05);
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
             assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
         }
@@ -563,7 +562,7 @@ mod tests {
             let data = [0xa5, 0x10, 0x00];
             let cpu = CpuBuilder::new().write(0x10, 0x55).build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 0x55);
+            assert_eq!(cpu.accumulator, 0x55);
         }
 
         #[test]
@@ -646,7 +645,7 @@ mod tests {
             let data = [0xa9, 0x0a, 0xaa, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 10);
+            assert_eq!(cpu.accumulator, 10);
             assert_eq!(cpu.register_x, 10);
         }
     }
@@ -681,7 +680,7 @@ mod tests {
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
             // negative flag is set, due to bit 7 in result being 1
             assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
-            assert_eq!(cpu.register_a, 0b1010_1110);
+            assert_eq!(cpu.accumulator, 0b1010_1110);
         }
 
         #[test]
@@ -691,7 +690,7 @@ mod tests {
             let data = [0xa9, 0b1101_0111, 0x4a, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 0b0110_1011);
+            assert_eq!(cpu.accumulator, 0b0110_1011);
             // store bit0 == 1 of original acc value in carry flag
             assert!(cpu.status_register.contains(StatusRegister::CARRY));
             // result was not a zero value, zero flag is reset
@@ -708,7 +707,7 @@ mod tests {
             let data = [0xa9, 0b0101_0010, 0x38, 0x2a, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 0b1010_0101);
+            assert_eq!(cpu.accumulator, 0b1010_0101);
             // store bit7 == 0 of original acc value in carry flag
             assert!(!cpu.status_register.contains(StatusRegister::CARRY));
             // result was not a zero value, zero flag is reset
@@ -725,7 +724,7 @@ mod tests {
             let data = [0xa9, 0b0101_0010, 0x38, 0x6a, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 0b1010_1001);
+            assert_eq!(cpu.accumulator, 0b1010_1001);
             // store bit0 == 0 of original acc value in carry flag
             assert!(!cpu.status_register.contains(StatusRegister::CARRY));
             // result was not a zero value, zero flag is reset
@@ -746,7 +745,7 @@ mod tests {
             let data = [0xa9, 0xc0, 0xaa, 0xe8, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.register_a, 0xc0);
+            assert_eq!(cpu.accumulator, 0xc0);
             assert_eq!(cpu.register_x, 0xc1);
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
