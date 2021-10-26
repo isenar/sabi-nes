@@ -191,7 +191,6 @@ impl Cpu {
             }
         };
 
-        // "The N flag is always reset"
         self.status_register.clear_negative_flag();
         self.status_register.update_zero_and_negative_flags(shifted);
 
@@ -224,20 +223,14 @@ impl Cpu {
     }
 
     fn ror(&mut self, mode: AddressingMode) {
-        // shift right, with bit 0 in carry, store carry bit in bit 7
-        // set C to input bit 0
-        // set N to input C
-        // set Z if result == 0
-
         let address = self.get_operand_address(mode);
         let input_carry = self.status_register.contains(StatusRegister::CARRY);
 
         let (previous, shifted) = match address {
             Some(addr) => {
                 let value = self.mem_read(addr);
-                // shift right
                 let mut shifted = value >> 1;
-                // set bit 7 with input carry
+
                 if input_carry {
                     shifted |= 0b1000_0000;
                 }
@@ -253,7 +246,7 @@ impl Cpu {
                 let prev_acc_bits = self.register_a;
                 let mut shifted = self.register_a >> 1;
                 if input_carry {
-                    shifted |= 0b1000_000;
+                    shifted |= 0b1000_0000;
                 }
 
                 self.register_a = shifted;
@@ -561,6 +554,88 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_x, 1);
+        }
+    }
+
+    mod shifts {
+        use super::*;
+
+        #[test]
+        fn asl_accumulator() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. call ASL - shifts accumulator left
+            let data = [0xa9, 0b1101_0111, 0x0a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            // store bit0 == 1 to original acc value in carry flag
+            assert!(cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag is set, due to bit 7 in result being 1
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
+            assert_eq!(cpu.register_a, 0b1010_1110);
+        }
+
+        #[test]
+        fn lsr_accumulator() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. call LSR - shifts accumulator right
+            let data = [0xa9, 0b1101_0111, 0x4a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_a, 0b0110_1011);
+            // store bit0 == 1 of original acc value in carry flag
+            assert!(cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag should always be cleared on LSR calls
+            assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn rol_accumulator_with_carry() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. set carry flag
+            // 3. call ROL
+            let data = [0xa9, 0b0101_0010, 0x38, 0x2a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_a, 0b1010_0101);
+            // store bit7 == 0 of original acc value in carry flag
+            assert!(!cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag is set, due to bit7 == 1 in rotated value
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn ror_accumulator_with_carry() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. set carry flag
+            // 3. call ROR
+            let data = [0xa9, 0b0101_0010, 0x38, 0x6a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_a, 0b1010_1001);
+            // store bit0 == 0 of original acc value in carry flag
+            assert!(!cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag is set, due to bit7 == 1 in rotated value
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
         }
     }
 
