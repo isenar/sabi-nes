@@ -496,14 +496,13 @@ mod tests {
         U16(Address, u16),
     }
 
-    #[derive(Default)]
     struct CpuBuilder {
         writes: Vec<Write>,
     }
 
     impl CpuBuilder {
         fn new() -> Self {
-            Self::default()
+            Self { writes: vec![] }
         }
 
         fn write(mut self, address: Address, value: Value) -> Self {
@@ -637,11 +636,11 @@ mod tests {
         }
     }
 
-    mod tax {
+    mod transfer {
         use super::*;
 
         #[test]
-        fn moves_reg_a_value_to_reg_x() {
+        fn tax() {
             let data = [0xa9, 0x0a, 0xaa, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
@@ -650,17 +649,60 @@ mod tests {
         }
     }
 
-    mod inx {
+    mod increment_decrement {
         use super::*;
 
         #[test]
-        fn inx_overflow() {
-            let mut cpu = Cpu::default();
-            let data = [0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00];
+        fn dec_zero_page() {
+            let data = [0xc6, 0x11, 0x00];
+            let cpu = CpuBuilder::new().write(0x11, 0xf1).build_and_run(&data);
 
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            assert_eq!(cpu.mem_read(0x11), 0xf0);
+        }
+
+        #[test]
+        fn dex_underflow() {
+            let data = [0xca, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.register_x, 0xff);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn dey_underflow() {
+            let data = [0x88, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.register_y, 0xff);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn inc_absolute_two_times() {
+            // increment value under address 0x1234 two times (0 -> 2)
+            let data = [0xee, 0x34, 0x12, 0xee, 0x34, 0x12, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.mem_read(0x1234), 2);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn inx_overflow() {
+            let data = [0xa9, 0xff, 0xaa, 0xe8, 0xe8, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.register_x, 1);
+        }
+
+        #[test]
+        fn iny_three_times() {
+            let data = [0xc8, 0xc8, 0xc8, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.register_y, 3);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
         }
     }
 
@@ -738,7 +780,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn simple_5_ops_working_together() {
+        fn load_to_acc_and_move_to_x() {
             // 1. load 0xc0 to accumulator
             // 2. move acc value to register X
             // 3. increment register X
