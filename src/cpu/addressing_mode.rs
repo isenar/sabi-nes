@@ -11,4 +11,5 @@ pub enum AddressingMode {
     IndirectY,
     Implied,
     Accumulator,
+    Relative,
 }
