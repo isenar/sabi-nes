@@ -491,7 +491,7 @@ impl Cpu {
 mod tests {
     use super::*;
 
-    mod lda {
+    mod load {
         use super::*;
 
         #[test]
@@ -525,6 +525,50 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_a, 0x55);
+        }
+
+        #[test]
+        fn ldx_absolute() {
+            let mut cpu = Cpu::default();
+            let data = [0xae, 0x34, 0x12, 0x00];
+
+            cpu.mem_write_u16(0x1234, 0xff);
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_x, 0xff);
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn ldy_zero_page() {
+            let mut cpu = Cpu::default();
+            let data = [0xa4, 0xaa, 0x00];
+
+            cpu.mem_write(0xaa, 0x66);
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_y, 0x66);
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+    }
+
+    mod store {
+        use super::*;
+
+        #[test]
+        fn sta_absolute() {
+            let mut cpu = Cpu::default();
+
+            // 1. store 0x75 in accumulator
+            // 2. store accumulator value under address 0x1234
+            let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.mem_read_u16(0x1234), 0x75);
+            assert!(cpu.status_register.is_empty());
         }
     }
 
