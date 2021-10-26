@@ -56,6 +56,24 @@ const OPCODES: &[Opcode] = &[
     // BIT
     Opcode::new(0x2c, "BIT", 3, 4, AddressingMode::Absolute),
     Opcode::new(0x24, "BIT", 2, 3, AddressingMode::ZeroPage),
+    // EOR
+    Opcode::new(0x49, "EOR", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0x45, "EOR", 2, 3, AddressingMode::ZeroPage),
+    Opcode::new(0x55, "EOR", 2, 4, AddressingMode::ZeroPageX),
+    Opcode::new(0x4d, "EOR", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0x5d, "EOR", 3, 4, AddressingMode::AbsoluteX), // +1 cycle if page boundary crossed
+    Opcode::new(0x59, "EOR", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
+    Opcode::new(0x41, "EOR", 2, 6, AddressingMode::IndirectX),
+    Opcode::new(0x51, "EOR", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
+    // ORA
+    Opcode::new(0x09, "ORA", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0x05, "ORA", 2, 3, AddressingMode::ZeroPage),
+    Opcode::new(0x15, "ORA", 2, 4, AddressingMode::ZeroPageX),
+    Opcode::new(0x0d, "ORA", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0x1d, "ORA", 3, 4, AddressingMode::AbsoluteX), // +1 cycle if page boundary crossed
+    Opcode::new(0x19, "ORA", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
+    Opcode::new(0x01, "ORA", 2, 6, AddressingMode::IndirectX),
+    Opcode::new(0x11, "ORA", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
     // -- load/store instructions --
     // LDA
     Opcode::new(0xa9, "LDA", 2, 2, AddressingMode::Immediate),

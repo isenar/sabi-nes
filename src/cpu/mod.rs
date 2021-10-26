@@ -89,6 +89,7 @@ impl Cpu {
                 "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
+                "EOR" => self.eor(opcode.mode)?,
                 "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
@@ -96,6 +97,7 @@ impl Cpu {
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
                 "LSR" => self.lsr(opcode.mode)?,
+                "ORA" => self.ora(opcode.mode)?,
                 "PHA" => self.stack_push(self.accumulator),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
@@ -131,13 +133,36 @@ impl Cpu {
     }
 
     fn and(&mut self, mode: AddressingMode) -> Result<()> {
+        let and = |acc, value| acc & value;
+        self.logical_op_with_acc(mode, and).with_context(|| "AND")?;
+
+        Ok(())
+    }
+
+    fn eor(&mut self, mode: AddressingMode) -> Result<()> {
+        let xor = |acc, value| acc ^ value;
+        self.logical_op_with_acc(mode, xor).with_context(|| "EOR")?;
+
+        Ok(())
+    }
+    fn ora(&mut self, mode: AddressingMode) -> Result<()> {
+        let or = |acc, value| acc | value;
+        self.logical_op_with_acc(mode, or).with_context(|| "ORA")?;
+
+        Ok(())
+    }
+
+    fn logical_op_with_acc(
+        &mut self,
+        mode: AddressingMode,
+        logical_op: fn(Value, Value) -> Value,
+    ) -> Result<()> {
         let addr = self
             .get_operand_address(mode)
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in AND instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
         let value = self.mem_read(addr);
 
-        self.accumulator &= value;
-
+        self.accumulator = logical_op(self.accumulator, value);
         self.status_register
             .update_zero_and_negative_flags(self.accumulator);
 
