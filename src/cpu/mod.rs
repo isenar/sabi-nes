@@ -7,7 +7,8 @@ use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::OPCODES_MAPPING;
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
-use anyhow::{anyhow, bail, Result};
+use crate::utils::NthBit;
+use anyhow::{anyhow, bail, Context, Result};
 
 type Register = u8;
 type Address = u16;
@@ -78,41 +79,41 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
-                "AND" => {
-                    self.and(opcode.mode);
-                    self.program_counter += opcode.len();
-                }
+                "AND" => self.and(opcode.mode)?,
+                "ASL" => self.asl(opcode.mode)?,
                 "BRK" => return Ok(()),
                 "CLC" => self.status_register.clear_carry_flag(),
                 "CLD" => self.status_register.clear_decimal_flag(),
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
-                "DEC" => self.dec(opcode.mode),
+                "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
-                "INC" => self.inc(opcode.mode),
+                "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
-                "LDA" => self.lda(opcode.mode),
-                "LDX" => self.ldx(opcode.mode),
-                "LDY" => self.ldy(opcode.mode),
+                "LDA" => self.lda(opcode.mode)?,
+                "LDX" => self.ldx(opcode.mode)?,
+                "LDY" => self.ldy(opcode.mode)?,
+                "LSR" => self.lsr(opcode.mode)?,
                 "PHA" => self.stack_push(self.register_a),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
+                "ROL" => self.rol(opcode.mode),
+                "ROR" => self.ror(opcode.mode),
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
-                "STA" => self.sta(opcode.mode),
-                "STX" => self.stx(opcode.mode),
-                "STY" => self.sty(opcode.mode),
+                "STA" => self.sta(opcode.mode)?,
+                "STX" => self.stx(opcode.mode)?,
+                "STY" => self.sty(opcode.mode)?,
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
                 "TXA" => self.txa(),
                 "TXS" => self.stack_pointer.set(self.register_x),
                 "TYA" => self.tya(),
-
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -129,23 +130,154 @@ impl Cpu {
         self.stack_pointer.reset();
     }
 
-    fn and(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn and(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in AND instruction"))?;
         let value = self.mem_read(addr);
 
         self.register_a &= value;
+
+        Ok(())
     }
 
-    fn lda(&mut self, mode: AddressingMode) {
-        self.register_a = self.load_value(mode);
+    fn asl(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self.get_operand_address(mode);
+        let shifted = match addr {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                let shifted_left = value << 1;
+
+                self.mem_write(addr, shifted_left);
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(7));
+
+                shifted_left
+            }
+            None => {
+                let old_reg_a = self.register_a;
+                self.register_a <<= 1;
+                self.status_register
+                    .set(StatusRegister::CARRY, old_reg_a.nth_bit(7));
+
+                self.register_a
+            }
+        };
+
+        self.status_register.update_zero_and_negative_flags(shifted);
+
+        Ok(())
     }
 
-    fn ldx(&mut self, mode: AddressingMode) {
-        self.register_x = self.load_value(mode);
+    fn lsr(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self.get_operand_address(mode);
+        let shifted = match addr {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                let shifted = value >> 1;
+
+                self.mem_write(addr, shifted);
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(0));
+
+                shifted
+            }
+            None => {
+                let old_reg_a = self.register_a;
+                self.register_a >>= 1;
+                self.status_register
+                    .set(StatusRegister::CARRY, old_reg_a.nth_bit(0));
+                self.register_a
+            }
+        };
+
+        self.status_register.clear_negative_flag();
+        self.status_register.update_zero_and_negative_flags(shifted);
+
+        Ok(())
     }
 
-    fn ldy(&mut self, mode: AddressingMode) {
-        self.register_y = self.load_value(mode);
+    fn rol(&mut self, mode: AddressingMode) {
+        let address = self.get_operand_address(mode);
+        let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
+
+        let (previous, shifted) = match address {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                let shifted = (value << 1) | carry;
+                self.mem_write(addr, shifted);
+
+                (value, shifted)
+            }
+            None => {
+                let current_acc = self.register_a;
+                self.register_a = (self.register_a << 1) | carry;
+
+                (current_acc, self.register_a)
+            }
+        };
+
+        self.status_register
+            .set(StatusRegister::CARRY, previous.nth_bit(7));
+        self.status_register.update_zero_and_negative_flags(shifted);
+    }
+
+    fn ror(&mut self, mode: AddressingMode) {
+        let address = self.get_operand_address(mode);
+        let input_carry = self.status_register.contains(StatusRegister::CARRY);
+
+        let (previous, shifted) = match address {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                let mut shifted = value >> 1;
+
+                if input_carry {
+                    shifted |= 0b1000_0000;
+                }
+
+                self.mem_write(addr, shifted);
+
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(0));
+
+                (value, shifted)
+            }
+            None => {
+                let prev_acc_bits = self.register_a;
+                let mut shifted = self.register_a >> 1;
+                if input_carry {
+                    shifted |= 0b1000_0000;
+                }
+
+                self.register_a = shifted;
+
+                (prev_acc_bits, self.register_a)
+            }
+        };
+
+        self.status_register
+            .set(StatusRegister::CARRY, previous.nth_bit(0));
+        self.status_register
+            .set(StatusRegister::NEGATIVE, input_carry);
+        self.status_register.set(StatusRegister::ZERO, shifted == 0);
+    }
+
+    fn lda(&mut self, mode: AddressingMode) -> Result<()> {
+        self.register_a = self.load_value(mode)?;
+
+        Ok(())
+    }
+
+    fn ldx(&mut self, mode: AddressingMode) -> Result<()> {
+        self.register_x = self.load_value(mode)?;
+
+        Ok(())
+    }
+
+    fn ldy(&mut self, mode: AddressingMode) -> Result<()> {
+        self.register_y = self.load_value(mode).with_context(|| "In LDY")?;
+
+        Ok(())
     }
 
     fn tax(&mut self) {
@@ -178,13 +310,18 @@ impl Cpu {
             .update_zero_and_negative_flags(self.register_a);
     }
 
-    fn dec(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn dec(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in DEC instruction"))?;
+
         let dec_value = self.mem_read(addr).wrapping_sub(1);
 
         self.mem_write(addr, dec_value);
         self.status_register
             .update_zero_and_negative_flags(dec_value);
+
+        Ok(())
     }
 
     fn dex(&mut self) {
@@ -199,13 +336,18 @@ impl Cpu {
             .update_zero_and_negative_flags(self.register_y);
     }
 
-    fn inc(&mut self, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn inc(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in INC instruction"))?;
+
         let inc_value = self.mem_read(addr).wrapping_add(1);
 
         self.mem_write(addr, inc_value);
         self.status_register
             .update_zero_and_negative_flags(inc_value);
+
+        Ok(())
     }
 
     fn inx(&mut self) {
@@ -237,16 +379,16 @@ impl Cpu {
         self.stack_push(status_register_with_b_flags.bits());
     }
 
-    fn sta(&mut self, mode: AddressingMode) {
-        self.store_value(self.register_a, mode);
+    fn sta(&mut self, mode: AddressingMode) -> Result<()> {
+        self.store_value(self.register_a, mode)
     }
 
-    fn stx(&mut self, mode: AddressingMode) {
-        self.store_value(self.register_x, mode);
+    fn stx(&mut self, mode: AddressingMode) -> Result<()> {
+        self.store_value(self.register_x, mode)
     }
 
-    fn sty(&mut self, mode: AddressingMode) {
-        self.store_value(self.register_y, mode);
+    fn sty(&mut self, mode: AddressingMode) -> Result<()> {
+        self.store_value(self.register_y, mode)
     }
 
     fn mem_read_u16(&self, addr: Address) -> u16 {
@@ -263,8 +405,8 @@ impl Cpu {
         self.mem_write(addr + 1, hi);
     }
 
-    fn get_operand_address(&self, mode: AddressingMode) -> Address {
-        match mode {
+    fn get_operand_address(&self, mode: AddressingMode) -> Option<Address> {
+        Some(match mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.mem_read(self.program_counter).into(),
             AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
@@ -305,24 +447,32 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
-            AddressingMode::Implied => {
-                unreachable!("Implied mode is never passed to get operand address")
-            }
-        }
+            AddressingMode::Accumulator | AddressingMode::Implied => return None,
+        })
     }
 
-    fn load_value(&mut self, mode: AddressingMode) -> Value {
-        let addr = self.get_operand_address(mode);
+    fn load_value(&mut self, mode: AddressingMode) -> Result<Value> {
+        let addr = self.get_operand_address(mode).ok_or_else(|| {
+            anyhow!(
+                "Could not get operand address when loading value ({:?})",
+                mode
+            )
+        })?;
         let value = self.mem_read(addr);
 
         self.status_register.update_zero_and_negative_flags(value);
 
-        value
+        Ok(value)
     }
 
-    fn store_value(&mut self, value: Value, mode: AddressingMode) {
-        let addr = self.get_operand_address(mode);
+    fn store_value(&mut self, value: Value, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address when storing value ({:?}", mode))?;
+
         self.mem_write(addr, value);
+
+        Ok(())
     }
 
     fn stack_push(&mut self, value: Value) {
@@ -404,6 +554,88 @@ mod tests {
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_x, 1);
+        }
+    }
+
+    mod shifts {
+        use super::*;
+
+        #[test]
+        fn asl_accumulator() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. call ASL - shifts accumulator left
+            let data = [0xa9, 0b1101_0111, 0x0a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            // store bit0 == 1 to original acc value in carry flag
+            assert!(cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag is set, due to bit 7 in result being 1
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
+            assert_eq!(cpu.register_a, 0b1010_1110);
+        }
+
+        #[test]
+        fn lsr_accumulator() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. call LSR - shifts accumulator right
+            let data = [0xa9, 0b1101_0111, 0x4a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_a, 0b0110_1011);
+            // store bit0 == 1 of original acc value in carry flag
+            assert!(cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag should always be cleared on LSR calls
+            assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn rol_accumulator_with_carry() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. set carry flag
+            // 3. call ROL
+            let data = [0xa9, 0b0101_0010, 0x38, 0x2a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_a, 0b1010_0101);
+            // store bit7 == 0 of original acc value in carry flag
+            assert!(!cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag is set, due to bit7 == 1 in rotated value
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn ror_accumulator_with_carry() {
+            let mut cpu = Cpu::default();
+
+            // 1. load 0b01010111 to accumulator
+            // 2. set carry flag
+            // 3. call ROR
+            let data = [0xa9, 0b0101_0010, 0x38, 0x6a, 0x00];
+
+            cpu.load_and_run(&data).expect("Failed to load and run");
+
+            assert_eq!(cpu.register_a, 0b1010_1001);
+            // store bit0 == 0 of original acc value in carry flag
+            assert!(!cpu.status_register.contains(StatusRegister::CARRY));
+            // result was not a zero value, zero flag is reset
+            assert!(!cpu.status_register.contains(StatusRegister::ZERO));
+            // negative flag is set, due to bit7 == 1 in rotated value
+            assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
         }
     }
 
