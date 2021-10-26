@@ -126,6 +126,11 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x5e, "LSR", 3, 7, AddressingMode::AbsoluteX),
     Opcode::new(0x46, "LSR", 2, 5, AddressingMode::ZeroPage),
     Opcode::new(0x56, "LSR", 2, 6, AddressingMode::ZeroPageX),
+    Opcode::new(0x2a, "ROL", 1, 2, AddressingMode::Accumulator),
+    Opcode::new(0x2e, "ROL", 3, 6, AddressingMode::Absolute),
+    Opcode::new(0x3e, "ROL", 3, 7, AddressingMode::AbsoluteX),
+    Opcode::new(0x26, "ROL", 2, 5, AddressingMode::ZeroPage),
+    Opcode::new(0x36, "ROL", 2, 6, AddressingMode::ZeroPageX),
 ];
 
 lazy_static! {

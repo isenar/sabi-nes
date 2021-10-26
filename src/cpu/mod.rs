@@ -100,6 +100,7 @@ impl Cpu {
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
+                "ROL" => self.rol(opcode.mode)?,
                 "SEC" => self.status_register.set_carry_flag(),
                 "SED" => self.status_register.set_decimal_flag(),
                 "SEI" => self.status_register.set_interrupt_flag(),
@@ -185,6 +186,41 @@ impl Cpu {
                 self.register_a >>= 1;
                 self.status_register
                     .set(StatusRegister::CARRY, old_reg_a.nth_bit(0));
+                self.register_a
+            }
+        };
+
+        // "The N flag is always reset"
+        self.status_register.clear_negative_flag();
+
+        self.status_register.update_zero_and_negative_flags(shifted);
+
+        Ok(())
+    }
+
+    fn rol(&mut self, mode: AddressingMode) -> Result<()> {
+        // rotate 1 bit left with input carry being stored at bit 0
+        // and
+
+        let address = self.get_operand_address(mode);
+        let shifted = match address {
+            Some(addr) => {
+                let value = self.mem_read(addr);
+                let shifted = (value << 1) | value.nth_bit(7) as u8;
+                self.mem_write(addr, shifted);
+
+                self.status_register
+                    .set(StatusRegister::CARRY, value.nth_bit(7));
+
+                shifted
+            }
+            None => {
+                let prev_acc_bits = self.register_a;
+                self.register_a = (self.register_a << 1) | prev_acc_bits.nth_bit(7) as u8;
+
+                self.status_register
+                    .set(StatusRegister::CARRY, prev_acc_bits.nth_bit(7));
+
                 self.register_a
             }
         };
@@ -379,10 +415,7 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y as u16)
             }
-            AddressingMode::Accumulator => return None,
-            AddressingMode::Implied => {
-                unreachable!("Implied mode is never passed to get operand address")
-            }
+            AddressingMode::Accumulator | AddressingMode::Implied => return None,
         })
     }
 
