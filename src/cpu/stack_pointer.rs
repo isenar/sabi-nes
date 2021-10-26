@@ -3,12 +3,14 @@ use crate::cpu::{Address, Value};
 const STACK_BEGIN_ADDR: Address = 0x0100; // stack is located at page $01 (0x100 - 0x01ff)
 const STACK_RESET: u8 = 0xfd;
 
-#[derive(Default, Debug)]
+/// Stack Pointer (or S register) is a byte-wide pointer which stores the stack
+/// index into which the next stack element will be inserted
+#[derive(Debug)]
 pub struct StackPointer(Value);
 
 impl StackPointer {
-    pub fn new(value: Value) -> Self {
-        Self(value)
+    pub fn new() -> Self {
+        Self(STACK_RESET)
     }
 
     pub fn value(&self) -> Value {
