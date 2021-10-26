@@ -80,6 +80,7 @@ impl Cpu {
             match opcode.name {
                 "AND" => self.and(opcode.mode)?,
                 "ASL" => self.asl(opcode.mode)?,
+                "BIT" => self.bit(opcode.mode)?,
                 "BRK" => return Ok(()),
                 "CLC" => self.status_register.clear_carry_flag(),
                 "CLD" => self.status_register.clear_decimal_flag(),
@@ -136,6 +137,26 @@ impl Cpu {
         let value = self.mem_read(addr);
 
         self.accumulator &= value;
+
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+
+        Ok(())
+    }
+
+    fn bit(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in BIT instruction"))?;
+
+        let value = self.mem_read(addr);
+
+        self.status_register
+            .set(StatusRegister::OVERFLOW, value.nth_bit(6));
+        self.status_register
+            .set(StatusRegister::NEGATIVE, value.nth_bit(7));
+        self.status_register
+            .set(StatusRegister::ZERO, value & self.accumulator == 0);
 
         Ok(())
     }
@@ -703,6 +724,36 @@ mod tests {
 
             assert_eq!(cpu.register_y, 3);
             assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+    }
+
+    mod logical {
+        use super::*;
+
+        #[test]
+        fn and_immediate() {
+            // 1. Load 0b1101_1010 to accumulator
+            // 2. perform bitwise AND on the accumulator with 0b1100_0110
+            let data = [0xa9, 0b1101_1010, 0x29, 0b1100_0110, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0b1100_0010);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn bit_zero_page() {
+            let data = [0xa9, 0b1101_1010, 0x24, 0xdd, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xdd, 0b1110_1010)
+                .build_and_run(&data);
+
+            // accumulator value should not change
+            assert_eq!(cpu.accumulator, 0b1101_1010);
+            assert_eq!(
+                cpu.status_register,
+                StatusRegister::OVERFLOW | StatusRegister::NEGATIVE
+            );
         }
     }
 

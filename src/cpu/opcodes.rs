@@ -43,6 +43,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x38, "SEC", 1, 2, AddressingMode::Implied),
     Opcode::new(0xf8, "SED", 1, 2, AddressingMode::Implied),
     Opcode::new(0x78, "SEI", 1, 2, AddressingMode::Implied),
+    // -- logical instructions --
     // AND
     Opcode::new(0x29, "AND", 2, 2, AddressingMode::Immediate),
     Opcode::new(0x25, "AND", 2, 3, AddressingMode::ZeroPage),
@@ -52,7 +53,10 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x39, "AND", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page boundary crossed
     Opcode::new(0x21, "AND", 2, 6, AddressingMode::IndirectX),
     Opcode::new(0x31, "AND", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
-    // -- load/set instructions --
+    // BIT
+    Opcode::new(0x2c, "BIT", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0x24, "BIT", 2, 3, AddressingMode::ZeroPage),
+    // -- load/store instructions --
     // LDA
     Opcode::new(0xa9, "LDA", 2, 2, AddressingMode::Immediate),
     Opcode::new(0xa5, "LDA", 2, 3, AddressingMode::ZeroPage),
