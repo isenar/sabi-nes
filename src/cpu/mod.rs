@@ -80,6 +80,7 @@ impl Cpu {
             match opcode.name {
                 "AND" => self.and(opcode.mode)?,
                 "ASL" => self.asl(opcode.mode)?,
+                "BIT" => self.bit(opcode.mode)?,
                 "BRK" => return Ok(()),
                 "CLC" => self.status_register.clear_carry_flag(),
                 "CLD" => self.status_register.clear_decimal_flag(),
@@ -88,6 +89,7 @@ impl Cpu {
                 "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
+                "EOR" => self.eor(opcode.mode)?,
                 "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
@@ -95,6 +97,7 @@ impl Cpu {
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
                 "LSR" => self.lsr(opcode.mode)?,
+                "ORA" => self.ora(opcode.mode)?,
                 "PHA" => self.stack_push(self.accumulator),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
@@ -130,12 +133,55 @@ impl Cpu {
     }
 
     fn and(&mut self, mode: AddressingMode) -> Result<()> {
+        let and = |acc, value| acc & value;
+        self.logical_op_with_acc(mode, and).with_context(|| "AND")?;
+
+        Ok(())
+    }
+
+    fn eor(&mut self, mode: AddressingMode) -> Result<()> {
+        let xor = |acc, value| acc ^ value;
+        self.logical_op_with_acc(mode, xor).with_context(|| "EOR")?;
+
+        Ok(())
+    }
+    fn ora(&mut self, mode: AddressingMode) -> Result<()> {
+        let or = |acc, value| acc | value;
+        self.logical_op_with_acc(mode, or).with_context(|| "ORA")?;
+
+        Ok(())
+    }
+
+    fn logical_op_with_acc(
+        &mut self,
+        mode: AddressingMode,
+        logical_op: fn(Value, Value) -> Value,
+    ) -> Result<()> {
         let addr = self
             .get_operand_address(mode)
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in AND instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
         let value = self.mem_read(addr);
 
-        self.accumulator &= value;
+        self.accumulator = logical_op(self.accumulator, value);
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+
+        Ok(())
+    }
+
+    fn bit(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for {} in BIT instruction"))?;
+
+        let value = self.mem_read(addr);
+
+        self.status_register
+            .set(StatusRegister::OVERFLOW, value.nth_bit(6));
+        self.status_register
+            .set(StatusRegister::NEGATIVE, value.nth_bit(7));
+        self.status_register
+            .set(StatusRegister::ZERO, value & self.accumulator == 0);
 
         Ok(())
     }
@@ -703,6 +749,64 @@ mod tests {
 
             assert_eq!(cpu.register_y, 3);
             assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+    }
+
+    mod logical {
+        use super::*;
+
+        #[test]
+        fn and_immediate() {
+            // 1. Load 0b1101_1010 to accumulator
+            // 2. perform bitwise AND on the accumulator with 0b1100_0110
+            let data = [0xa9, 0b1101_1010, 0x29, 0b1100_0110, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0b1100_0010);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn bit_zero_page() {
+            let data = [0xa9, 0b1101_1010, 0x24, 0xdd, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xdd, 0b1110_1010)
+                .build_and_run(&data);
+
+            // accumulator value should not change
+            assert_eq!(cpu.accumulator, 0b1101_1010);
+            assert_eq!(
+                cpu.status_register,
+                StatusRegister::OVERFLOW | StatusRegister::NEGATIVE
+            );
+        }
+
+        #[test]
+        fn eor_absolute() {
+            // 1. Store 0b1010_0000 in address 0xbeef
+            // 2. Load 0b1101_0110 to accumulator
+            // 3. perform bitwise XOR on the accumulator with value under address 0xbeef
+            let data = [0xa9, 0b1101_0110, 0x4d, 0xef, 0xbe, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xbeef, 0b1010_0000)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0b0111_0110);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn ora_zero_page() {
+            // 1. Store 0b1101_0110 in address 0xcc
+            // 2. Load 0b1101_0110 to accumulator
+            // 3. perform bitwise OR on the accumulator with value under address 0xcc
+            let data = [0xa9, 0b1101_0110, 0x05, 0xcc, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xcc, 0b0011_1011)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0b1111_1111);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
     }
 
