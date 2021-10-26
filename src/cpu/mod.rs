@@ -105,6 +105,7 @@ impl Cpu {
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
                 "LSR" => self.lsr(opcode.mode)?,
+                "NOP" => {}
                 "ORA" => self.ora(opcode.mode)?,
                 "PHA" => self.stack_push(self.accumulator),
                 "PHP" => self.php(),

@@ -35,6 +35,7 @@ impl Opcode {
 
 const OPCODES: &[Opcode] = &[
     Opcode::new(0x00, "BRK", 1, 7, AddressingMode::Implied),
+    Opcode::new(0xea, "NOP", 1, 2, AddressingMode::Implied),
     // -- flag clear/set instructions
     Opcode::new(0x18, "CLC", 1, 2, AddressingMode::Implied),
     Opcode::new(0xd8, "CLD", 1, 2, AddressingMode::Implied),
