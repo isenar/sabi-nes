@@ -46,7 +46,7 @@ impl Default for Cpu {
 }
 
 impl Cpu {
-    pub fn mem_read(&self, addr: u16) -> Value {
+    pub fn mem_read(&self, addr: Address) -> Value {
         self.memory[addr as usize]
     }
 
@@ -491,15 +491,57 @@ impl Cpu {
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
+    enum Write {
+        Single(Address, Value),
+        U16(Address, u16),
+    }
+
+    #[derive(Default)]
+    struct CpuBuilder {
+        writes: Vec<Write>,
+    }
+
+    impl CpuBuilder {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn write(mut self, address: Address, value: Value) -> Self {
+            self.writes.push(Write::Single(address, value));
+
+            self
+        }
+
+        fn write_u16(mut self, address: Address, value: u16) -> Self {
+            self.writes.push(Write::U16(address, value));
+
+            self
+        }
+
+        fn build_and_run(self, data: &[Value]) -> Cpu {
+            let mut cpu = Cpu::default();
+
+            for write in self.writes {
+                match write {
+                    Write::Single(address, value) => cpu.mem_write(address, value),
+                    Write::U16(address, value) => cpu.mem_write_u16(address, value),
+                }
+            }
+
+            cpu.load_and_run(data).expect("Failed to load and run");
+
+            cpu
+        }
+    }
+
     mod load {
         use super::*;
 
         #[test]
         fn immediate_load() {
-            let mut cpu = Cpu::default();
             let data = [0xa9, 0x05, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.register_a, 0x05);
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
@@ -518,22 +560,18 @@ mod tests {
 
         #[test]
         fn load_from_memory() {
-            let mut cpu = Cpu::default();
             let data = [0xa5, 0x10, 0x00];
-
-            cpu.mem_write(0x10, 0x55);
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().write(0x10, 0x55).build_and_run(&data);
 
             assert_eq!(cpu.register_a, 0x55);
         }
 
         #[test]
         fn ldx_absolute() {
-            let mut cpu = Cpu::default();
             let data = [0xae, 0x34, 0x12, 0x00];
-
-            cpu.mem_write_u16(0x1234, 0xff);
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new()
+                .write_u16(0x1234, 0xff)
+                .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 0xff);
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
@@ -559,17 +597,23 @@ mod tests {
 
         #[test]
         fn sta_absolute() {
-            let mut cpu = Cpu::default();
-
             // 1. store 0x75 in accumulator
             // 2. store accumulator value under address 0x1234
             let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.mem_read_u16(0x1234), 0x75);
             assert!(cpu.status_register.is_empty());
         }
+
+        // #[test]
+        // fn stx_zero_page() {
+        //     let cpu = CpuRunner::new().build()
+        //
+        //     let data = [];
+        //
+        //     cpu.load_and_run()
+        // }
     }
 
     mod tax {
@@ -577,10 +621,8 @@ mod tests {
 
         #[test]
         fn moves_reg_a_value_to_reg_x() {
-            let mut cpu = Cpu::default();
             let data = [0xa9, 0x0a, 0xaa, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.register_a, 10);
             assert_eq!(cpu.register_x, 10);
@@ -606,13 +648,10 @@ mod tests {
 
         #[test]
         fn asl_accumulator() {
-            let mut cpu = Cpu::default();
-
             // 1. load 0b01010111 to accumulator
             // 2. call ASL - shifts accumulator left
             let data = [0xa9, 0b1101_0111, 0x0a, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             // store bit0 == 1 to original acc value in carry flag
             assert!(cpu.status_register.contains(StatusRegister::CARRY));
@@ -625,13 +664,10 @@ mod tests {
 
         #[test]
         fn lsr_accumulator() {
-            let mut cpu = Cpu::default();
-
             // 1. load 0b01010111 to accumulator
             // 2. call LSR - shifts accumulator right
             let data = [0xa9, 0b1101_0111, 0x4a, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.register_a, 0b0110_1011);
             // store bit0 == 1 of original acc value in carry flag
@@ -644,14 +680,11 @@ mod tests {
 
         #[test]
         fn rol_accumulator_with_carry() {
-            let mut cpu = Cpu::default();
-
             // 1. load 0b01010111 to accumulator
             // 2. set carry flag
             // 3. call ROL
             let data = [0xa9, 0b0101_0010, 0x38, 0x2a, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.register_a, 0b1010_0101);
             // store bit7 == 0 of original acc value in carry flag
@@ -664,14 +697,11 @@ mod tests {
 
         #[test]
         fn ror_accumulator_with_carry() {
-            let mut cpu = Cpu::default();
-
             // 1. load 0b01010111 to accumulator
             // 2. set carry flag
             // 3. call ROR
             let data = [0xa9, 0b0101_0010, 0x38, 0x6a, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.register_a, 0b1010_1001);
             // store bit0 == 0 of original acc value in carry flag
@@ -688,12 +718,15 @@ mod tests {
 
         #[test]
         fn simple_5_ops_working_together() {
-            let mut cpu = Cpu::default();
+            // 1. load 0xc0 to accumulator
+            // 2. move acc value to register X
+            // 3. increment register X
             let data = [0xa9, 0xc0, 0xaa, 0xe8, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
-            cpu.load_and_run(&data).expect("Failed to load and run");
-
+            assert_eq!(cpu.register_a, 0xc0);
             assert_eq!(cpu.register_x, 0xc1);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
     }
 
@@ -702,30 +735,24 @@ mod tests {
 
         #[test]
         fn carry_flag_enabled() {
-            let mut cpu = Cpu::default();
             let data = [0x38, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
         #[test]
         fn decimal_flag_enabled() {
-            let mut cpu = Cpu::default();
             let data = [0xf8, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.status_register, StatusRegister::DECIMAL);
         }
 
         #[test]
         fn interrupt_flag_enabled() {
-            let mut cpu = Cpu::default();
             let data = [0x78, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.status_register, StatusRegister::INTERRUPT_DISABLE);
         }
