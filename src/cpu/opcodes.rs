@@ -173,7 +173,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x50, "BVC", 2, 2, AddressingMode::Relative), // +1 if page is crossed, +1 if branch is taken
     Opcode::new(0x70, "BVS", 2, 2, AddressingMode::Relative), // +1 if page is crossed, +1 if branch is taken
     // -- arithmetic instructions --
-    //ADC
+    // ADC
     Opcode::new(0x69, "ADC", 2, 2, AddressingMode::Immediate),
     Opcode::new(0x6d, "ADC", 3, 4, AddressingMode::Absolute),
     Opcode::new(0x7d, "ADC", 3, 4, AddressingMode::AbsoluteX), // +1 cycle if page is crossed
@@ -181,7 +181,16 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x65, "ADC", 2, 3, AddressingMode::ZeroPage),
     Opcode::new(0x75, "ADC", 2, 4, AddressingMode::ZeroPageX),
     Opcode::new(0x61, "ADC", 2, 6, AddressingMode::IndirectX),
-    Opcode::new(0x71, "ADC", 2, 5, AddressingMode::IndirectX), // +1 cycle if page boundary crossed
+    Opcode::new(0x71, "ADC", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
+    // CMP
+    Opcode::new(0xc9, "CMP", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0xcd, "CMP", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0xdd, "CMP", 3, 4, AddressingMode::AbsoluteX), // +1 cycle if page is crossed
+    Opcode::new(0xd9, "CMP", 3, 4, AddressingMode::AbsoluteY), // +1 cycle if page is crossed
+    Opcode::new(0xc5, "CMP", 2, 3, AddressingMode::ZeroPage),
+    Opcode::new(0xd5, "CMP", 2, 4, AddressingMode::ZeroPageX),
+    Opcode::new(0xc1, "CMP", 2, 6, AddressingMode::IndirectX),
+    Opcode::new(0xd1, "CMP", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
 ];
 
 lazy_static! {

@@ -95,6 +95,7 @@ impl Cpu {
                 "CLD" => self.status_register.clear_decimal_flag(),
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
+                "CMP" => self.cmp(opcode.mode)?,
                 "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
@@ -159,6 +160,20 @@ impl Cpu {
             .set(StatusRegister::OVERFLOW, acc_sign_bit != result_sign_bit);
         self.status_register.update_zero_and_negative_flags(result);
         self.accumulator = result;
+
+        Ok(())
+    }
+
+    fn cmp(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Failed to get operand address for CMP instruction"))?;
+        let value = self.mem_read(addr);
+        let result = self.accumulator.wrapping_sub(value);
+
+        self.status_register
+            .set(StatusRegister::CARRY, value <= self.accumulator);
+        self.status_register.update_zero_and_negative_flags(result);
 
         Ok(())
     }
@@ -970,6 +985,31 @@ mod tests {
                 cpu.status_register,
                 StatusRegister::CARRY | StatusRegister::NEGATIVE
             );
+        }
+
+        #[test]
+        fn cmp_absolute_same_values() {
+            let data = [0xa9, 0x11, 0xcd, 0xde, 0xde, 0x00];
+            let cpu = CpuBuilder::new().write(0xdede, 0x11).build_and_run(&data);
+
+            // CMP should not change the value of accumulator
+            assert_eq!(cpu.accumulator, 0x11);
+            // values are the same, so zero and carry flags are set
+            assert_eq!(
+                cpu.status_register,
+                StatusRegister::ZERO | StatusRegister::CARRY
+            );
+        }
+
+        #[test]
+        fn cmp_immediate_with_greater_value() {
+            let data = [0xa9, 0xaa, 0xc9, 0xbb, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            // CMP should not change the value of accumulator
+            assert_eq!(cpu.accumulator, 0xaa);
+            // result bit7 is 1, so negative flag is set
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
     }
 
