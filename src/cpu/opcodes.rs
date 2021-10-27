@@ -191,6 +191,14 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xd5, "CMP", 2, 4, AddressingMode::ZeroPageX),
     Opcode::new(0xc1, "CMP", 2, 6, AddressingMode::IndirectX),
     Opcode::new(0xd1, "CMP", 2, 5, AddressingMode::IndirectY), // +1 cycle if page boundary crossed
+    // CPX
+    Opcode::new(0xe0, "CPX", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0xec, "CPX", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0xe4, "CPX", 2, 3, AddressingMode::ZeroPage),
+    // CPY
+    Opcode::new(0xc0, "CPY", 2, 2, AddressingMode::Immediate),
+    Opcode::new(0xcc, "CPY", 3, 4, AddressingMode::Absolute),
+    Opcode::new(0xc4, "CPY", 2, 3, AddressingMode::ZeroPage),
 ];
 
 lazy_static! {

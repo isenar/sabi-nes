@@ -95,7 +95,9 @@ impl Cpu {
                 "CLD" => self.status_register.clear_decimal_flag(),
                 "CLI" => self.status_register.clear_interrupt_flag(),
                 "CLV" => self.status_register.clear_overflow_flag(),
-                "CMP" => self.cmp(opcode.mode)?,
+                "CMP" => self.compare(opcode.mode, self.accumulator)?,
+                "CPX" => self.compare(opcode.mode, self.register_x)?,
+                "CPY" => self.compare(opcode.mode, self.register_y)?,
                 "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
@@ -164,15 +166,15 @@ impl Cpu {
         Ok(())
     }
 
-    fn cmp(&mut self, mode: AddressingMode) -> Result<()> {
+    fn compare(&mut self, mode: AddressingMode, register: Register) -> Result<()> {
         let addr = self
             .get_operand_address(mode)
-            .ok_or_else(|| anyhow!("Failed to get operand address for CMP instruction"))?;
+            .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
         let value = self.mem_read(addr);
-        let result = self.accumulator.wrapping_sub(value);
+        let result = register.wrapping_sub(value);
 
         self.status_register
-            .set(StatusRegister::CARRY, value <= self.accumulator);
+            .set(StatusRegister::CARRY, value <= register);
         self.status_register.update_zero_and_negative_flags(result);
 
         Ok(())
@@ -1010,6 +1012,26 @@ mod tests {
             assert_eq!(cpu.accumulator, 0xaa);
             // result bit7 is 1, so negative flag is set
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn cpx_zero_page() {
+            // compare reg X = 0x2 with value 0xfe
+            let data = [0xe8, 0xe8, 0xe4, 0xdd, 0x00];
+            let cpu = CpuBuilder::new().write(0xdd, 0xfe).build_and_run(&data);
+
+            assert_eq!(cpu.register_x, 0x2);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn cpy_immediate() {
+            // compare reg Y = 0x3 with immediate value = 0x0
+            let data = [0xc8, 0xc8, 0xc8, 0xc0, 0x00, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.register_y, 0x3);
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
     }
 
