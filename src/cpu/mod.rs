@@ -78,6 +78,7 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
+                "ADC" => self.adc(opcode.mode)?,
                 "AND" => self.and(opcode.mode)?,
                 "ASL" => self.asl(opcode.mode)?,
                 "BIT" => self.bit(opcode.mode)?,
@@ -90,10 +91,13 @@ impl Cpu {
                 "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW)),
                 "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW)),
                 "BRK" => return Ok(()),
-                "CLC" => self.status_register.clear_carry_flag(),
-                "CLD" => self.status_register.clear_decimal_flag(),
-                "CLI" => self.status_register.clear_interrupt_flag(),
-                "CLV" => self.status_register.clear_overflow_flag(),
+                "CLC" => self.status_register.set_carry_flag(false),
+                "CLD" => self.status_register.set_decimal_flag(false),
+                "CLI" => self.status_register.set_interrupt_flag(false),
+                "CLV" => self.status_register.set_overflow_flag(false),
+                "CMP" => self.compare(opcode.mode, self.accumulator)?,
+                "CPX" => self.compare(opcode.mode, self.register_x)?,
+                "CPY" => self.compare(opcode.mode, self.register_y)?,
                 "DEC" => self.dec(opcode.mode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
@@ -113,9 +117,10 @@ impl Cpu {
                 "PLP" => self.plp(),
                 "ROL" => self.rol(opcode.mode),
                 "ROR" => self.ror(opcode.mode),
-                "SEC" => self.status_register.set_carry_flag(),
-                "SED" => self.status_register.set_decimal_flag(),
-                "SEI" => self.status_register.set_interrupt_flag(),
+                "SBC" => self.sbc(opcode.mode)?,
+                "SEC" => self.status_register.set_carry_flag(true),
+                "SED" => self.status_register.set_decimal_flag(true),
+                "SEI" => self.status_register.set_interrupt_flag(true),
                 "STA" => self.sta(opcode.mode)?,
                 "STX" => self.stx(opcode.mode)?,
                 "STY" => self.sty(opcode.mode)?,
@@ -139,6 +144,62 @@ impl Cpu {
         self.status_register = StatusRegister::empty();
         self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
         self.stack_pointer.reset();
+    }
+
+    fn adc(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
+
+        let value = self.mem_read(addr);
+        let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
+        let acc_sign_bit = self.accumulator.nth_bit(7);
+        let result = self.accumulator.wrapping_add(value).wrapping_add(carry);
+        let result_sign_bit = result.nth_bit(7);
+
+        self.status_register
+            .set_carry_flag(result < self.accumulator);
+        self.status_register
+            .set_overflow_flag(acc_sign_bit != result_sign_bit);
+        self.status_register.update_zero_and_negative_flags(result);
+        self.accumulator = result;
+
+        Ok(())
+    }
+
+    fn sbc(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
+
+        let value = self.mem_read(addr);
+        let carry_neg = !self.status_register.contains(StatusRegister::CARRY) as u8;
+        let acc_sign_bit = self.accumulator.nth_bit(7);
+        let result = self.accumulator.wrapping_sub(value).wrapping_sub(carry_neg);
+        let result_sign_bit = result.nth_bit(7);
+
+        self.status_register
+            .set_carry_flag(result > self.accumulator);
+        self.status_register
+            .set_overflow_flag(acc_sign_bit != result_sign_bit);
+        self.status_register.update_zero_and_negative_flags(result);
+
+        self.accumulator = result;
+
+        Ok(())
+    }
+
+    fn compare(&mut self, mode: AddressingMode, register: Register) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
+        let value = self.mem_read(addr);
+        let result = register.wrapping_sub(value);
+
+        self.status_register.set_carry_flag(value <= register);
+        self.status_register.update_zero_and_negative_flags(result);
+
+        Ok(())
     }
 
     fn and(&mut self, mode: AddressingMode) -> Result<()> {
@@ -185,12 +246,10 @@ impl Cpu {
 
         let value = self.mem_read(addr);
 
+        self.status_register.set_overflow_flag(value.nth_bit(6));
+        self.status_register.set_negative_flag(value.nth_bit(7));
         self.status_register
-            .set(StatusRegister::OVERFLOW, value.nth_bit(6));
-        self.status_register
-            .set(StatusRegister::NEGATIVE, value.nth_bit(7));
-        self.status_register
-            .set(StatusRegister::ZERO, value & self.accumulator == 0);
+            .set_zero_flag(value & self.accumulator == 0);
 
         Ok(())
     }
@@ -203,16 +262,14 @@ impl Cpu {
                 let shifted_left = value << 1;
 
                 self.mem_write(addr, shifted_left);
-                self.status_register
-                    .set(StatusRegister::CARRY, value.nth_bit(7));
+                self.status_register.set_carry_flag(value.nth_bit(7));
 
                 shifted_left
             }
             None => {
                 let old_reg_a = self.accumulator;
                 self.accumulator <<= 1;
-                self.status_register
-                    .set(StatusRegister::CARRY, old_reg_a.nth_bit(7));
+                self.status_register.set_carry_flag(old_reg_a.nth_bit(7));
 
                 self.accumulator
             }
@@ -231,21 +288,19 @@ impl Cpu {
                 let shifted = value >> 1;
 
                 self.mem_write(addr, shifted);
-                self.status_register
-                    .set(StatusRegister::CARRY, value.nth_bit(0));
+                self.status_register.set_carry_flag(value.nth_bit(0));
 
                 shifted
             }
             None => {
                 let old_reg_a = self.accumulator;
                 self.accumulator >>= 1;
-                self.status_register
-                    .set(StatusRegister::CARRY, old_reg_a.nth_bit(0));
+                self.status_register.set_carry_flag(old_reg_a.nth_bit(0));
                 self.accumulator
             }
         };
 
-        self.status_register.clear_negative_flag();
+        self.status_register.set_negative_flag(false);
         self.status_register.update_zero_and_negative_flags(shifted);
 
         Ok(())
@@ -271,8 +326,7 @@ impl Cpu {
             }
         };
 
-        self.status_register
-            .set(StatusRegister::CARRY, previous.nth_bit(7));
+        self.status_register.set_carry_flag(previous.nth_bit(7));
         self.status_register.update_zero_and_negative_flags(shifted);
     }
 
@@ -291,8 +345,7 @@ impl Cpu {
 
                 self.mem_write(addr, shifted);
 
-                self.status_register
-                    .set(StatusRegister::CARRY, value.nth_bit(0));
+                self.status_register.set_carry_flag(value.nth_bit(0));
 
                 (value, shifted)
             }
@@ -309,11 +362,9 @@ impl Cpu {
             }
         };
 
-        self.status_register
-            .set(StatusRegister::CARRY, previous.nth_bit(0));
-        self.status_register
-            .set(StatusRegister::NEGATIVE, input_carry);
-        self.status_register.set(StatusRegister::ZERO, shifted == 0);
+        self.status_register.set_carry_flag(previous.nth_bit(0));
+        self.status_register.set_negative_flag(input_carry);
+        self.status_register.set_zero_flag(shifted == 0);
     }
 
     fn lda(&mut self, mode: AddressingMode) -> Result<()> {
@@ -920,6 +971,79 @@ mod tests {
 
             assert_eq!(cpu.accumulator, 0xff);
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+    }
+
+    mod arithmetic {
+        use super::*;
+
+        #[test]
+        fn adc_immediate_with_carry() {
+            let data = [0xa9, 0xab, 0x38, 0x69, 0x11, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            // 0xab + 0x11 + 0x1
+            assert_eq!(cpu.accumulator, 0xbd);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn adc_zero_page_with_wrapping() {
+            let data = [0xa9, 0xfe, 0x38, 0x65, 0x11, 0x00];
+            let cpu = CpuBuilder::new().write(0x11, 0xaa).build_and_run(&data);
+
+            // 0xfe + 0x1 + 0xaa wrapped
+            assert_eq!(cpu.accumulator, 0xa9);
+            // bit7 has changed and carry is set due to wrapping
+            assert_eq!(
+                cpu.status_register,
+                StatusRegister::CARRY | StatusRegister::NEGATIVE
+            );
+        }
+
+        #[test]
+        fn cmp_absolute_same_values() {
+            let data = [0xa9, 0x11, 0xcd, 0xde, 0xde, 0x00];
+            let cpu = CpuBuilder::new().write(0xdede, 0x11).build_and_run(&data);
+
+            // CMP should not change the value of accumulator
+            assert_eq!(cpu.accumulator, 0x11);
+            // values are the same, so zero and carry flags are set
+            assert_eq!(
+                cpu.status_register,
+                StatusRegister::ZERO | StatusRegister::CARRY
+            );
+        }
+
+        #[test]
+        fn cmp_immediate_with_greater_value() {
+            let data = [0xa9, 0xaa, 0xc9, 0xbb, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            // CMP should not change the value of accumulator
+            assert_eq!(cpu.accumulator, 0xaa);
+            // result bit7 is 1, so negative flag is set
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn cpx_zero_page() {
+            // compare reg X = 0x2 with value 0xfe
+            let data = [0xe8, 0xe8, 0xe4, 0xdd, 0x00];
+            let cpu = CpuBuilder::new().write(0xdd, 0xfe).build_and_run(&data);
+
+            assert_eq!(cpu.register_x, 0x2);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn cpy_immediate() {
+            // compare reg Y = 0x3 with immediate value = 0x0
+            let data = [0xc8, 0xc8, 0xc8, 0xc0, 0x00, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.register_y, 0x3);
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
     }
 

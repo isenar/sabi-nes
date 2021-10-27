@@ -42,50 +42,37 @@ impl StatusRegister {
     pub fn update_zero_and_negative_flags(&mut self, value: impl Into<Self>) {
         let value_bits = value.into();
 
-        self.set(StatusRegister::ZERO, value_bits.is_empty());
-        self.set(
-            StatusRegister::NEGATIVE,
-            value_bits.contains(StatusRegister::NEGATIVE),
-        );
+        self.set_zero_flag(value_bits.is_empty());
+        self.set_negative_flag(value_bits.contains(StatusRegister::NEGATIVE));
     }
 
     #[inline]
-    pub fn set_carry_flag(&mut self) {
-        self.insert(StatusRegister::CARRY);
+    pub fn set_carry_flag(&mut self, value: bool) {
+        self.set(StatusRegister::CARRY, value);
     }
 
     #[inline]
-    pub fn set_decimal_flag(&mut self) {
-        self.insert(StatusRegister::DECIMAL);
+    pub fn set_decimal_flag(&mut self, value: bool) {
+        self.set(StatusRegister::DECIMAL, value);
     }
 
     #[inline]
-    pub fn set_interrupt_flag(&mut self) {
-        self.insert(StatusRegister::INTERRUPT_DISABLE);
+    pub fn set_interrupt_flag(&mut self, value: bool) {
+        self.set(StatusRegister::INTERRUPT_DISABLE, value);
     }
 
     #[inline]
-    pub fn clear_carry_flag(&mut self) {
-        self.remove(StatusRegister::CARRY);
+    pub fn set_overflow_flag(&mut self, value: bool) {
+        self.set(StatusRegister::OVERFLOW, value);
     }
 
     #[inline]
-    pub fn clear_decimal_flag(&mut self) {
-        self.remove(StatusRegister::DECIMAL);
+    pub fn set_negative_flag(&mut self, value: bool) {
+        self.set(StatusRegister::NEGATIVE, value);
     }
 
     #[inline]
-    pub fn clear_interrupt_flag(&mut self) {
-        self.remove(StatusRegister::INTERRUPT_DISABLE);
-    }
-
-    #[inline]
-    pub fn clear_overflow_flag(&mut self) {
-        self.remove(StatusRegister::OVERFLOW);
-    }
-
-    #[inline]
-    pub fn clear_negative_flag(&mut self) {
-        self.remove(StatusRegister::NEGATIVE);
+    pub fn set_zero_flag(&mut self, value: bool) {
+        self.set(StatusRegister::ZERO, value);
     }
 }
