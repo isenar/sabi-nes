@@ -78,6 +78,7 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
+                "ADC" => self.adc(opcode.mode)?,
                 "AND" => self.and(opcode.mode)?,
                 "ASL" => self.asl(opcode.mode)?,
                 "BIT" => self.bit(opcode.mode)?,
@@ -139,6 +140,27 @@ impl Cpu {
         self.status_register = StatusRegister::empty();
         self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
         self.stack_pointer.reset();
+    }
+
+    fn adc(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
+
+        let value = self.mem_read(addr);
+        let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
+        let acc_sign_bit = self.accumulator.nth_bit(7);
+        let result = self.accumulator.wrapping_add(value).wrapping_add(carry);
+        let result_sign_bit = result.nth_bit(7);
+
+        self.status_register
+            .set(StatusRegister::CARRY, result < self.accumulator);
+        self.status_register
+            .set(StatusRegister::OVERFLOW, acc_sign_bit != result_sign_bit);
+        self.status_register.update_zero_and_negative_flags(result);
+        self.accumulator = result;
+
+        Ok(())
     }
 
     fn and(&mut self, mode: AddressingMode) -> Result<()> {
@@ -920,6 +942,34 @@ mod tests {
 
             assert_eq!(cpu.accumulator, 0xff);
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+    }
+
+    mod arithmetic {
+        use super::*;
+
+        #[test]
+        fn adc_immediate_with_carry() {
+            let data = [0xa9, 0xab, 0x38, 0x69, 0x11, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            // 0xab + 0x11 + 0x1
+            assert_eq!(cpu.accumulator, 0xbd);
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
+        fn adc_zero_page_with_wrapping() {
+            let data = [0xa9, 0xfe, 0x38, 0x65, 0x11, 0x00];
+            let cpu = CpuBuilder::new().write(0x11, 0xaa).build_and_run(&data);
+
+            // 0xfe + 0x1 + 0xaa wrapped
+            assert_eq!(cpu.accumulator, 0xa9);
+            // bit7 has changed and carry is set due to wrapping
+            assert_eq!(
+                cpu.status_register,
+                StatusRegister::CARRY | StatusRegister::NEGATIVE
+            );
         }
     }
 
