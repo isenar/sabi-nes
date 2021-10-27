@@ -448,9 +448,10 @@ impl Cpu {
     fn branch(&mut self, condition: bool) {
         if condition {
             let offset = self.mem_read(self.program_counter) as i8;
-            let jump_addr = self.program_counter.wrapping_add(offset as u16 + 1);
-
-            self.program_counter = jump_addr;
+            self.program_counter = self
+                .program_counter
+                .wrapping_add(1)
+                .wrapping_add(offset as u16);
         }
     }
 
@@ -898,19 +899,26 @@ mod tests {
         }
     }
 
-    mod mixed {
+    mod branch {
         use super::*;
 
         #[test]
-        fn load_to_acc_and_move_to_x() {
-            // 1. load 0xc0 to accumulator
-            // 2. move acc value to register X
-            // 3. increment register X
-            let data = [0xa9, 0xc0, 0xaa, 0xe8, 0x00];
+        fn bcc_skips_lda() {
+            // Call BCC with jumping two bytes forward (skips the immediate LDA instruction)
+            let data = [0x90, 0x01, 0xa9, 0xff, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.accumulator, 0xc0);
-            assert_eq!(cpu.register_x, 0xc1);
+            assert_eq!(cpu.accumulator, 0);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn bcs_does_not_skip() {
+            // Call BCS which does not jump, because carry flag is not set
+            let data = [0xb0, 0x01, 0xa9, 0xff, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.accumulator, 0xff);
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
     }
