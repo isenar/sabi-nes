@@ -308,19 +308,19 @@ impl Cpu {
 
     fn rol(&mut self, mode: AddressingMode) {
         let address = self.get_operand_address(mode);
-        let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
+        let input_carry = self.status_register.contains(StatusRegister::CARRY) as u8;
 
         let (previous, shifted) = match address {
             Some(addr) => {
                 let value = self.mem_read(addr);
-                let shifted = (value << 1) | carry;
+                let shifted = (value << 1) | input_carry;
                 self.mem_write(addr, shifted);
 
                 (value, shifted)
             }
             None => {
                 let current_acc = self.accumulator;
-                self.accumulator = (self.accumulator << 1) | carry;
+                self.accumulator = (self.accumulator << 1) | input_carry;
 
                 (current_acc, self.accumulator)
             }
@@ -332,16 +332,13 @@ impl Cpu {
 
     fn ror(&mut self, mode: AddressingMode) {
         let address = self.get_operand_address(mode);
-        let input_carry = self.status_register.contains(StatusRegister::CARRY);
+        let input_carry =
+            self.status_register.contains(StatusRegister::CARRY) as Value * 0b1000_0000;
 
         let (previous, shifted) = match address {
             Some(addr) => {
                 let value = self.mem_read(addr);
-                let mut shifted = value >> 1;
-
-                if input_carry {
-                    shifted |= 0b1000_0000;
-                }
+                let shifted = (value >> 1) | input_carry;
 
                 self.mem_write(addr, shifted);
 
@@ -351,10 +348,7 @@ impl Cpu {
             }
             None => {
                 let prev_acc_bits = self.accumulator;
-                let mut shifted = self.accumulator >> 1;
-                if input_carry {
-                    shifted |= 0b1000_0000;
-                }
+                let shifted = (self.accumulator >> 1) | input_carry;
 
                 self.accumulator = shifted;
 
@@ -363,7 +357,7 @@ impl Cpu {
         };
 
         self.status_register.set_carry_flag(previous.nth_bit(0));
-        self.status_register.set_negative_flag(input_carry);
+        self.status_register.set_negative_flag(input_carry != 0);
         self.status_register.set_zero_flag(shifted == 0);
     }
 
@@ -474,7 +468,7 @@ impl Cpu {
     fn plp(&mut self) {
         let value = self.pop_stack();
 
-        self.status_register = StatusRegister::from_bits_truncate(value);
+        self.status_register = StatusRegister::from(value);
     }
 
     fn php(&mut self) {
@@ -900,6 +894,23 @@ mod tests {
         }
 
         #[test]
+        fn asl_zero_page_x() {
+            // 1. INX (register X = 1)
+            // 2. store 0b0100_1101 in 0xab
+            // 3. call ASL with 0xaa (zero page X mode) - shifts bits left in
+            //    address 0xaa + 1 = 0xab
+            let data = [0xe8, 0x16, 0xaa, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xab, 0b0100_1101)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.register_x, 1);
+            assert_eq!(cpu.mem_read(0xab), 0b1001_1010);
+            // result bit7 = 1
+            assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
+        }
+
+        #[test]
         fn lsr_accumulator() {
             // 1. load 0b01010111 to accumulator
             // 2. call LSR - shifts accumulator right
@@ -913,6 +924,17 @@ mod tests {
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
             // negative flag should always be cleared on LSR calls
             assert!(!cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn lsr_absolute_shift_into_carry() {
+            let data = [0x4e, 0xda, 0xda, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xdada, 0b01010111)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.mem_read(0xdada), 0b00101011);
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
         #[test]
@@ -933,6 +955,17 @@ mod tests {
         }
 
         #[test]
+        fn rol_with_carry_zero_page() {
+            let data = [0x38, 0x26, 0xff, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0xff, 0b1010_1101)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.mem_read(0xff), 0b0101_1011);
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
+        }
+
+        #[test]
         fn ror_accumulator_with_carry() {
             // 1. load 0b01010111 to accumulator
             // 2. set carry flag
@@ -947,6 +980,17 @@ mod tests {
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
             // negative flag is set, due to bit7 == 1 in rotated value
             assert!(cpu.status_register.contains(StatusRegister::NEGATIVE));
+        }
+
+        #[test]
+        fn ror_absolute_x_without_carry() {
+            let data = [0xe8, 0x7e, 0x33, 0x12, 0x00];
+            let cpu = CpuBuilder::new()
+                .write(0x1234, 0b0100_1101)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.mem_read(0x1234), 0b0010_0110);
+            assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
     }
 
