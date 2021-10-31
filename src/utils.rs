@@ -8,3 +8,11 @@ impl NthBit for u8 {
         self >> bit_n & 1 == 1
     }
 }
+
+pub fn shift_right(value: u8) -> u8 {
+    value >> 1
+}
+
+pub fn shift_left(value: u8) -> u8 {
+    value << 1
+}
