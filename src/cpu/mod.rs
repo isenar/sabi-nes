@@ -113,6 +113,10 @@ impl Cpu {
                     self.jmp(opcode.mode)?;
                     continue;
                 }
+                "JSR" => {
+                    self.jsr();
+                    continue;
+                }
                 "LDA" => self.lda(opcode.mode)?,
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
@@ -125,6 +129,14 @@ impl Cpu {
                 "PLP" => self.plp(),
                 "ROL" => self.rol(opcode.mode)?,
                 "ROR" => self.ror(opcode.mode)?,
+                "RTI" => {
+                    self.rti();
+                    continue;
+                }
+                "RTS" => {
+                    self.rts();
+                    continue;
+                }
                 "SBC" => self.sbc(opcode.mode)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
@@ -434,6 +446,21 @@ impl Cpu {
         Ok(())
     }
 
+    fn jsr(&mut self) {
+        self.stack_push_16(self.program_counter + 1);
+        let target_address = self.read_u16(self.program_counter);
+        self.program_counter = target_address;
+    }
+
+    fn rti(&mut self) {
+        self.status_register = self.pop_stack().into();
+        self.program_counter = self.pop_stack_u16();
+    }
+
+    fn rts(&mut self) {
+        self.program_counter = self.pop_stack_u16() + 1;
+    }
+
     fn pla(&mut self) {
         let value = self.pop_stack();
 
@@ -554,9 +581,23 @@ impl Cpu {
         self.stack_pointer.decrement();
     }
 
+    fn stack_push_16(&mut self, value: u16) {
+        let [lo, hi] = value.to_le_bytes();
+
+        self.stack_push(hi);
+        self.stack_push(lo);
+    }
+
     fn pop_stack(&mut self) -> Value {
         self.stack_pointer.increment();
         self.read(self.stack_pointer.address())
+    }
+
+    fn pop_stack_u16(&mut self) -> u16 {
+        let lo = self.pop_stack();
+        let hi = self.pop_stack();
+
+        u16::from_le_bytes([lo, hi])
     }
 }
 

@@ -211,6 +211,9 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x00, "BRK", 1, 7, AddressingMode::Implied),
     Opcode::new(0x4c, "JMP", 3, 3, AddressingMode::Absolute),
     Opcode::new(0x6c, "JMP", 3, 5, AddressingMode::Indirect),
+    Opcode::new(0x20, "JSR", 3, 6, AddressingMode::Absolute),
+    Opcode::new(0x40, "RTI", 3, 6, AddressingMode::Implied),
+    Opcode::new(0x60, "RTS", 3, 6, AddressingMode::Implied),
 ];
 
 lazy_static! {
