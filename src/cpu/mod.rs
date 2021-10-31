@@ -1,9 +1,11 @@
 mod addressing_mode;
+mod memory;
 mod opcodes;
 mod stack_pointer;
 mod status_register;
 
 use crate::cpu::addressing_mode::AddressingMode;
+use crate::cpu::memory::Memory;
 use crate::cpu::opcodes::OPCODES_MAPPING;
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
@@ -44,15 +46,17 @@ impl Default for Cpu {
     }
 }
 
-impl Cpu {
-    pub fn mem_read(&self, addr: Address) -> Value {
+impl Memory for Cpu {
+    fn read(&self, addr: Address) -> Value {
         self.memory[addr as usize]
     }
 
-    pub fn mem_write(&mut self, addr: Address, value: Value) {
+    fn write(&mut self, addr: Address, value: Value) {
         self.memory[addr as usize] = value;
     }
+}
 
+impl Cpu {
     pub fn load_and_run(&mut self, data: &[Value]) -> Result<()> {
         self.load(data);
         self.reset();
@@ -65,12 +69,12 @@ impl Cpu {
         self.memory
             [PROGRAM_ROM_BEGIN_ADDR as usize..(PROGRAM_ROM_BEGIN_ADDR as usize + data.len())]
             .copy_from_slice(data);
-        self.mem_write_u16(RESET_VECTOR_BEGIN_ADDR, PROGRAM_ROM_BEGIN_ADDR);
+        self.write_u16(RESET_VECTOR_BEGIN_ADDR, PROGRAM_ROM_BEGIN_ADDR);
     }
 
     pub fn run(&mut self) -> Result<()> {
         loop {
-            let code = self.mem_read(self.program_counter);
+            let code = self.read(self.program_counter);
             self.program_counter += 1;
 
             let opcode = OPCODES_MAPPING
@@ -142,7 +146,7 @@ impl Cpu {
         self.register_x = 0;
         self.register_y = 0;
         self.status_register = StatusRegister::empty();
-        self.program_counter = self.mem_read_u16(RESET_VECTOR_BEGIN_ADDR);
+        self.program_counter = self.read_u16(RESET_VECTOR_BEGIN_ADDR);
         self.stack_pointer.reset();
     }
 
@@ -151,7 +155,7 @@ impl Cpu {
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
 
-        let value = self.mem_read(addr);
+        let value = self.read(addr);
         let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
         let acc_sign_bit = self.accumulator.nth_bit(7);
         let result = self.accumulator.wrapping_add(value).wrapping_add(carry);
@@ -172,7 +176,7 @@ impl Cpu {
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
 
-        let value = self.mem_read(addr);
+        let value = self.read(addr);
         let carry_neg = !self.status_register.contains(StatusRegister::CARRY) as u8;
         let acc_sign_bit = self.accumulator.nth_bit(7);
         let result = self.accumulator.wrapping_sub(value).wrapping_sub(carry_neg);
@@ -193,7 +197,7 @@ impl Cpu {
         let addr = self
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
-        let value = self.mem_read(addr);
+        let value = self.read(addr);
         let result = register.wrapping_sub(value);
 
         self.status_register.set_carry_flag(value <= register);
@@ -230,7 +234,7 @@ impl Cpu {
         let addr = self
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
-        let value = self.mem_read(addr);
+        let value = self.read(addr);
 
         self.accumulator = logical_op(self.accumulator, value);
         self.status_register
@@ -244,7 +248,7 @@ impl Cpu {
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address for {} in BIT instruction"))?;
 
-        let value = self.mem_read(addr);
+        let value = self.read(addr);
 
         self.status_register.set_overflow_flag(value.nth_bit(6));
         self.status_register.set_negative_flag(value.nth_bit(7));
@@ -258,10 +262,10 @@ impl Cpu {
         let addr = self.get_operand_address(mode);
         let shifted = match addr {
             Some(addr) => {
-                let value = self.mem_read(addr);
+                let value = self.read(addr);
                 let shifted_left = value << 1;
 
-                self.mem_write(addr, shifted_left);
+                self.write(addr, shifted_left);
                 self.status_register.set_carry_flag(value.nth_bit(7));
 
                 shifted_left
@@ -284,10 +288,10 @@ impl Cpu {
         let addr = self.get_operand_address(mode);
         let shifted = match addr {
             Some(addr) => {
-                let value = self.mem_read(addr);
+                let value = self.read(addr);
                 let shifted = value >> 1;
 
-                self.mem_write(addr, shifted);
+                self.write(addr, shifted);
                 self.status_register.set_carry_flag(value.nth_bit(0));
 
                 shifted
@@ -312,9 +316,9 @@ impl Cpu {
 
         let (previous, shifted) = match address {
             Some(addr) => {
-                let value = self.mem_read(addr);
+                let value = self.read(addr);
                 let shifted = (value << 1) | input_carry;
-                self.mem_write(addr, shifted);
+                self.write(addr, shifted);
 
                 (value, shifted)
             }
@@ -337,10 +341,10 @@ impl Cpu {
 
         let (previous, shifted) = match address {
             Some(addr) => {
-                let value = self.mem_read(addr);
+                let value = self.read(addr);
                 let shifted = (value >> 1) | input_carry;
 
-                self.mem_write(addr, shifted);
+                self.write(addr, shifted);
 
                 self.status_register.set_carry_flag(value.nth_bit(0));
 
@@ -414,9 +418,9 @@ impl Cpu {
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address for {} in DEC instruction"))?;
 
-        let dec_value = self.mem_read(addr).wrapping_sub(1);
+        let dec_value = self.read(addr).wrapping_sub(1);
 
-        self.mem_write(addr, dec_value);
+        self.write(addr, dec_value);
         self.status_register
             .update_zero_and_negative_flags(dec_value);
 
@@ -440,9 +444,9 @@ impl Cpu {
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address for {} in INC instruction"))?;
 
-        let inc_value = self.mem_read(addr).wrapping_add(1);
+        let inc_value = self.read(addr).wrapping_add(1);
 
-        self.mem_write(addr, inc_value);
+        self.write(addr, inc_value);
         self.status_register
             .update_zero_and_negative_flags(inc_value);
 
@@ -492,7 +496,7 @@ impl Cpu {
 
     fn branch(&mut self, condition: bool) {
         if condition {
-            let offset = self.mem_read(self.program_counter) as i8;
+            let offset = self.read(self.program_counter) as i8;
             self.program_counter = self
                 .program_counter
                 .wrapping_add(1)
@@ -500,58 +504,44 @@ impl Cpu {
         }
     }
 
-    fn mem_read_u16(&self, addr: Address) -> u16 {
-        let lo = self.mem_read(addr);
-        let hi = self.mem_read(addr + 1);
-
-        u16::from_le_bytes([lo, hi])
-    }
-
-    fn mem_write_u16(&mut self, addr: Address, data: u16) {
-        let [lo, hi] = data.to_le_bytes();
-
-        self.mem_write(addr, lo);
-        self.mem_write(addr + 1, hi);
-    }
-
     fn get_operand_address(&self, mode: AddressingMode) -> Option<Address> {
         Some(match mode {
             AddressingMode::Immediate => self.program_counter,
-            AddressingMode::ZeroPage => self.mem_read(self.program_counter).into(),
-            AddressingMode::Absolute => self.mem_read_u16(self.program_counter),
+            AddressingMode::ZeroPage => self.read(self.program_counter).into(),
+            AddressingMode::Absolute => self.read_u16(self.program_counter),
             AddressingMode::ZeroPageX => {
-                let pos = self.mem_read(self.program_counter);
+                let pos = self.read(self.program_counter);
                 let addr = pos.wrapping_add(self.register_x);
 
                 addr.into()
             }
 
             AddressingMode::ZeroPageY => {
-                let pos = self.mem_read(self.program_counter);
+                let pos = self.read(self.program_counter);
                 let addr = pos.wrapping_add(self.register_y);
 
                 addr.into()
             }
             AddressingMode::AbsoluteX => {
-                let base = self.mem_read_u16(self.program_counter);
+                let base = self.read_u16(self.program_counter);
                 base.wrapping_add(self.register_x.into())
             }
             AddressingMode::AbsoluteY => {
-                let base = self.mem_read_u16(self.program_counter);
+                let base = self.read_u16(self.program_counter);
                 base.wrapping_add(self.register_y.into())
             }
             AddressingMode::IndirectX => {
-                let base = self.mem_read(self.program_counter);
+                let base = self.read(self.program_counter);
                 let ptr = base.wrapping_add(self.register_x);
-                let lo = self.mem_read(ptr.into());
-                let hi = self.mem_read(ptr.wrapping_add(1).into());
+                let lo = self.read(ptr.into());
+                let hi = self.read(ptr.wrapping_add(1).into());
 
                 u16::from_le_bytes([lo, hi])
             }
             AddressingMode::IndirectY => {
-                let base = self.mem_read(self.program_counter);
-                let lo = self.mem_read(base.into());
-                let hi = self.mem_read(base.wrapping_add(1).into());
+                let base = self.read(self.program_counter);
+                let lo = self.read(base.into());
+                let hi = self.read(base.wrapping_add(1).into());
                 let deref_base = u16::from_le_bytes([lo, hi]);
 
                 deref_base.wrapping_add(self.register_y.into())
@@ -567,7 +557,7 @@ impl Cpu {
                 mode
             )
         })?;
-        let value = self.mem_read(addr);
+        let value = self.read(addr);
 
         self.status_register.update_zero_and_negative_flags(value);
 
@@ -579,20 +569,20 @@ impl Cpu {
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address when storing value ({:?}", mode))?;
 
-        self.mem_write(addr, value);
+        self.write(addr, value);
 
         Ok(())
     }
 
     fn stack_push(&mut self, value: Value) {
-        self.mem_write(self.stack_pointer.address(), value);
+        self.write(self.stack_pointer.address(), value);
 
         self.stack_pointer.decrement();
     }
 
     fn pop_stack(&mut self) -> Value {
         self.stack_pointer.increment();
-        self.mem_read(self.stack_pointer.address())
+        self.read(self.stack_pointer.address())
     }
 }
 
@@ -632,8 +622,8 @@ mod tests {
 
             for write in self.writes {
                 match write {
-                    Write::Single(address, value) => cpu.mem_write(address, value),
-                    Write::U16(address, value) => cpu.mem_write_u16(address, value),
+                    Write::Single(address, value) => cpu.write(address, value),
+                    Write::U16(address, value) => cpu.write_u16(address, value),
                 }
             }
 
@@ -691,7 +681,7 @@ mod tests {
             let mut cpu = Cpu::default();
             let data = [0xa4, 0xaa, 0x00];
 
-            cpu.mem_write(0xaa, 0x66);
+            cpu.write(0xaa, 0x66);
             cpu.load_and_run(&data).expect("Failed to load and run");
 
             assert_eq!(cpu.register_y, 0x66);
@@ -710,7 +700,7 @@ mod tests {
             let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.mem_read_u16(0x1234), 0x75);
+            assert_eq!(cpu.read_u16(0x1234), 0x75);
             assert!(cpu.status_register.is_empty());
         }
 
@@ -721,7 +711,7 @@ mod tests {
             let data = [0x86, 0xee, 0x00];
             let cpu = CpuBuilder::new().write(0xee, 0x12).build_and_run(&data);
 
-            assert_eq!(cpu.mem_read(0xee), 0x00);
+            assert_eq!(cpu.read(0xee), 0x00);
             // STX does not modify any flags
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
@@ -741,7 +731,7 @@ mod tests {
 
             assert_eq!(cpu.register_x, 0x02);
             assert_eq!(cpu.register_y, 0x04);
-            assert_eq!(cpu.mem_read(0x02), 0x04);
+            assert_eq!(cpu.read(0x02), 0x04);
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
     }
@@ -767,7 +757,7 @@ mod tests {
             let data = [0xc6, 0x11, 0x00];
             let cpu = CpuBuilder::new().write(0x11, 0xf1).build_and_run(&data);
 
-            assert_eq!(cpu.mem_read(0x11), 0xf0);
+            assert_eq!(cpu.read(0x11), 0xf0);
         }
 
         #[test]
@@ -794,7 +784,7 @@ mod tests {
             let data = [0xee, 0x34, 0x12, 0xee, 0x34, 0x12, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.mem_read(0x1234), 2);
+            assert_eq!(cpu.read(0x1234), 2);
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
 
@@ -905,7 +895,7 @@ mod tests {
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 1);
-            assert_eq!(cpu.mem_read(0xab), 0b1001_1010);
+            assert_eq!(cpu.read(0xab), 0b1001_1010);
             // result bit7 = 1
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
@@ -933,7 +923,7 @@ mod tests {
                 .write(0xdada, 0b01010111)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.mem_read(0xdada), 0b00101011);
+            assert_eq!(cpu.read(0xdada), 0b00101011);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
@@ -961,7 +951,7 @@ mod tests {
                 .write(0xff, 0b1010_1101)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.mem_read(0xff), 0b0101_1011);
+            assert_eq!(cpu.read(0xff), 0b0101_1011);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
@@ -989,7 +979,7 @@ mod tests {
                 .write(0x1234, 0b0100_1101)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.mem_read(0x1234), 0b0010_0110);
+            assert_eq!(cpu.read(0x1234), 0b0010_0110);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
     }
