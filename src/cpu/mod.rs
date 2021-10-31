@@ -123,7 +123,7 @@ impl Cpu {
                 "LSR" => self.lsr(opcode.mode)?,
                 "NOP" => {}
                 "ORA" => self.ora(opcode.mode)?,
-                "PHA" => self.stack_push(self.accumulator),
+                "PHA" => self.push_stack(self.accumulator),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
@@ -447,7 +447,7 @@ impl Cpu {
     }
 
     fn jsr(&mut self) {
-        self.stack_push_16(self.program_counter + 1);
+        self.push_stack_u16(self.program_counter + 1);
         let target_address = self.read_u16(self.program_counter);
         self.program_counter = target_address;
     }
@@ -479,7 +479,7 @@ impl Cpu {
         let mut status_register_with_b_flags = self.status_register;
         status_register_with_b_flags.insert(StatusRegister::BREAK | StatusRegister::BREAK2);
 
-        self.stack_push(status_register_with_b_flags.bits());
+        self.push_stack(status_register_with_b_flags.bits());
     }
 
     fn sta(&mut self, mode: AddressingMode) -> Result<()> {
@@ -575,17 +575,17 @@ impl Cpu {
         Ok(())
     }
 
-    fn stack_push(&mut self, value: Value) {
+    fn push_stack(&mut self, value: Value) {
         self.write(self.stack_pointer.address(), value);
 
         self.stack_pointer.decrement();
     }
 
-    fn stack_push_16(&mut self, value: u16) {
+    fn push_stack_u16(&mut self, value: u16) {
         let [lo, hi] = value.to_le_bytes();
 
-        self.stack_push(hi);
-        self.stack_push(lo);
+        self.push_stack(hi);
+        self.push_stack(lo);
     }
 
     fn pop_stack(&mut self) -> Value {
