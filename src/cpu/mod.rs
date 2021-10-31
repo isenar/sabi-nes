@@ -109,6 +109,10 @@ impl Cpu {
                 "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
+                "JMP" => {
+                    self.jmp(opcode.mode)?;
+                    continue;
+                }
                 "LDA" => self.lda(opcode.mode)?,
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
@@ -421,6 +425,15 @@ impl Cpu {
         self.register_y = self.register_y.wrapping_add(1);
     }
 
+    fn jmp(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for JMP instruction"))?;
+        self.program_counter = addr;
+
+        Ok(())
+    }
+
     fn pla(&mut self) {
         let value = self.pop_stack();
 
@@ -506,6 +519,7 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y.into())
             }
+            AddressingMode::Indirect => self.read_u16(self.read_u16(self.program_counter)),
             _ => return None,
         })
     }
@@ -1038,6 +1052,30 @@ mod tests {
 
             assert_eq!(cpu.register_y, 0x3);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
+        }
+    }
+
+    mod control {
+        use super::*;
+
+        #[test]
+        fn jmp_absolute() {
+            let data = [0x4c, 0x33, 0x12, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.program_counter, 0x1234);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn jmp_indirect() {
+            let data = [0x6c, 0x34, 0x12];
+            let cpu = CpuBuilder::new()
+                .write_u16(0x1234, 0xbeee)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.program_counter, 0xbeef);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
         }
     }
 
