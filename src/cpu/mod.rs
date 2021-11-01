@@ -109,18 +109,34 @@ impl Cpu {
                 "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
+                "JMP" => {
+                    self.jmp(opcode.mode)?;
+                    continue;
+                }
+                "JSR" => {
+                    self.jsr();
+                    continue;
+                }
                 "LDA" => self.lda(opcode.mode)?,
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
                 "LSR" => self.lsr(opcode.mode)?,
                 "NOP" => {}
                 "ORA" => self.ora(opcode.mode)?,
-                "PHA" => self.stack_push(self.accumulator),
+                "PHA" => self.push_stack(self.accumulator),
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
                 "ROL" => self.rol(opcode.mode)?,
                 "ROR" => self.ror(opcode.mode)?,
+                "RTI" => {
+                    self.rti();
+                    continue;
+                }
+                "RTS" => {
+                    self.rts();
+                    continue;
+                }
                 "SBC" => self.sbc(opcode.mode)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
@@ -421,6 +437,30 @@ impl Cpu {
         self.register_y = self.register_y.wrapping_add(1);
     }
 
+    fn jmp(&mut self, mode: AddressingMode) -> Result<()> {
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for JMP instruction"))?;
+        self.program_counter = addr;
+
+        Ok(())
+    }
+
+    fn jsr(&mut self) {
+        self.push_stack_u16(self.program_counter + 1);
+        let target_address = self.read_u16(self.program_counter);
+        self.program_counter = target_address;
+    }
+
+    fn rti(&mut self) {
+        self.status_register = self.pop_stack().into();
+        self.program_counter = self.pop_stack_u16();
+    }
+
+    fn rts(&mut self) {
+        self.program_counter = self.pop_stack_u16() + 1;
+    }
+
     fn pla(&mut self) {
         let value = self.pop_stack();
 
@@ -439,7 +479,7 @@ impl Cpu {
         let mut status_register_with_b_flags = self.status_register;
         status_register_with_b_flags.insert(StatusRegister::BREAK | StatusRegister::BREAK2);
 
-        self.stack_push(status_register_with_b_flags.bits());
+        self.push_stack(status_register_with_b_flags.bits());
     }
 
     fn sta(&mut self, mode: AddressingMode) -> Result<()> {
@@ -506,6 +546,7 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y.into())
             }
+            AddressingMode::Indirect => self.read_u16(self.read_u16(self.program_counter)),
             _ => return None,
         })
     }
@@ -534,15 +575,29 @@ impl Cpu {
         Ok(())
     }
 
-    fn stack_push(&mut self, value: Value) {
+    fn push_stack(&mut self, value: Value) {
         self.write(self.stack_pointer.address(), value);
 
         self.stack_pointer.decrement();
     }
 
+    fn push_stack_u16(&mut self, value: u16) {
+        let [lo, hi] = value.to_le_bytes();
+
+        self.push_stack(hi);
+        self.push_stack(lo);
+    }
+
     fn pop_stack(&mut self) -> Value {
         self.stack_pointer.increment();
         self.read(self.stack_pointer.address())
+    }
+
+    fn pop_stack_u16(&mut self) -> u16 {
+        let lo = self.pop_stack();
+        let hi = self.pop_stack();
+
+        u16::from_le_bytes([lo, hi])
     }
 }
 
@@ -1038,6 +1093,30 @@ mod tests {
 
             assert_eq!(cpu.register_y, 0x3);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
+        }
+    }
+
+    mod control {
+        use super::*;
+
+        #[test]
+        fn jmp_absolute() {
+            let data = [0x4c, 0x33, 0x12, 0x00];
+            let cpu = CpuBuilder::new().build_and_run(&data);
+
+            assert_eq!(cpu.program_counter, 0x1234);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
+        }
+
+        #[test]
+        fn jmp_indirect() {
+            let data = [0x6c, 0x34, 0x12];
+            let cpu = CpuBuilder::new()
+                .write_u16(0x1234, 0xbeee)
+                .build_and_run(&data);
+
+            assert_eq!(cpu.program_counter, 0xbeef);
+            assert_eq!(cpu.status_register, StatusRegister::empty());
         }
     }
 
