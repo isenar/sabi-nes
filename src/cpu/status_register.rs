@@ -32,6 +32,12 @@ bitflags! {
     }
 }
 
+impl Default for StatusRegister {
+    fn default() -> Self {
+        Self::from(0b0010_0100)
+    }
+}
+
 impl From<u8> for StatusRegister {
     fn from(value: u8) -> Self {
         Self::from_bits_truncate(value)

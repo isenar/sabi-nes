@@ -5,23 +5,23 @@ mod stack_pointer;
 mod status_register;
 
 use crate::cpu::addressing_mode::AddressingMode;
-use crate::cpu::memory::Memory;
+pub use crate::cpu::memory::Memory;
 use crate::cpu::opcodes::OPCODES_MAPPING;
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::utils::{shift_left, shift_right, NthBit};
 use anyhow::{anyhow, bail, Context, Result};
+use std::fmt::{Debug, Formatter};
 
 type Register = u8;
 type Address = u16;
 type ProgramCounter = Address;
 type Value = u8;
 
-const PROGRAM_ROM_BEGIN_ADDR: Address = 0x8000;
+const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const PROGRAM_ROM_END_ADDR: Address = 0xffff;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
-#[derive(Debug)]
 pub struct Cpu {
     accumulator: Register,
     register_x: Register,
@@ -32,13 +32,27 @@ pub struct Cpu {
     memory: [Value; PROGRAM_ROM_END_ADDR as usize],
 }
 
+impl Debug for Cpu {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "A: {:#x?}\t X: {:#x?}\t Y: {:#x?}\t PC: {:#x?}\t SP: {:?}",
+            self.accumulator,
+            self.register_x,
+            self.register_y,
+            self.program_counter,
+            self.stack_pointer,
+        )
+    }
+}
+
 impl Default for Cpu {
     fn default() -> Self {
         Self {
             accumulator: 0,
             register_x: 0,
             register_y: 0,
-            status_register: StatusRegister::empty(),
+            status_register: StatusRegister::default(),
             program_counter: 0,
             stack_pointer: StackPointer::new(),
             memory: [0; 0xffff],
@@ -73,9 +87,18 @@ impl Cpu {
     }
 
     pub fn run(&mut self) -> Result<()> {
+        self.run_with_callback(|_| {})
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F) -> Result<()>
+    where
+        F: FnMut(&mut Cpu),
+    {
         loop {
             let code = self.read(self.program_counter);
             self.program_counter += 1;
+
+            let current_program_counter = self.program_counter;
 
             let opcode = OPCODES_MAPPING
                 .get(&code)
@@ -109,14 +132,8 @@ impl Cpu {
                 "INC" => self.inc(opcode.mode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
-                "JMP" => {
-                    self.jmp(opcode.mode)?;
-                    continue;
-                }
-                "JSR" => {
-                    self.jsr();
-                    continue;
-                }
+                "JMP" => self.jmp(opcode.mode)?,
+                "JSR" => self.jsr(),
                 "LDA" => self.lda(opcode.mode)?,
                 "LDX" => self.ldx(opcode.mode)?,
                 "LDY" => self.ldy(opcode.mode)?,
@@ -129,14 +146,8 @@ impl Cpu {
                 "PLP" => self.plp(),
                 "ROL" => self.rol(opcode.mode)?,
                 "ROR" => self.ror(opcode.mode)?,
-                "RTI" => {
-                    self.rti();
-                    continue;
-                }
-                "RTS" => {
-                    self.rts();
-                    continue;
-                }
+                "RTI" => self.rti(),
+                "RTS" => self.rts(),
                 "SBC" => self.sbc(opcode.mode)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
@@ -153,7 +164,11 @@ impl Cpu {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
-            self.program_counter += opcode.len();
+            if current_program_counter == self.program_counter {
+                self.program_counter += opcode.len();
+            }
+
+            callback(self);
         }
     }
 
@@ -167,44 +182,53 @@ impl Cpu {
     }
 
     fn adc(&mut self, mode: AddressingMode) -> Result<()> {
-        let addr = self
-            .get_operand_address(mode)
-            .ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
-
+        let addr = self.get_operand_address(mode).unwrap();
         let value = self.read(addr);
-        let carry = self.status_register.contains(StatusRegister::CARRY) as u8;
-        let acc_sign_bit = self.accumulator.nth_bit(7);
-        let result = self.accumulator.wrapping_add(value).wrapping_add(carry);
-        let result_sign_bit = result.nth_bit(7);
-
-        self.status_register
-            .set_carry_flag(result < self.accumulator);
-        self.status_register
-            .set_overflow_flag(acc_sign_bit != result_sign_bit);
-        self.status_register.update_zero_and_negative_flags(result);
-        self.accumulator = result;
+        self.add_to_register_a(value);
 
         Ok(())
     }
 
+    /// note: ignoring decimal mode
+    /// http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+    fn add_to_register_a(&mut self, data: u8) {
+        let sum = self.accumulator as u16
+            + data as u16
+            + (if self.status_register.contains(StatusRegister::CARRY) {
+                1
+            } else {
+                0
+            }) as u16;
+
+        let carry = sum > 0xff;
+
+        if carry {
+            self.status_register.insert(StatusRegister::CARRY);
+        } else {
+            self.status_register.remove(StatusRegister::CARRY);
+        }
+
+        let result = sum as u8;
+
+        if (data ^ result) & (result ^ self.accumulator) & 0x80 != 0 {
+            self.status_register.insert(StatusRegister::OVERFLOW);
+        } else {
+            self.status_register.remove(StatusRegister::OVERFLOW)
+        }
+
+        self.set_register_a(result);
+    }
+
+    fn set_register_a(&mut self, value: u8) {
+        self.accumulator = value;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+    }
+
     fn sbc(&mut self, mode: AddressingMode) -> Result<()> {
-        let addr = self
-            .get_operand_address(mode)
-            .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
-
-        let value = self.read(addr);
-        let carry_neg = !self.status_register.contains(StatusRegister::CARRY) as u8;
-        let acc_sign_bit = self.accumulator.nth_bit(7);
-        let result = self.accumulator.wrapping_sub(value).wrapping_sub(carry_neg);
-        let result_sign_bit = result.nth_bit(7);
-
-        self.status_register
-            .set_carry_flag(result > self.accumulator);
-        self.status_register
-            .set_overflow_flag(acc_sign_bit != result_sign_bit);
-        self.status_register.update_zero_and_negative_flags(result);
-
-        self.accumulator = result;
+        let addr = self.get_operand_address(mode).unwrap();
+        let data = self.read(addr);
+        self.add_to_register_a(((data as i8).wrapping_neg().wrapping_sub(1)) as u8);
 
         Ok(())
     }
@@ -473,6 +497,8 @@ impl Cpu {
         let value = self.pop_stack();
 
         self.status_register = StatusRegister::from(value);
+        self.status_register.remove(StatusRegister::BREAK);
+        self.status_register.insert(StatusRegister::BREAK2);
     }
 
     fn php(&mut self) {
@@ -496,11 +522,13 @@ impl Cpu {
 
     fn branch(&mut self, condition: bool) {
         if condition {
-            let offset = self.read(self.program_counter) as i8;
-            self.program_counter = self
+            let jump: i8 = self.read(self.program_counter) as i8;
+            let jump_addr = self
                 .program_counter
                 .wrapping_add(1)
-                .wrapping_add(offset as u16);
+                .wrapping_add(jump as u16);
+
+            self.program_counter = jump_addr;
         }
     }
 
@@ -594,10 +622,10 @@ impl Cpu {
     }
 
     fn pop_stack_u16(&mut self) -> u16 {
-        let lo = self.pop_stack();
-        let hi = self.pop_stack();
+        let lo = self.pop_stack() as u16;
+        let hi = self.pop_stack() as u16;
 
-        u16::from_le_bytes([lo, hi])
+        hi << 8 | lo
     }
 }
 
@@ -1005,7 +1033,7 @@ mod tests {
         #[test]
         fn bcc_skips_lda() {
             // Call BCC with jumping two bytes forward (skips the immediate LDA instruction)
-            let data = [0x90, 0x01, 0xa9, 0xff, 0x00];
+            let data = [0x90, 0x02, 0xa9, 0xff, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0);
