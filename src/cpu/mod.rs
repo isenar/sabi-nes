@@ -52,7 +52,7 @@ impl Default for Cpu {
             accumulator: 0,
             register_x: 0,
             register_y: 0,
-            status_register: StatusRegister::default(),
+            status_register: StatusRegister::empty(),
             program_counter: 0,
             stack_pointer: StackPointer::new(),
             memory: [0; 0xffff],
@@ -164,6 +164,7 @@ impl Cpu {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
+            // check
             if current_program_counter == self.program_counter {
                 self.program_counter += opcode.len();
             }
@@ -182,55 +183,42 @@ impl Cpu {
     }
 
     fn adc(&mut self, mode: AddressingMode) -> Result<()> {
-        let addr = self.get_operand_address(mode).unwrap();
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
+
         let value = self.read(addr);
-        self.add_to_register_a(value);
+        self.add_to_acc(value);
 
         Ok(())
-    }
-
-    /// note: ignoring decimal mode
-    /// http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-    fn add_to_register_a(&mut self, data: u8) {
-        let sum = self.accumulator as u16
-            + data as u16
-            + (if self.status_register.contains(StatusRegister::CARRY) {
-                1
-            } else {
-                0
-            }) as u16;
-
-        let carry = sum > 0xff;
-
-        if carry {
-            self.status_register.insert(StatusRegister::CARRY);
-        } else {
-            self.status_register.remove(StatusRegister::CARRY);
-        }
-
-        let result = sum as u8;
-
-        if (data ^ result) & (result ^ self.accumulator) & 0x80 != 0 {
-            self.status_register.insert(StatusRegister::OVERFLOW);
-        } else {
-            self.status_register.remove(StatusRegister::OVERFLOW)
-        }
-
-        self.set_register_a(result);
-    }
-
-    fn set_register_a(&mut self, value: u8) {
-        self.accumulator = value;
-        self.status_register
-            .update_zero_and_negative_flags(self.accumulator);
     }
 
     fn sbc(&mut self, mode: AddressingMode) -> Result<()> {
-        let addr = self.get_operand_address(mode).unwrap();
-        let data = self.read(addr);
-        self.add_to_register_a(((data as i8).wrapping_neg().wrapping_sub(1)) as u8);
+        let addr = self
+            .get_operand_address(mode)
+            .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
+
+        let value = self.read(addr);
+        let neg = ((value as i8).wrapping_neg().wrapping_sub(1)) as u8;
+
+        self.add_to_acc(neg);
 
         Ok(())
+    }
+
+    fn add_to_acc(&mut self, data: u8) {
+        let input_carry = self.status_register.contains(StatusRegister::CARRY) as u16;
+        let sum_wide = self.accumulator as u16 + data as u16 + input_carry;
+
+        let result = sum_wide as u8;
+
+        self.status_register.set_carry_flag(sum_wide > 0xff);
+        self.status_register
+            .set_overflow_flag((data ^ result) & (result ^ self.accumulator) & 0x80 != 0);
+
+        self.accumulator = result;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
     }
 
     fn compare(&mut self, mode: AddressingMode, register: Register) -> Result<()> {
