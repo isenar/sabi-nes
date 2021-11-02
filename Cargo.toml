@@ -11,3 +11,7 @@ authors = ["Dariusz Dajka <dariusz.dajka@gmail.com>"]
 anyhow = "1.0.44"
 bitflags = "1.3.2"
 lazy_static = "1.4.0"
+
+[dev-dependencies]
+rand = "0.8.4"
+sdl2 = "0.35.1"
