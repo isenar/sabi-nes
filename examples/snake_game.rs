@@ -1,5 +1,5 @@
-use sabi_nes::cpu::Cpu;
-use sabi_nes::cpu::Memory;
+use sabi_nes::Cpu;
+use sabi_nes::Memory;
 
 use anyhow::Result;
 use rand::Rng;
@@ -8,6 +8,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::EventPump;
 
+// TODO: read this from file?
 const SNAKE_GAME_CODE: &[u8] = &[
     0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02, 0x85,
     0x02, 0xa9, 0x04, 0x85, 0x03, 0xa9, 0x11, 0x85, 0x10, 0xa9, 0x10, 0x85, 0x12, 0xa9, 0x0f, 0x85,
@@ -80,8 +81,8 @@ fn read_screen_state(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
     let mut frame_idx = 0;
     let mut update = false;
 
-    for i in 0x0200..0x0600 {
-        let color_idx = cpu.read(i);
+    for addr in 0x0200..0x0600 {
+        let color_idx = cpu.read(addr);
         let (b1, b2, b3) = color(color_idx).rgb();
         if frame[frame_idx] != b1 || frame[frame_idx + 1] != b2 || frame[frame_idx + 2] != b3 {
             frame[frame_idx] = b1;
