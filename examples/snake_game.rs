@@ -77,9 +77,8 @@ fn color(byte: u8) -> Color {
     }
 }
 
-fn read_screen_state(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
+fn screen_update_needed(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
     let mut frame_idx = 0;
-    let mut update = false;
 
     for addr in 0x0200..0x0600 {
         let color_idx = cpu.read(addr);
@@ -88,13 +87,14 @@ fn read_screen_state(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
             frame[frame_idx] = b1;
             frame[frame_idx + 1] = b2;
             frame[frame_idx + 2] = b3;
-            update = true;
+
+            return true;
         }
 
         frame_idx += 3;
     }
 
-    update
+    false
 }
 
 fn main() -> Result<()> {
@@ -122,16 +122,20 @@ fn main() -> Result<()> {
     cpu.run_with_callback(|cpu| {
         // println!("{:?}", cpu);
 
-        handle_user_input(cpu, &mut event_pump).unwrap();
+        handle_user_input(cpu, &mut event_pump)?;
         cpu.write(0xfe, rng.gen_range(1..16));
 
-        if read_screen_state(cpu, &mut screen_state) {
-            texture.update(None, &screen_state, 32 * 3).unwrap();
-            canvas.copy(&texture, None, None).unwrap();
+        if screen_update_needed(cpu, &mut screen_state) {
+            texture.update(None, &screen_state, 32 * 3)?;
+            canvas
+                .copy(&texture, None, None)
+                .map_err(anyhow::Error::msg)?;
             canvas.present();
         }
 
         std::thread::sleep(std::time::Duration::from_micros(50));
+
+        Ok(())
     })?;
 
     Ok(())

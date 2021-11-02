@@ -87,12 +87,12 @@ impl Cpu {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        self.run_with_callback(|_| {})
+        self.run_with_callback(|_| Ok(()))
     }
 
     pub fn run_with_callback<F>(&mut self, mut callback: F) -> Result<()>
     where
-        F: FnMut(&mut Cpu),
+        F: FnMut(&mut Cpu) -> Result<()>,
     {
         loop {
             let code = self.read(self.program_counter);
@@ -169,7 +169,7 @@ impl Cpu {
                 self.program_counter += opcode.len();
             }
 
-            callback(self);
+            callback(self)?;
         }
     }
 
@@ -679,10 +679,8 @@ mod tests {
 
         #[test]
         fn zero_flag_set() {
-            let mut cpu = Cpu::default();
             let data = [0xa9, 0x00, 0x00];
-
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().build_and_run(&data);
 
             assert!(cpu.status_register.contains(StatusRegister::ZERO));
         }
@@ -709,11 +707,8 @@ mod tests {
 
         #[test]
         fn ldy_zero_page() {
-            let mut cpu = Cpu::default();
             let data = [0xa4, 0xaa, 0x00];
-
-            cpu.write(0xaa, 0x66);
-            cpu.load_and_run(&data).expect("Failed to load and run");
+            let cpu = CpuBuilder::new().write(0xaa, 0x66).build_and_run(&data);
 
             assert_eq!(cpu.register_y, 0x66);
             assert!(!cpu.status_register.contains(StatusRegister::ZERO));
