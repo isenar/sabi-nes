@@ -22,18 +22,12 @@ impl Bus {
     }
 
     fn read_prg_rom(&self, addr: Address) -> Byte {
-        println!("ADDR before: {:#x}", addr);
-
         let mut addr = addr - 0x8000;
-
-        println!("ADDR after: {:#x}", addr);
 
         if self.rom.prg_rom.len() == 0x4000 && addr >= 0x4000 {
             //mirror if needed
             addr %= 0x4000;
         }
-
-        println!("ADDR after mirroring: {:#x}", addr);
 
         self.rom.prg_rom[addr as usize]
     }
