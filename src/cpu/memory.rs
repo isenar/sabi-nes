@@ -1,8 +1,9 @@
-use crate::cpu::{Address, Value};
+use crate::cpu::Address;
+use crate::Byte;
 
 pub trait Memory {
-    fn read(&self, addr: Address) -> Value;
-    fn write(&mut self, addr: Address, value: Value);
+    fn read(&self, addr: Address) -> Byte;
+    fn write(&mut self, addr: Address, value: Byte);
 
     fn read_u16(&self, addr: Address) -> u16 {
         let lo = self.read(addr);

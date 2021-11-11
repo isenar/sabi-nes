@@ -4,20 +4,21 @@ mod opcodes;
 mod stack_pointer;
 mod status_register;
 
+pub use crate::cpu::memory::Memory;
+
 use crate::bus::Bus;
 use crate::cpu::addressing_mode::AddressingMode;
-pub use crate::cpu::memory::Memory;
 use crate::cpu::opcodes::OPCODES_MAPPING;
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::utils::{shift_left, shift_right, NthBit};
+use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
 use std::fmt::{Debug, Formatter};
 
 pub type Register = u8;
 pub type Address = u16;
 pub type ProgramCounter = Address;
-pub type Value = u8;
 
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
@@ -47,11 +48,11 @@ impl Debug for Cpu {
 }
 
 impl Memory for Cpu {
-    fn read(&self, addr: Address) -> Value {
+    fn read(&self, addr: Address) -> Byte {
         self.bus.read(addr)
     }
 
-    fn write(&mut self, addr: Address, value: Value) {
+    fn write(&mut self, addr: Address, value: Byte) {
         self.bus.write(addr, value)
     }
 
@@ -77,7 +78,7 @@ impl Cpu {
         }
     }
 
-    pub fn load_and_run(&mut self, data: &[Value]) -> Result<()> {
+    pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {
         self.load(data);
         self.reset();
         self.program_counter = PROGRAM_ROM_BEGIN_ADDR;
@@ -86,7 +87,7 @@ impl Cpu {
         Ok(())
     }
 
-    pub fn load(&mut self, data: &[Value]) {
+    pub fn load(&mut self, data: &[Byte]) {
         for (addr, &value) in data.iter().enumerate() {
             let addr = addr as Address;
             self.write(addr + PROGRAM_ROM_BEGIN_ADDR, value);
@@ -208,7 +209,7 @@ impl Cpu {
             .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
 
         let value = self.read(addr);
-        let neg = ((value as i8).wrapping_neg().wrapping_sub(1)) as u8;
+        let neg = ((value as i8).wrapping_neg().wrapping_sub(1)) as Byte;
 
         self.add_to_acc(neg);
 
@@ -219,7 +220,7 @@ impl Cpu {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as u16;
         let sum_wide = self.accumulator as u16 + data as u16 + input_carry;
 
-        let result = sum_wide as u8;
+        let result = sum_wide as Byte;
 
         self.status_register.set_carry_flag(sum_wide > 0xff);
         self.status_register
@@ -266,7 +267,7 @@ impl Cpu {
     fn logical_op_with_acc(
         &mut self,
         mode: AddressingMode,
-        logical_op: fn(Value, Value) -> Value,
+        logical_op: fn(Byte, Byte) -> Byte,
     ) -> Result<()> {
         let addr = self
             .get_operand_address(mode)
@@ -325,7 +326,7 @@ impl Cpu {
 
     fn ror(&mut self, mode: AddressingMode) -> Result<()> {
         let input_carry =
-            self.status_register.contains(StatusRegister::CARRY) as Value * 0b1000_0000;
+            self.status_register.contains(StatusRegister::CARRY) as Byte * 0b1000_0000;
         let (previous, shifted) = self.shift(mode, input_carry, shift_right)?;
 
         self.status_register.set_carry_flag(previous.nth_bit(0));
@@ -337,9 +338,9 @@ impl Cpu {
     fn shift(
         &mut self,
         mode: AddressingMode,
-        input_carry: Value,
-        shift_op: fn(Value) -> Value,
-    ) -> Result<(Value, Value)> {
+        input_carry: Byte,
+        shift_op: fn(Byte) -> Byte,
+    ) -> Result<(Byte, Byte)> {
         let address = self.get_operand_address(mode);
 
         let (old_value, shifted) = match address {
@@ -576,7 +577,7 @@ impl Cpu {
         })
     }
 
-    fn load_value(&mut self, mode: AddressingMode) -> Result<Value> {
+    fn load_value(&mut self, mode: AddressingMode) -> Result<Byte> {
         let addr = self.get_operand_address(mode).ok_or_else(|| {
             anyhow!(
                 "Could not get operand address when loading value ({:?})",
@@ -590,7 +591,7 @@ impl Cpu {
         Ok(value)
     }
 
-    fn store_value(&mut self, value: Value, mode: AddressingMode) -> Result<()> {
+    fn store_value(&mut self, value: Byte, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)
             .ok_or_else(|| anyhow!("Could not fetch address when storing value ({:?}", mode))?;
@@ -600,7 +601,7 @@ impl Cpu {
         Ok(())
     }
 
-    fn push_stack(&mut self, value: Value) {
+    fn push_stack(&mut self, value: Byte) {
         self.write(self.stack_pointer.address(), value);
 
         self.stack_pointer.decrement();
@@ -613,7 +614,7 @@ impl Cpu {
         self.push_stack(lo);
     }
 
-    fn pop_stack(&mut self) -> Value {
+    fn pop_stack(&mut self) -> Byte {
         self.stack_pointer.increment();
         self.read(self.stack_pointer.address())
     }
@@ -633,7 +634,7 @@ mod tests {
     use lazy_static::lazy_static;
 
     lazy_static! {
-        static ref TEST_ROM: Vec<Value> = {
+        static ref TEST_ROM: Vec<Byte> = {
             let mut rom = vec![];
             let header = vec![
                 0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -654,7 +655,7 @@ mod tests {
 
     #[derive(Debug)]
     enum Write {
-        Single(Address, Value),
+        Single(Address, Byte),
         U16(Address, u16),
     }
 
@@ -667,7 +668,7 @@ mod tests {
             Self { writes: vec![] }
         }
 
-        fn write(mut self, address: Address, value: Value) -> Self {
+        fn write(mut self, address: Address, value: Byte) -> Self {
             self.writes.push(Write::Single(address, value));
 
             self
@@ -679,7 +680,7 @@ mod tests {
             self
         }
 
-        fn build_and_run(self, data: &[Value]) -> Cpu {
+        fn build_and_run(self, data: &[Byte]) -> Cpu {
             let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
             let bus = Bus::new(rom);
             let mut cpu = Cpu::new(bus);

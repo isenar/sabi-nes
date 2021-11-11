@@ -1,10 +1,10 @@
 use crate::cartridge::MirroringType;
-use crate::cpu::Value;
+use crate::Byte;
 use anyhow::{anyhow, bail, Result};
 use bitflags::bitflags;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
-const NES_TAG: [Value; 4] = [0x4e, 0x45, 0x53, 0x1a];
+const NES_TAG: [Byte; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 const PRG_ROM_PAGE_SIZE: usize = 16384;
 const CHR_ROM_PAGE_SIZE: usize = 8192;
@@ -23,7 +23,7 @@ bitflags! {
 }
 
 impl ControlByte1 {
-    pub fn mapper_bits_lo(&self) -> Value {
+    pub fn mapper_bits_lo(&self) -> Byte {
         self.bits >> 4
     }
 }
@@ -44,7 +44,7 @@ bitflags! {
 }
 
 impl ControlByte2 {
-    pub fn mapper_bits_hi(&self) -> Value {
+    pub fn mapper_bits_hi(&self) -> Byte {
         (*self & Self::MAPPER_MASK).bits
     }
 }
@@ -61,10 +61,10 @@ struct RomHeader {
     pub prg_ram_units: usize,
 }
 
-impl TryFrom<&[Value]> for RomHeader {
+impl TryFrom<&[Byte]> for RomHeader {
     type Error = anyhow::Error;
 
-    fn try_from(data: &[Value]) -> Result<Self> {
+    fn try_from(data: &[Byte]) -> Result<Self> {
         Self::validate(data)?;
 
         Ok(Self {
@@ -78,7 +78,7 @@ impl TryFrom<&[Value]> for RomHeader {
 }
 
 impl RomHeader {
-    fn validate(data: &[Value]) -> Result<()> {
+    fn validate(data: &[Byte]) -> Result<()> {
         if data[0..4] != NES_TAG {
             bail!("File is not an iNES format - missing 'NES' tag");
         }
@@ -96,21 +96,21 @@ impl RomHeader {
         Ok(())
     }
 
-    fn mapper(&self) -> Value {
+    fn mapper(&self) -> Byte {
         self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi()
     }
 }
 
 #[derive(Debug)]
 pub struct Rom {
-    pub prg_rom: Vec<Value>,
-    pub chr_rom: Vec<Value>,
-    pub mapper: u8,
+    pub prg_rom: Vec<Byte>,
+    pub chr_rom: Vec<Byte>,
+    pub mapper: Byte,
     pub screen_mirroring: MirroringType,
 }
 
 impl Rom {
-    pub fn new(data: &[Value]) -> Result<Self> {
+    pub fn new(data: &[Byte]) -> Result<Self> {
         let header: RomHeader = data
             .get(0..16)
             .ok_or_else(|| anyhow!("Failed to parse first 16 bytes for header"))?

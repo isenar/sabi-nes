@@ -1,6 +1,6 @@
 use crate::cartridge::Rom;
-use crate::cpu::{Address, Value};
-use crate::Memory;
+use crate::cpu::Address;
+use crate::{Byte, Memory};
 
 const RAM: Address = 0x0000;
 const RAM_MIRRORS_END: Address = 0x1fff;
@@ -9,7 +9,7 @@ const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 
 #[derive(Debug)]
 pub struct Bus {
-    cpu_vram: [Value; 2048],
+    cpu_vram: [Byte; 2048],
     rom: Rom,
 }
 
@@ -21,7 +21,7 @@ impl Bus {
         }
     }
 
-    fn read_prg_rom(&self, addr: Address) -> Value {
+    fn read_prg_rom(&self, addr: Address) -> Byte {
         println!("ADDR before: {:#x}", addr);
 
         let mut addr = addr - 0x8000;
@@ -40,7 +40,7 @@ impl Bus {
 }
 
 impl Memory for Bus {
-    fn read(&self, addr: Address) -> Value {
+    fn read(&self, addr: Address) -> Byte {
         match addr {
             RAM..=RAM_MIRRORS_END => {
                 // truncate to 11 bits
@@ -61,7 +61,7 @@ impl Memory for Bus {
         }
     }
 
-    fn write(&mut self, addr: Address, value: Value) {
+    fn write(&mut self, addr: Address, value: Byte) {
         match addr {
             RAM..=RAM_MIRRORS_END => {
                 let mirror_base_addr = addr & 0b0000_0111_1111_1111;
