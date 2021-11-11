@@ -10,7 +10,7 @@ const STACK_RESET: u8 = 0xfd;
 pub struct StackPointer(Byte);
 
 impl Debug for StackPointer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{:#x}", self.0)
     }
 }
