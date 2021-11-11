@@ -1,5 +1,4 @@
-use sabi_nes::Cpu;
-use sabi_nes::Memory;
+use sabi_nes::{Bus, Cpu, Memory, Rom};
 
 use anyhow::Result;
 use rand::Rng;
@@ -116,7 +115,9 @@ fn main() -> Result<()> {
     let mut screen_state = [0; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
-    let mut cpu = Cpu::default();
+    let rom = Rom::new(SNAKE_GAME_CODE)?;
+    let bus = Bus::new(rom);
+    let mut cpu = Cpu::new(bus);
     cpu.load(SNAKE_GAME_CODE);
     cpu.reset();
     cpu.run_with_callback(|cpu| {

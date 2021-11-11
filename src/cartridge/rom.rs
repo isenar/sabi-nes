@@ -1,0 +1,153 @@
+use crate::cartridge::MirroringType;
+use crate::cpu::Value;
+use anyhow::{anyhow, bail, Result};
+use bitflags::bitflags;
+
+/// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
+const NES_TAG: [Value; 4] = [0x4e, 0x45, 0x53, 0x1a];
+
+const PRG_ROM_PAGE_SIZE: usize = 16384;
+const CHR_ROM_PAGE_SIZE: usize = 8192;
+
+bitflags! {
+    struct ControlByte1: u8 {
+        const MIRRORING               = 0b0000_0001; // 1 for vertical, 0 for horizontal
+        const BATTERY_BACKED_RAM      = 0b0000_0010;
+        const HAS_TRAINER             = 0b0000_0100;
+        const FOUR_SCREEN_VRAM_LAYOUT = 0b0000_1000;
+        const MAPPER_TYPE1            = 0b0001_0000; // first bit of mapper type
+        const MAPPER_TYPE2            = 0b0010_0000; // second bit of mapper type
+        const MAPPER_TYPE3            = 0b0100_0000; // third bit of mapper type
+        const MAPPER_TYPE4            = 0b1000_0000; // fourth bit of mapper type
+    }
+}
+
+impl ControlByte1 {
+    pub fn mapper_bits_lo(&self) -> Value {
+        self.bits >> 4
+    }
+}
+
+bitflags! {
+    struct ControlByte2: u8 {
+        const INES_V1_FIRST   = 0b0000_0001; // 0 for iNES v1 format
+        const INES_V1_SECOND  = 0b0000_0010; // 0 for iNES v1 format
+        const INES_FMT_FIRST  = 0b0000_0100; // if INES_FMT bits are == 10, then it's NES2.0 format,
+        const INES_FMT_SECOND = 0b0000_1000; // if they are == 00, then it's iNES v1 format
+        const MAPPER_TYPE5    = 0b0001_0000; // fifth bit of mapper type
+        const MAPPER_TYPE6    = 0b0010_0000; // sixth bit of mapper type
+        const MAPPER_TYPE7    = 0b0100_0000; // seventh bit of mapper type
+        const MAPPER_TYPE8    = 0b1000_0000; // eighth bit of mapper type
+
+        const MAPPER_MASK     = 0b1111_0000;
+    }
+}
+
+impl ControlByte2 {
+    pub fn mapper_bits_hi(&self) -> Value {
+        (*self & Self::MAPPER_MASK).bits
+    }
+}
+
+#[derive(Debug)]
+struct RomHeader {
+    /// Number of 16kB ROM banks (PRG ROM)
+    pub prg_rom_banks: usize,
+    /// Number o 8kB VROM banks (CHR ROM)
+    pub chr_rom_banks: usize,
+    pub control_byte1: ControlByte1,
+    pub control_byte2: ControlByte2,
+    /// Size of PRG RAM in 8kB units
+    pub prg_ram_units: usize,
+}
+
+impl TryFrom<&[Value]> for RomHeader {
+    type Error = anyhow::Error;
+
+    fn try_from(data: &[Value]) -> Result<Self> {
+        Self::validate(data)?;
+
+        Ok(Self {
+            prg_rom_banks: data[4].into(),
+            chr_rom_banks: data[5].into(),
+            control_byte1: ControlByte1::from_bits_truncate(data[6]),
+            control_byte2: ControlByte2::from_bits_truncate(data[7]),
+            prg_ram_units: data[8].into(),
+        })
+    }
+}
+
+impl RomHeader {
+    fn validate(data: &[Value]) -> Result<()> {
+        if data[0..4] != NES_TAG {
+            bail!("File is not an iNES format - missing 'NES' tag");
+        }
+
+        let is_ines1 = (data[7] >> 2 & 0b11) == 0;
+
+        if !is_ines1 {
+            bail!("NES2.0 format not supported");
+        }
+
+        if !data[8..16].iter().all(|&byte| byte == 0) {
+            bail!("last 8 bites of the header are not 0s");
+        }
+
+        Ok(())
+    }
+
+    fn mapper(&self) -> Value {
+        self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi()
+    }
+}
+
+#[derive(Debug)]
+pub struct Rom {
+    pub prg_rom: Vec<Value>,
+    pub chr_rom: Vec<Value>,
+    pub mapper: u8,
+    pub screen_mirroring: MirroringType,
+}
+
+impl Rom {
+    pub fn new(data: &[Value]) -> Result<Self> {
+        let header: RomHeader = data
+            .get(0..16)
+            .ok_or_else(|| anyhow!("Failed to parse first 16 bytes for header"))?
+            .try_into()?;
+
+        dbg!(&header);
+
+        let four_screen = header
+            .control_byte1
+            .contains(ControlByte1::FOUR_SCREEN_VRAM_LAYOUT);
+        let vertical_mirroring = header.control_byte1.contains(ControlByte1::MIRRORING);
+        let screen_mirroring = MirroringType::new(four_screen, vertical_mirroring);
+        let mapper = header.mapper();
+        let skip_trainer = header.control_byte1.contains(ControlByte1::HAS_TRAINER);
+        let prg_rom_size = header.prg_rom_banks * PRG_ROM_PAGE_SIZE;
+        let chr_rom_size = header.chr_rom_banks * CHR_ROM_PAGE_SIZE;
+        let prg_rom_start = 16 + skip_trainer as usize * 512;
+        let chr_rom_start = prg_rom_start + prg_rom_size;
+
+        println!("rom size: {}", data.len());
+        println!("prg_rom_start {}", prg_rom_start);
+        println!("chr_rom_end: {}", chr_rom_start + chr_rom_size);
+
+        let prg_rom = data
+            .get(prg_rom_start..(prg_rom_start + prg_rom_size))
+            .ok_or_else(|| anyhow!("oops1"))?
+            .into();
+        let chr_rom = data
+            .get(chr_rom_start..(chr_rom_start + chr_rom_size))
+            .ok_or_else(|| anyhow!("oops2"))?
+            .into();
+
+        Ok(Self {
+            prg_rom,
+            chr_rom,
+            mapper,
+            screen_mirroring,
+        })
+    }
+}

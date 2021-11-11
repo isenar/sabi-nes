@@ -4,6 +4,7 @@ mod opcodes;
 mod stack_pointer;
 mod status_register;
 
+use crate::bus::Bus;
 use crate::cpu::addressing_mode::AddressingMode;
 pub use crate::cpu::memory::Memory;
 use crate::cpu::opcodes::OPCODES_MAPPING;
@@ -13,13 +14,12 @@ use crate::utils::{shift_left, shift_right, NthBit};
 use anyhow::{anyhow, bail, Context, Result};
 use std::fmt::{Debug, Formatter};
 
-type Register = u8;
-type Address = u16;
-type ProgramCounter = Address;
-type Value = u8;
+pub type Register = u8;
+pub type Address = u16;
+pub type ProgramCounter = Address;
+pub type Value = u8;
 
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
-const PROGRAM_ROM_END_ADDR: Address = 0xffff;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
 pub struct Cpu {
@@ -29,7 +29,7 @@ pub struct Cpu {
     status_register: StatusRegister,
     program_counter: ProgramCounter,
     stack_pointer: StackPointer,
-    memory: [Value; PROGRAM_ROM_END_ADDR as usize],
+    bus: Bus,
 }
 
 impl Debug for Cpu {
@@ -46,8 +46,26 @@ impl Debug for Cpu {
     }
 }
 
-impl Default for Cpu {
-    fn default() -> Self {
+impl Memory for Cpu {
+    fn read(&self, addr: Address) -> Value {
+        self.bus.read(addr)
+    }
+
+    fn write(&mut self, addr: Address, value: Value) {
+        self.bus.write(addr, value)
+    }
+
+    fn read_u16(&self, addr: Address) -> u16 {
+        self.bus.read_u16(addr)
+    }
+
+    fn write_u16(&mut self, addr: Address, data: u16) {
+        self.bus.write_u16(addr, data)
+    }
+}
+
+impl Cpu {
+    pub fn new(bus: Bus) -> Self {
         Self {
             accumulator: 0,
             register_x: 0,
@@ -55,35 +73,26 @@ impl Default for Cpu {
             status_register: StatusRegister::empty(),
             program_counter: 0,
             stack_pointer: StackPointer::new(),
-            memory: [0; 0xffff],
+            bus,
         }
     }
-}
 
-impl Memory for Cpu {
-    fn read(&self, addr: Address) -> Value {
-        self.memory[addr as usize]
-    }
-
-    fn write(&mut self, addr: Address, value: Value) {
-        self.memory[addr as usize] = value;
-    }
-}
-
-impl Cpu {
     pub fn load_and_run(&mut self, data: &[Value]) -> Result<()> {
         self.load(data);
         self.reset();
+        self.program_counter = PROGRAM_ROM_BEGIN_ADDR;
         self.run()?;
 
         Ok(())
     }
 
     pub fn load(&mut self, data: &[Value]) {
-        self.memory
-            [PROGRAM_ROM_BEGIN_ADDR as usize..(PROGRAM_ROM_BEGIN_ADDR as usize + data.len())]
-            .copy_from_slice(data);
-        self.write_u16(RESET_VECTOR_BEGIN_ADDR, PROGRAM_ROM_BEGIN_ADDR);
+        for (addr, &value) in data.iter().enumerate() {
+            let addr = addr as Address;
+            self.write(addr + PROGRAM_ROM_BEGIN_ADDR, value);
+        }
+
+        // self.write_u16(RESET_VECTOR_BEGIN_ADDR, PROGRAM_ROM_BEGIN_ADDR);
     }
 
     pub fn run(&mut self) -> Result<()> {
@@ -620,6 +629,28 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Rom;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref TEST_ROM: Vec<Value> = {
+            let mut rom = vec![];
+            let header = vec![
+                0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
+            ];
+            let prg_rom = vec![0x00; 2 * 16384];
+            let chr_rom = vec![0x00; 8192];
+
+            rom.extend(header);
+            rom.extend(prg_rom);
+            rom.extend(chr_rom);
+
+            println!("ROM len: {}", rom.len());
+
+            rom
+        };
+    }
 
     #[derive(Debug)]
     enum Write {
@@ -649,7 +680,9 @@ mod tests {
         }
 
         fn build_and_run(self, data: &[Value]) -> Cpu {
-            let mut cpu = Cpu::default();
+            let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
+            let bus = Bus::new(rom);
+            let mut cpu = Cpu::new(bus);
 
             for write in self.writes {
                 match write {
@@ -866,9 +899,9 @@ mod tests {
             // 1. Store 0b1010_0000 in address 0xbeef
             // 2. Load 0b1101_0110 to accumulator
             // 3. perform bitwise XOR on the accumulator with value under address 0xbeef
-            let data = [0xa9, 0b1101_0110, 0x4d, 0xef, 0xbe, 0x00];
+            let data = [0xa9, 0b1101_0110, 0x4d, 0xef, 0x1a, 0x00];
             let cpu = CpuBuilder::new()
-                .write(0xbeef, 0b1010_0000)
+                .write(0x1aef, 0b1010_0000)
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0b0111_0110);
@@ -944,12 +977,12 @@ mod tests {
 
         #[test]
         fn lsr_absolute_shift_into_carry() {
-            let data = [0x4e, 0xda, 0xda, 0x00];
+            let data = [0x4e, 0xda, 0x0a, 0x00];
             let cpu = CpuBuilder::new()
-                .write(0xdada, 0b01010111)
+                .write(0x0ada, 0b01010111)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read(0xdada), 0b00101011);
+            assert_eq!(cpu.read(0x0ada), 0b00101011);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
@@ -1063,8 +1096,8 @@ mod tests {
 
         #[test]
         fn cmp_absolute_same_values() {
-            let data = [0xa9, 0x11, 0xcd, 0xde, 0xde, 0x00];
-            let cpu = CpuBuilder::new().write(0xdede, 0x11).build_and_run(&data);
+            let data = [0xa9, 0x11, 0xcd, 0xde, 0x1e, 0x00];
+            let cpu = CpuBuilder::new().write(0x1ede, 0x11).build_and_run(&data);
 
             // CMP should not change the value of accumulator
             assert_eq!(cpu.accumulator, 0x11);
