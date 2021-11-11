@@ -116,8 +116,6 @@ impl Rom {
             .ok_or_else(|| anyhow!("Failed to parse first 16 bytes for header"))?
             .try_into()?;
 
-        dbg!(&header);
-
         let four_screen = header
             .control_byte1
             .contains(ControlByte1::FOUR_SCREEN_VRAM_LAYOUT);
@@ -130,17 +128,13 @@ impl Rom {
         let prg_rom_start = 16 + skip_trainer as usize * 512;
         let chr_rom_start = prg_rom_start + prg_rom_size;
 
-        println!("rom size: {}", data.len());
-        println!("prg_rom_start {}", prg_rom_start);
-        println!("chr_rom_end: {}", chr_rom_start + chr_rom_size);
-
         let prg_rom = data
             .get(prg_rom_start..(prg_rom_start + prg_rom_size))
-            .ok_or_else(|| anyhow!("oops1"))?
+            .ok_or_else(|| anyhow!("Failed to retrieve PRG ROM data - not enough bytes"))?
             .into();
         let chr_rom = data
             .get(chr_rom_start..(chr_rom_start + chr_rom_size))
-            .ok_or_else(|| anyhow!("oops2"))?
+            .ok_or_else(|| anyhow!("Failed to retrieve CHR ROM data - not enough bytes"))?
             .into();
 
         Ok(Self {

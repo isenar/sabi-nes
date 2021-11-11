@@ -18,19 +18,19 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Result<()> {
             Event::KeyDown {
                 keycode: Some(Keycode::W),
                 ..
-            } => cpu.write(0xff, 0x77),
+            } => cpu.write(0xff, 0x77)?,
             Event::KeyDown {
                 keycode: Some(Keycode::S),
                 ..
-            } => cpu.write(0xff, 0x73),
+            } => cpu.write(0xff, 0x73)?,
             Event::KeyDown {
                 keycode: Some(Keycode::A),
                 ..
-            } => cpu.write(0xff, 0x61),
+            } => cpu.write(0xff, 0x61)?,
             Event::KeyDown {
                 keycode: Some(Keycode::D),
                 ..
-            } => cpu.write(0xff, 0x64),
+            } => cpu.write(0xff, 0x64)?,
             _ => {}
         }
     }
@@ -52,24 +52,24 @@ fn color(byte: u8) -> Color {
     }
 }
 
-fn screen_update_needed(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> bool {
+fn screen_update_needed(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> Result<bool> {
     let mut frame_idx = 0;
 
     for addr in 0x0200..0x0600 {
-        let color_idx = cpu.read(addr);
+        let color_idx = cpu.read(addr)?;
         let (b1, b2, b3) = color(color_idx).rgb();
         if frame[frame_idx] != b1 || frame[frame_idx + 1] != b2 || frame[frame_idx + 2] != b3 {
             frame[frame_idx] = b1;
             frame[frame_idx + 1] = b2;
             frame[frame_idx + 2] = b3;
 
-            return true;
+            return Ok(true);
         }
 
         frame_idx += 3;
     }
 
-    false
+    Ok(false)
 }
 
 fn main() -> Result<()> {
@@ -95,14 +95,14 @@ fn main() -> Result<()> {
     let rom = Rom::new(&rom_file)?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
-    cpu.reset();
+    cpu.reset()?;
     cpu.run_with_callback(|cpu| {
         // println!("{:?}", cpu);
 
         handle_user_input(cpu, &mut event_pump)?;
-        cpu.write(0xfe, rng.gen_range(1..16));
+        cpu.write(0xfe, rng.gen_range(1..16))?;
 
-        if screen_update_needed(cpu, &mut screen_state) {
+        if screen_update_needed(cpu, &mut screen_state)? {
             texture.update(None, &screen_state, 32 * 3)?;
             canvas
                 .copy(&texture, None, None)
