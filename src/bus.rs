@@ -61,9 +61,6 @@ impl Memory for Bus {
         match addr {
             RAM..=RAM_MIRRORS_END => {
                 let mirror_base_addr = addr & 0b0000_0111_1111_1111;
-
-                println!("Truncated to {:x?}", mirror_base_addr);
-
                 self.cpu_vram[mirror_base_addr as usize] = value;
             }
 
@@ -85,6 +82,7 @@ impl Memory for Bus {
 mod tests {
     use super::*;
     use crate::cartridge::MirroringType;
+    use assert_matches::assert_matches;
 
     fn test_rom() -> Rom {
         Rom {
@@ -96,24 +94,20 @@ mod tests {
     }
 
     #[test]
-    fn write_to_ram() -> Result<()> {
+    fn write_to_ram() {
         let mut bus = Bus::new(test_rom());
-        bus.write(0x0012, 0xaa)?;
+        bus.write(0x0012, 0xaa).expect("Failed to write to RAM");
 
-        assert_eq!(bus.read(0x0012)?, (0xaa));
-
-        Ok(())
+        assert_matches!(bus.read(0x0012), Ok(0xaa));
     }
 
     #[test]
-    fn write_to_ram_with_mirroring() -> Result<()> {
+    fn write_to_ram_with_mirroring() {
         let mut bus = Bus::new(test_rom());
-        bus.write(0x1eff, 0xaa)?;
+        bus.write(0x1eff, 0xaa).expect("Failed to write to RAM");
 
-        assert_eq!(bus.read(0x1eff)?, 0xaa);
+        assert_matches!(bus.read(0x1eff), Ok(0xaa));
         // 0x1eff truncated to 11 bits == 0x06ff
-        assert_eq!(bus.read(0x06ff)?, 0xaa);
-
-        Ok(())
+        assert_matches!(bus.read(0x06ff), Ok(0xaa));
     }
 }

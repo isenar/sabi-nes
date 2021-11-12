@@ -649,6 +649,7 @@ impl Cpu {
 mod tests {
     use super::*;
     use crate::Rom;
+    use assert_matches::assert_matches;
     use lazy_static::lazy_static;
 
     lazy_static! {
@@ -664,8 +665,6 @@ mod tests {
             rom.extend(header);
             rom.extend(prg_rom);
             rom.extend(chr_rom);
-
-            println!("ROM len: {}", rom.len());
 
             rom
         };
@@ -776,16 +775,14 @@ mod tests {
         use super::*;
 
         #[test]
-        fn sta_absolute() -> Result<()> {
+        fn sta_absolute() {
             // 1. store 0x75 in accumulator
             // 2. store accumulator value under address 0x1234
             let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.read_u16(0x1234)?, 0x75);
+            assert_matches!(cpu.read_u16(0x1234), Ok(0x75));
             assert!(cpu.status_register.is_empty());
-
-            Ok(())
         }
 
         #[test]
@@ -841,13 +838,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn dec_zero_page() -> Result<()> {
+        fn dec_zero_page() {
             let data = [0xc6, 0x11, 0x00];
             let cpu = CpuBuilder::new().write(0x11, 0xf1).build_and_run(&data);
 
-            assert_eq!(cpu.read(0x11)?, 0xf0);
-
-            Ok(())
+            assert_matches!(cpu.read(0x11), Ok(0xf0));
         }
 
         #[test]
@@ -869,15 +864,13 @@ mod tests {
         }
 
         #[test]
-        fn inc_absolute_two_times() -> Result<()> {
+        fn inc_absolute_two_times() {
             // increment value under address 0x1234 two times (0 -> 2)
             let data = [0xee, 0x34, 0x12, 0xee, 0x34, 0x12, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.read(0x1234)?, 2);
+            assert_matches!(cpu.read(0x1234), Ok(0x02));
             assert_eq!(cpu.status_register, StatusRegister::empty());
-
-            Ok(())
         }
 
         #[test]
@@ -976,7 +969,7 @@ mod tests {
         }
 
         #[test]
-        fn asl_zero_page_x() -> Result<()> {
+        fn asl_zero_page_x() {
             // 1. INX (register X = 1)
             // 2. store 0b0100_1101 in 0xab
             // 3. call ASL with 0xaa (zero page X mode) - shifts bits left in
@@ -987,11 +980,9 @@ mod tests {
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 1);
-            assert_eq!(cpu.read(0xab)?, 0b1001_1010);
+            assert_matches!(cpu.read(0xab), Ok(0b1001_1010));
             // result bit7 = 1
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
-
-            Ok(())
         }
 
         #[test]
@@ -1011,16 +1002,14 @@ mod tests {
         }
 
         #[test]
-        fn lsr_absolute_shift_into_carry() -> Result<()> {
+        fn lsr_absolute_shift_into_carry() {
             let data = [0x4e, 0xda, 0x0a, 0x00];
             let cpu = CpuBuilder::new()
                 .write(0x0ada, 0b01010111)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read(0x0ada)?, 0b00101011);
+            assert_matches!(cpu.read(0x0ada), Ok(0b00101011));
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
-
-            Ok(())
         }
 
         #[test]
@@ -1041,16 +1030,14 @@ mod tests {
         }
 
         #[test]
-        fn rol_with_carry_zero_page() -> Result<()> {
+        fn rol_with_carry_zero_page() {
             let data = [0x38, 0x26, 0xff, 0x00];
             let cpu = CpuBuilder::new()
                 .write(0xff, 0b1010_1101)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read(0xff)?, 0b0101_1011);
+            assert_matches!(cpu.read(0xff), Ok(0b0101_1011));
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
-
-            Ok(())
         }
 
         #[test]
@@ -1071,16 +1058,14 @@ mod tests {
         }
 
         #[test]
-        fn ror_absolute_x_without_carry() -> Result<()> {
+        fn ror_absolute_x_without_carry() {
             let data = [0xe8, 0x7e, 0x33, 0x12, 0x00];
             let cpu = CpuBuilder::new()
                 .write(0x1234, 0b0100_1101)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read(0x1234)?, 0b0010_0110);
+            assert_matches!(cpu.read(0x1234), Ok(0b0010_0110));
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
-
-            Ok(())
         }
     }
 
