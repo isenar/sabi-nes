@@ -8,6 +8,8 @@ const RAM: Address = 0x0000;
 const RAM_MIRRORS_END: Address = 0x1fff;
 const PPU_REGISTERS: Address = 0x2000;
 const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
+const ROM_START: Address = 0x8000;
+const ROM_END: Address = 0xffff;
 
 #[derive(Debug)]
 pub struct Bus {
@@ -23,8 +25,8 @@ impl Bus {
         }
     }
 
-    fn read_prg_rom(&self, addr: Address) -> Byte {
-        let mut addr = addr - 0x8000;
+    fn read_prg_rom(&self, mut addr: Address) -> Byte {
+        addr -= ROM_START;
 
         if self.rom.prg_rom.len() == 0x4000 && addr >= 0x4000 {
             //mirror if needed
@@ -49,7 +51,7 @@ impl Memory for Bus {
 
                 bail!("Bus read - PPU is not implemented yet")
             }
-            0x8000..=0xffff => self.read_prg_rom(addr),
+            ROM_START..=ROM_END => self.read_prg_rom(addr),
             _ => {
                 println!("Ignoring mem access at {:x?}", addr);
                 0
@@ -69,7 +71,9 @@ impl Memory for Bus {
 
                 bail!("Bus write - PPU is not implemented yet")
             }
-            0x8000..=0xffff => bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr),
+            ROM_START..=ROM_END => {
+                bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr)
+            }
 
             _ => println!("Ignoring mem-write access at {:#x?}", addr),
         }
@@ -86,8 +90,8 @@ mod tests {
 
     fn test_rom() -> Rom {
         Rom {
-            prg_rom: vec![0; 1024],
-            chr_rom: vec![0; 1024],
+            prg_rom: vec![0x10; 8192],
+            chr_rom: vec![0x20; 1024],
             mapper: 1,
             screen_mirroring: MirroringType::Horizontal,
         }
@@ -109,5 +113,19 @@ mod tests {
         assert_matches!(bus.read(0x1eff), Ok(0xaa));
         // 0x1eff truncated to 11 bits == 0x06ff
         assert_matches!(bus.read(0x06ff), Ok(0xaa));
+    }
+
+    #[test]
+    fn read_from_cartridge_rom() {
+        let bus = Bus::new(test_rom());
+
+        assert_matches!(bus.read(0x9000), Ok(0x10));
+    }
+
+    #[test]
+    fn write_to_cartridge_rom_fails() {
+        let mut bus = Bus::new(test_rom());
+
+        assert_matches!(bus.write(0x9000, 0xef), Err(_));
     }
 }
