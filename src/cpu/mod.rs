@@ -1,6 +1,6 @@
 mod addressing_mode;
 mod memory;
-mod opcodes;
+pub mod opcodes;
 mod stack_pointer;
 mod status_register;
 
@@ -25,12 +25,12 @@ const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
 pub struct Cpu<'a> {
-    accumulator: Register,
-    register_x: Register,
-    register_y: Register,
-    status_register: StatusRegister,
-    program_counter: ProgramCounter,
-    stack_pointer: StackPointer,
+    pub accumulator: Register,
+    pub register_x: Register,
+    pub register_y: Register,
+    pub status_register: StatusRegister,
+    pub program_counter: ProgramCounter,
+    pub stack_pointer: StackPointer,
     bus: Bus<'a>,
 }
 
@@ -74,7 +74,7 @@ impl<'a> Cpu<'a> {
             register_y: 0,
             status_register: StatusRegister::empty(),
             program_counter: 0,
-            stack_pointer: StackPointer::new(),
+            stack_pointer: StackPointer::default(),
             bus,
         }
     }
@@ -187,7 +187,7 @@ impl<'a> Cpu<'a> {
             self.bus.tick(opcode.len());
 
             if current_program_counter == self.program_counter {
-                self.program_counter += opcode.len() as u16;
+                self.program_counter += opcode.length() as u16;
             }
         }
     }
@@ -712,7 +712,7 @@ fn is_page_crossed(before: Address, after: Address) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Rom;
+    use crate::cartridge::Rom;
     use assert_matches::assert_matches;
     use lazy_static::lazy_static;
 

@@ -15,11 +15,13 @@ impl Debug for StackPointer {
     }
 }
 
-impl StackPointer {
-    pub fn new() -> Self {
+impl Default for StackPointer {
+    fn default() -> Self {
         Self(STACK_RESET)
     }
+}
 
+impl StackPointer {
     pub fn value(&self) -> Byte {
         self.0
     }

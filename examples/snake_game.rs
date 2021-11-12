@@ -1,4 +1,5 @@
-use sabi_nes::{Bus, Cpu, Memory, Rom};
+use sabi_nes::cartridge::Rom;
+use sabi_nes::{Bus, Cpu, Memory};
 
 use anyhow::Result;
 use rand::Rng;
