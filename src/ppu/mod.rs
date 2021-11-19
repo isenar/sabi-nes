@@ -1,6 +1,7 @@
 mod registers;
 
 use crate::cartridge::MirroringType;
+use crate::ppu::registers::MaskRegister;
 use crate::{Address, Byte, Result};
 use anyhow::bail;
 use registers::AddressRegister;
@@ -21,6 +22,7 @@ pub struct Ppu {
 
     pub address_register: AddressRegister,
     pub control_register: ControlRegister,
+    pub mask_register: MaskRegister,
 
     internal_data_buffer: Byte,
 }
@@ -36,6 +38,7 @@ impl Ppu {
             address_register: Default::default(),
             control_register: Default::default(),
             internal_data_buffer: Default::default(),
+            mask_register: Default::default(),
         }
     }
 
@@ -50,6 +53,10 @@ impl Ppu {
 
     pub fn write_to_control_register(&mut self, value: Byte) {
         self.control_register.update(value);
+    }
+
+    pub fn write_to_mask_register(&mut self, value: Byte) {
+        self.mask_register.update(value);
     }
 
     pub fn read(&mut self) -> Result<Byte> {

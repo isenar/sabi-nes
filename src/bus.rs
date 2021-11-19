@@ -76,6 +76,7 @@ impl Memory for Bus {
             }
 
             0x2000 => self.ppu.write_to_control_register(value),
+            0x2001 => self.ppu.write_to_mask_register(value),
             0x2006 => self.ppu.write_to_addr_register(value),
             0x2008 => todo!("Write to data register"),
             0x2009..=PPU_REGISTERS_MIRRORS_END => {
