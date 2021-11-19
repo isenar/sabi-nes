@@ -286,7 +286,7 @@ impl Cpu {
     fn bit(&mut self, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in BIT instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address for BIT instruction"))?;
 
         let value = self.read(addr)?;
 
@@ -416,7 +416,7 @@ impl Cpu {
     fn dec(&mut self, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in DEC instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address in DEC instruction"))?;
 
         let dec_value = self.read(addr)?.wrapping_sub(1);
 
@@ -442,7 +442,7 @@ impl Cpu {
     fn inc(&mut self, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in INC instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address for in INC instruction"))?;
 
         let inc_value = self.read(addr)?.wrapping_add(1);
 

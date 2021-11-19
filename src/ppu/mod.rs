@@ -1,11 +1,10 @@
-mod address_register;
-mod control_register;
+mod registers;
 
 use crate::cartridge::MirroringType;
-use crate::ppu::control_register::ControlRegister;
 use crate::{Address, Byte, Result};
-use address_register::AddressRegister;
 use anyhow::bail;
+use registers::AddressRegister;
+use registers::ControlRegister;
 
 use std::cell::Cell;
 
