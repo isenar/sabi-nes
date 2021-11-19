@@ -7,6 +7,7 @@ use anyhow::bail;
 const VRAM_SIZE: usize = 2048;
 const RAM: Address = 0x0000;
 const RAM_MIRRORS_END: Address = 0x1fff;
+const PPU_REGISTERS_MIRRORS_START: Address = 0x2008;
 const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
@@ -53,10 +54,10 @@ impl Memory for Bus {
             0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
                 bail!("Trying to read from write-only PPU register ({:#x})", addr)
             }
-
+            0x2002 => self.ppu.read_status_register(),
+            0x2004 => todo!("Read PPU OAM Data"),
             0x2007 => self.ppu.read()?,
-
-            0x2008..=PPU_REGISTERS_MIRRORS_END => {
+            PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = addr & 0b0000_0111_1111_1111;
                 self.read(mirror_base_addr)?
             }
@@ -74,16 +75,20 @@ impl Memory for Bus {
                 let mirror_base_addr = addr & 0b0000_0111_1111_1111;
                 self.cpu_vram[mirror_base_addr as usize] = value;
             }
-
             0x2000 => self.ppu.write_to_control_register(value),
             0x2001 => self.ppu.write_to_mask_register(value),
+            0x2002 => bail!("Attempted to write to PPU status register"),
+            0x2003 => todo!("Write to OAM Address"),
+            0x2004 => todo!("Write to OAM Data"),
+            0x2005 => todo!("Write to Scroll register"),
             0x2006 => self.ppu.write_to_addr_register(value),
-            0x2008 => todo!("Write to data register"),
-            0x2009..=PPU_REGISTERS_MIRRORS_END => {
+            0x2007 => todo!("Write to Data register"),
+            PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let _mirror_base_addr = addr & 0b0000_0111_1111_1111;
 
                 bail!("Bus write - PPU is not implemented yet")
             }
+            0x4014 => todo!("Write to OAM DMA"),
             ROM_START..=ROM_END => {
                 bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr)
             }
