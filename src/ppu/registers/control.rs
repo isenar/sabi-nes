@@ -20,7 +20,6 @@ impl ControlRegister {
         self.bits = value;
     }
 
-    #[allow(unused)]
     pub fn vram_addr_increment(&self) -> Byte {
         if !self.contains(Self::VRAM_ADDR_INCREMENT) {
             1

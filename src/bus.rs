@@ -42,7 +42,7 @@ impl Bus {
 }
 
 impl Memory for Bus {
-    fn read(&self, addr: Address) -> Result<Byte> {
+    fn read(&mut self, addr: Address) -> Result<Byte> {
         Ok(match addr {
             RAM..=RAM_MIRRORS_END => {
                 // truncate to 11 bits
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn read_from_cartridge_rom() {
-        let bus = Bus::new(test_rom());
+        let mut bus = Bus::new(test_rom());
 
         assert_matches!(bus.read(0x9000), Ok(0x10));
     }

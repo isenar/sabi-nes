@@ -52,7 +52,7 @@ fn color(byte: u8) -> Color {
     }
 }
 
-fn screen_update_needed(cpu: &Cpu, frame: &mut [u8; 32 * 3 * 32]) -> Result<bool> {
+fn screen_update_needed(cpu: &mut Cpu, frame: &mut [u8; 32 * 3 * 32]) -> Result<bool> {
     let mut frame_idx = 0;
 
     for addr in 0x0200..0x0600 {

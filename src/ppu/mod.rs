@@ -6,8 +6,6 @@ use anyhow::bail;
 use registers::AddressRegister;
 use registers::ControlRegister;
 
-use std::cell::Cell;
-
 #[derive(Debug)]
 pub struct Ppu {
     /// Visuals of game stored on cartridge
@@ -24,7 +22,7 @@ pub struct Ppu {
     pub address_register: AddressRegister,
     pub control_register: ControlRegister,
 
-    internal_data_buffer: Cell<Byte>,
+    internal_data_buffer: Byte,
 }
 
 impl Ppu {
@@ -41,7 +39,6 @@ impl Ppu {
         }
     }
 
-    #[allow(unused)]
     pub fn increment_vram_address(&mut self) {
         self.address_register
             .increment(self.control_register.vram_addr_increment());
@@ -55,23 +52,21 @@ impl Ppu {
         self.control_register.update(value);
     }
 
-    pub fn read(&self) -> Result<Byte> {
+    pub fn read(&mut self) -> Result<Byte> {
         let addr = self.address_register.get();
-        // TODO:
-        // self.increment_vram_address();
+        self.increment_vram_address();
 
         match addr {
             0x0000..=0x1fff => {
-                let result = self.internal_data_buffer.get();
-                self.internal_data_buffer.set(self.chr_rom[addr as usize]);
+                let result = self.internal_data_buffer;
+                self.internal_data_buffer = self.chr_rom[addr as usize];
 
                 Ok(result)
             }
             0x2000..=0x2fff => {
-                let result = self.internal_data_buffer.get();
+                let result = self.internal_data_buffer;
                 let mirrored_addr = self.mirror_vram_addr(addr);
-                self.internal_data_buffer
-                    .set(self.vram[mirrored_addr as usize]);
+                self.internal_data_buffer = self.vram[mirrored_addr as usize];
 
                 Ok(result)
             }

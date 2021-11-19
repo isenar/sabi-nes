@@ -2,10 +2,10 @@ use crate::cpu::Address;
 use crate::{Byte, Result};
 
 pub trait Memory {
-    fn read(&self, addr: Address) -> Result<Byte>;
+    fn read(&mut self, addr: Address) -> Result<Byte>;
     fn write(&mut self, addr: Address, value: Byte) -> Result<()>;
 
-    fn read_u16(&self, addr: Address) -> Result<u16> {
+    fn read_u16(&mut self, addr: Address) -> Result<u16> {
         let lo = self.read(addr)?;
         let hi = self.read(addr + 1)?;
 

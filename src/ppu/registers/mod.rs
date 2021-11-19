@@ -1,5 +1,5 @@
-mod address_register;
-mod control_register;
+mod address;
+mod control;
 
-pub use address_register::AddressRegister;
-pub use control_register::ControlRegister;
+pub use address::AddressRegister;
+pub use control::ControlRegister;
