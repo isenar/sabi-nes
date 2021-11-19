@@ -1,12 +1,12 @@
 use crate::cartridge::Rom;
 use crate::cpu::Address;
+use crate::ppu::Ppu;
 use crate::{Byte, Memory, Result};
 use anyhow::bail;
 
 const VRAM_SIZE: usize = 2048;
 const RAM: Address = 0x0000;
 const RAM_MIRRORS_END: Address = 0x1fff;
-const PPU_REGISTERS: Address = 0x2000;
 const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
@@ -15,13 +15,17 @@ const ROM_END: Address = 0xffff;
 pub struct Bus {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
+    ppu: Ppu,
 }
 
 impl Bus {
     pub fn new(rom: Rom) -> Self {
+        let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
+
         Self {
             cpu_vram: [0; VRAM_SIZE],
             rom,
+            ppu,
         }
     }
 
@@ -46,10 +50,15 @@ impl Memory for Bus {
 
                 self.cpu_vram[mirror_base_addr as usize]
             }
-            PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
-                let _mirror_base_addr = addr & 0b0000_0111_1111_1111;
+            0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
+                bail!("Trying to read from write-only PPU register ({:#x})", addr)
+            }
 
-                bail!("Bus read - PPU is not implemented yet")
+            0x2007 => self.ppu.read()?,
+
+            0x2008..=PPU_REGISTERS_MIRRORS_END => {
+                let mirror_base_addr = addr & 0b0000_0111_1111_1111;
+                self.read(mirror_base_addr)?
             }
             ROM_START..=ROM_END => self.read_prg_rom(addr),
             _ => {
@@ -66,7 +75,10 @@ impl Memory for Bus {
                 self.cpu_vram[mirror_base_addr as usize] = value;
             }
 
-            PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
+            0x2000 => self.ppu.write_to_control_register(value),
+            0x2006 => self.ppu.write_to_addr_register(value),
+            0x2008 => todo!("Write to data register"),
+            0x2009..=PPU_REGISTERS_MIRRORS_END => {
                 let _mirror_base_addr = addr & 0b0000_0111_1111_1111;
 
                 bail!("Bus write - PPU is not implemented yet")

@@ -1,6 +1,7 @@
 mod bus;
 mod cartridge;
 mod cpu;
+mod ppu;
 mod utils;
 
 pub use anyhow::Result;
