@@ -51,16 +51,19 @@ impl Memory for Bus {
 
                 self.cpu_vram[mirror_base_addr as usize]
             }
-            0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
-                bail!("Trying to read from write-only PPU register ({:#x})", addr)
-            }
+            0x2000 => bail!("Attempted to read from write-only PPU control register"),
+            0x2001 => bail!("Attempted to read from write-only PPU mask register"),
             0x2002 => self.ppu.read_status_register(),
-            0x2004 => todo!("Read PPU OAM Data"),
+            0x2003 => bail!("Attempted to read from write-only PPU OAM address register"),
+            0x2004 => self.ppu.read_oam_data(),
+            0x2005 => bail!("Attempted to read from write-only PPU scroll register"),
+            0x2006 => bail!("Attempted to read from write-only PPU address register"),
             0x2007 => self.ppu.read()?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = addr & 0b0000_0111_1111_1111;
                 self.read(mirror_base_addr)?
             }
+            0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
             ROM_START..=ROM_END => self.read_prg_rom(addr),
             _ => {
                 println!("Ignoring mem access at {:x?}", addr);
@@ -78,15 +81,15 @@ impl Memory for Bus {
             0x2000 => self.ppu.write_to_control_register(value),
             0x2001 => self.ppu.write_to_mask_register(value),
             0x2002 => bail!("Attempted to write to PPU status register"),
-            0x2003 => todo!("Write to OAM Address"),
-            0x2004 => todo!("Write to OAM Data"),
-            0x2005 => todo!("Write to Scroll register"),
+            0x2003 => self.ppu.write_to_oam_address_register(value),
+            0x2004 => self.ppu.write_to_oam_data(value),
+            0x2005 => self.ppu.write_to_scroll_register(value),
             0x2006 => self.ppu.write_to_addr_register(value),
-            0x2007 => todo!("Write to Data register"),
+            0x2007 => self.ppu.write(value)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let _mirror_base_addr = addr & 0b0000_0111_1111_1111;
+                let mirror_base_addr = addr & 0b0000_0111_1111_1111;
 
-                bail!("Bus write - PPU is not implemented yet")
+                self.write(mirror_base_addr, value)?
             }
             0x4014 => todo!("Write to OAM DMA"),
             ROM_START..=ROM_END => {
