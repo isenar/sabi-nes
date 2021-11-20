@@ -1,6 +1,6 @@
 use crate::{Address, Byte};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AddressRegister {
     high: Byte,
     low: Byte,
@@ -58,5 +58,73 @@ impl AddressRegister {
         if self.get() > 0x3fff {
             self.set(self.get() & 0b0011_1111_1111_1111)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_write_fills_high_byte() {
+        let mut addr_reg = AddressRegister::default();
+        addr_reg.update(0x01);
+
+        let expected = AddressRegister {
+            high: 0x01,
+            low: 0x00,
+            hi_ptr: false,
+        };
+
+        assert_eq!(expected, addr_reg);
+        assert_eq!(0x0100, addr_reg.get());
+    }
+
+    #[test]
+    fn double_write_fills_both_bites() {
+        let mut addr_reg = AddressRegister::default();
+        addr_reg.update(0x12);
+        addr_reg.update(0x34);
+
+        let expected = AddressRegister {
+            high: 0x12,
+            low: 0x34,
+            hi_ptr: true,
+        };
+
+        assert_eq!(expected, addr_reg);
+        assert_eq!(0x1234, addr_reg.get());
+    }
+
+    #[test]
+    fn multiple_writes_store_only_two_last_values() {
+        let mut addr_reg = AddressRegister::default();
+        addr_reg.update(0x01);
+        addr_reg.update(0x12);
+        addr_reg.update(0x02);
+        addr_reg.update(0x23);
+        addr_reg.update(0x2f);
+
+        let expected = AddressRegister {
+            high: 0x2f,
+            low: 0x23,
+            hi_ptr: false,
+        };
+
+        assert_eq!(expected, addr_reg);
+    }
+
+    #[test]
+    fn write_with_mirroring() {
+        let mut addr_reg = AddressRegister::default();
+        addr_reg.update(0x4f);
+
+        let expected = AddressRegister {
+            high: 0x0f,
+            low: 0x00,
+            hi_ptr: false,
+        };
+
+        assert_eq!(expected, addr_reg);
     }
 }
