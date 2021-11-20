@@ -5,14 +5,17 @@ use crate::ppu::registers::PpuRegisters;
 use crate::{Address, Byte, Result};
 use anyhow::bail;
 
+const VRAM_SIZE: usize = 2048;
+const PALETTE_TABLE_SIZE: usize = 32;
+
 #[derive(Debug)]
 pub struct Ppu {
     /// Visuals of game stored on cartridge
     pub chr_rom: Vec<Byte>,
     /// Internal memory to keep palette tables used by the screen
-    pub palette_table: [Byte; 32],
+    pub palette_table: [Byte; PALETTE_TABLE_SIZE],
     /// 2KiB of space to hold background information
-    pub vram: [Byte; 2048],
+    pub vram: [Byte; VRAM_SIZE],
 
     /// Mirroring type
     pub mirroring: MirroringType,
@@ -27,8 +30,8 @@ impl Ppu {
     pub fn new(chr_rom: &[Byte], mirroring: MirroringType) -> Self {
         Self {
             chr_rom: chr_rom.into(),
-            palette_table: [0; 32],
-            vram: [0; 2048],
+            palette_table: [0; PALETTE_TABLE_SIZE],
+            vram: [0; VRAM_SIZE],
             mirroring,
             registers: Default::default(),
             internal_data_buffer: Default::default(),
@@ -36,46 +39,43 @@ impl Ppu {
     }
 
     pub fn increment_vram_address(&mut self) {
-        self.registers
-            .address
-            .increment(self.registers.control.vram_addr_increment());
+        self.registers.increment_vram_address();
     }
 
     pub fn read_status_register(&self) -> Byte {
-        self.registers.status.bits()
+        self.registers.read_status()
     }
 
     pub fn read_oam_data(&self) -> Byte {
-        self.registers.oam_data[self.registers.oam_address as usize]
+        self.registers.read_oam_data()
     }
 
     pub fn write_to_addr_register(&mut self, value: Byte) {
-        self.registers.address.update(value);
+        self.registers.write_address(value);
     }
 
     pub fn write_to_control_register(&mut self, value: Byte) {
-        self.registers.control.update(value);
+        self.registers.write_control(value);
     }
 
     pub fn write_to_mask_register(&mut self, value: Byte) {
-        self.registers.mask.update(value);
+        self.registers.write_mask(value);
     }
 
     pub fn write_to_oam_address_register(&mut self, value: Byte) {
-        self.registers.oam_address = value;
+        self.registers.write_oam_address(value);
     }
 
     pub fn write_to_oam_data(&mut self, value: Byte) {
-        self.registers.oam_data[self.registers.oam_address as usize] = value;
-        self.registers.oam_address = self.registers.oam_address.wrapping_add(1);
+        self.registers.write_oam_data(value);
     }
 
     pub fn write_to_scroll_register(&mut self, value: Byte) {
-        self.registers.scroll.write(value);
+        self.registers.write_scroll(value);
     }
 
     pub fn write(&mut self, value: Byte) -> Result<()> {
-        let addr = self.registers.address.get();
+        let addr = self.registers.read_address();
         self.increment_vram_address();
 
         match addr {
@@ -99,7 +99,7 @@ impl Ppu {
     }
 
     pub fn read(&mut self) -> Result<Byte> {
-        let addr = self.registers.address.get();
+        let addr = self.registers.read_address();
         self.increment_vram_address();
 
         match addr {
