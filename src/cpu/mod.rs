@@ -8,7 +8,7 @@ pub use crate::cpu::memory::Memory;
 
 use crate::bus::Bus;
 use crate::cpu::addressing_mode::AddressingMode;
-use crate::cpu::opcodes::OPCODES_MAPPING;
+use crate::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::utils::{shift_left, shift_right, NthBit};
@@ -115,10 +115,10 @@ impl Cpu {
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
 
             match opcode.name {
-                "ADC" => self.adc(opcode.mode)?,
-                "AND" => self.and(opcode.mode)?,
-                "ASL" => self.asl(opcode.mode)?,
-                "BIT" => self.bit(opcode.mode)?,
+                "ADC" => self.adc(opcode)?,
+                "AND" => self.and(opcode)?,
+                "ASL" => self.asl(opcode)?,
+                "BIT" => self.bit(opcode)?,
                 "BCC" => self.branch(!self.status_register.contains(StatusRegister::CARRY))?,
                 "BCS" => self.branch(self.status_register.contains(StatusRegister::CARRY))?,
                 "BEQ" => self.branch(self.status_register.contains(StatusRegister::ZERO))?,
@@ -132,39 +132,39 @@ impl Cpu {
                 "CLD" => self.status_register.set_decimal_flag(false),
                 "CLI" => self.status_register.set_interrupt_flag(false),
                 "CLV" => self.status_register.set_overflow_flag(false),
-                "CMP" => self.compare(opcode.mode, self.accumulator)?,
-                "CPX" => self.compare(opcode.mode, self.register_x)?,
-                "CPY" => self.compare(opcode.mode, self.register_y)?,
-                "DEC" => self.dec(opcode.mode)?,
+                "CMP" => self.compare(opcode, self.accumulator)?,
+                "CPX" => self.compare(opcode, self.register_x)?,
+                "CPY" => self.compare(opcode, self.register_y)?,
+                "DEC" => self.dec(opcode)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
-                "EOR" => self.eor(opcode.mode)?,
-                "INC" => self.inc(opcode.mode)?,
+                "EOR" => self.eor(opcode)?,
+                "INC" => self.inc(opcode)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
-                "JMP" => self.jmp(opcode.mode)?,
+                "JMP" => self.jmp(opcode)?,
                 "JSR" => self.jsr()?,
-                "LDA" => self.lda(opcode.mode)?,
-                "LDX" => self.ldx(opcode.mode)?,
-                "LDY" => self.ldy(opcode.mode)?,
-                "LSR" => self.lsr(opcode.mode)?,
+                "LDA" => self.lda(opcode)?,
+                "LDX" => self.ldx(opcode)?,
+                "LDY" => self.ldy(opcode)?,
+                "LSR" => self.lsr(opcode)?,
                 "NOP" => {}
-                "ORA" => self.ora(opcode.mode)?,
+                "ORA" => self.ora(opcode)?,
                 "PHA" => self.push_stack(self.accumulator)?,
                 "PHP" => self.php()?,
                 "PLA" => self.pla()?,
                 "PLP" => self.plp()?,
-                "ROL" => self.rol(opcode.mode)?,
-                "ROR" => self.ror(opcode.mode)?,
+                "ROL" => self.rol(opcode)?,
+                "ROR" => self.ror(opcode)?,
                 "RTI" => self.rti()?,
                 "RTS" => self.rts()?,
-                "SBC" => self.sbc(opcode.mode)?,
+                "SBC" => self.sbc(opcode)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
                 "SEI" => self.status_register.set_interrupt_flag(true),
-                "STA" => self.sta(opcode.mode)?,
-                "STX" => self.stx(opcode.mode)?,
-                "STY" => self.sty(opcode.mode)?,
+                "STA" => self.sta(opcode)?,
+                "STX" => self.stx(opcode)?,
+                "STY" => self.sty(opcode)?,
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
@@ -174,7 +174,8 @@ impl Cpu {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
-            // check
+            self.bus.tick(0);
+
             if current_program_counter == self.program_counter {
                 self.program_counter += opcode.len();
             }
@@ -194,10 +195,10 @@ impl Cpu {
         Ok(())
     }
 
-    fn adc(&mut self, mode: AddressingMode) -> Result<()> {
-        let addr = self
-            .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
+    fn adc(&mut self, opcode: &Opcode) -> Result<()> {
+        let addr = self.get_operand_address(opcode)?;
+        let addr =
+            addr.ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
 
         let value = self.read(addr)?;
         self.add_to_acc(value);
@@ -205,9 +206,9 @@ impl Cpu {
         Ok(())
     }
 
-    fn sbc(&mut self, mode: AddressingMode) -> Result<()> {
+    fn sbc(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
 
         let value = self.read(addr)?;
@@ -233,9 +234,9 @@ impl Cpu {
             .update_zero_and_negative_flags(self.accumulator);
     }
 
-    fn compare(&mut self, mode: AddressingMode, register: Register) -> Result<()> {
+    fn compare(&mut self, opcode: &Opcode, register: Register) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
         let value = self.read(addr)?;
         let result = register.wrapping_sub(value);
@@ -246,33 +247,36 @@ impl Cpu {
         Ok(())
     }
 
-    fn and(&mut self, mode: AddressingMode) -> Result<()> {
+    fn and(&mut self, opcode: &Opcode) -> Result<()> {
         let and = |acc, value| acc & value;
-        self.logical_op_with_acc(mode, and).with_context(|| "AND")?;
+        self.logical_op_with_acc(opcode, and)
+            .with_context(|| "AND")?;
 
         Ok(())
     }
 
-    fn eor(&mut self, mode: AddressingMode) -> Result<()> {
+    fn eor(&mut self, opcode: &Opcode) -> Result<()> {
         let xor = |acc, value| acc ^ value;
-        self.logical_op_with_acc(mode, xor).with_context(|| "EOR")?;
+        self.logical_op_with_acc(opcode, xor)
+            .with_context(|| "EOR")?;
 
         Ok(())
     }
-    fn ora(&mut self, mode: AddressingMode) -> Result<()> {
+    fn ora(&mut self, opcode: &Opcode) -> Result<()> {
         let or = |acc, value| acc | value;
-        self.logical_op_with_acc(mode, or).with_context(|| "ORA")?;
+        self.logical_op_with_acc(opcode, or)
+            .with_context(|| "ORA")?;
 
         Ok(())
     }
 
     fn logical_op_with_acc(
         &mut self,
-        mode: AddressingMode,
+        opcode: &Opcode,
         logical_op: fn(Byte, Byte) -> Byte,
     ) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
         let value = self.read(addr)?;
 
@@ -283,11 +287,10 @@ impl Cpu {
         Ok(())
     }
 
-    fn bit(&mut self, mode: AddressingMode) -> Result<()> {
+    fn bit(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for BIT instruction"))?;
-
         let value = self.read(addr)?;
 
         self.status_register.set_overflow_flag(value.nth_bit(6));
@@ -298,8 +301,8 @@ impl Cpu {
         Ok(())
     }
 
-    fn asl(&mut self, mode: AddressingMode) -> Result<()> {
-        let (old_value, shifted) = self.shift(mode, 0, shift_left)?;
+    fn asl(&mut self, opcode: &Opcode) -> Result<()> {
+        let (old_value, shifted) = self.shift(opcode, 0, shift_left)?;
 
         self.status_register.set_carry_flag(old_value.nth_bit(7));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -307,8 +310,8 @@ impl Cpu {
         Ok(())
     }
 
-    fn lsr(&mut self, mode: AddressingMode) -> Result<()> {
-        let (old_value, shifted) = self.shift(mode, 0, shift_right)?;
+    fn lsr(&mut self, opcode: &Opcode) -> Result<()> {
+        let (old_value, shifted) = self.shift(opcode, 0, shift_right)?;
 
         self.status_register.set_carry_flag(old_value.nth_bit(0));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -316,9 +319,9 @@ impl Cpu {
         Ok(())
     }
 
-    fn rol(&mut self, mode: AddressingMode) -> Result<()> {
+    fn rol(&mut self, opcode: &Opcode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as u8;
-        let (previous, shifted) = self.shift(mode, input_carry, shift_left)?;
+        let (previous, shifted) = self.shift(opcode, input_carry, shift_left)?;
 
         self.status_register.set_carry_flag(previous.nth_bit(7));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -326,10 +329,10 @@ impl Cpu {
         Ok(())
     }
 
-    fn ror(&mut self, mode: AddressingMode) -> Result<()> {
+    fn ror(&mut self, opcode: &Opcode) -> Result<()> {
         let input_carry =
             self.status_register.contains(StatusRegister::CARRY) as Byte * 0b1000_0000;
-        let (previous, shifted) = self.shift(mode, input_carry, shift_right)?;
+        let (previous, shifted) = self.shift(opcode, input_carry, shift_right)?;
 
         self.status_register.set_carry_flag(previous.nth_bit(0));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -339,11 +342,11 @@ impl Cpu {
 
     fn shift(
         &mut self,
-        mode: AddressingMode,
+        opcode: &Opcode,
         input_carry: Byte,
         shift_op: fn(Byte) -> Byte,
     ) -> Result<(Byte, Byte)> {
-        let address = self.get_operand_address(mode)?;
+        let address = self.get_operand_address(opcode)?;
 
         let (old_value, shifted) = match address {
             Some(addr) => {
@@ -365,20 +368,20 @@ impl Cpu {
         Ok((old_value, shifted))
     }
 
-    fn lda(&mut self, mode: AddressingMode) -> Result<()> {
-        self.accumulator = self.load_value(mode)?;
+    fn lda(&mut self, opcode: &Opcode) -> Result<()> {
+        self.accumulator = self.load_value(opcode)?;
 
         Ok(())
     }
 
-    fn ldx(&mut self, mode: AddressingMode) -> Result<()> {
-        self.register_x = self.load_value(mode)?;
+    fn ldx(&mut self, opcode: &Opcode) -> Result<()> {
+        self.register_x = self.load_value(opcode)?;
 
         Ok(())
     }
 
-    fn ldy(&mut self, mode: AddressingMode) -> Result<()> {
-        self.register_y = self.load_value(mode).with_context(|| "In LDY")?;
+    fn ldy(&mut self, opcode: &Opcode) -> Result<()> {
+        self.register_y = self.load_value(opcode).with_context(|| "In LDY")?;
 
         Ok(())
     }
@@ -413,11 +416,10 @@ impl Cpu {
             .update_zero_and_negative_flags(self.accumulator);
     }
 
-    fn dec(&mut self, mode: AddressingMode) -> Result<()> {
+    fn dec(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address in DEC instruction"))?;
-
         let dec_value = self.read(addr)?.wrapping_sub(1);
 
         self.write(addr, dec_value)?;
@@ -439,11 +441,10 @@ impl Cpu {
             .update_zero_and_negative_flags(self.register_y);
     }
 
-    fn inc(&mut self, mode: AddressingMode) -> Result<()> {
+    fn inc(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for in INC instruction"))?;
-
         let inc_value = self.read(addr)?.wrapping_add(1);
 
         self.write(addr, inc_value)?;
@@ -461,9 +462,9 @@ impl Cpu {
         self.register_y = self.register_y.wrapping_add(1);
     }
 
-    fn jmp(&mut self, mode: AddressingMode) -> Result<()> {
+    fn jmp(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(mode)?
+            .get_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Failed to fetch operand address for JMP instruction"))?;
         self.program_counter = addr;
 
@@ -518,25 +519,31 @@ impl Cpu {
         self.push_stack(status_register_with_b_flags.bits())
     }
 
-    fn sta(&mut self, mode: AddressingMode) -> Result<()> {
-        self.store_value(self.accumulator, mode)
+    fn sta(&mut self, opcode: &Opcode) -> Result<()> {
+        self.store_value(opcode, self.accumulator)
     }
 
-    fn stx(&mut self, mode: AddressingMode) -> Result<()> {
-        self.store_value(self.register_x, mode)
+    fn stx(&mut self, opcode: &Opcode) -> Result<()> {
+        self.store_value(opcode, self.register_x)
     }
 
-    fn sty(&mut self, mode: AddressingMode) -> Result<()> {
-        self.store_value(self.register_y, mode)
+    fn sty(&mut self, opcode: &Opcode) -> Result<()> {
+        self.store_value(opcode, self.register_y)
     }
 
     fn branch(&mut self, condition: bool) -> Result<()> {
         if condition {
+            self.bus.tick(1);
+
             let jump: i8 = self.read(self.program_counter)? as i8;
             let jump_addr = self
                 .program_counter
                 .wrapping_add(1)
                 .wrapping_add(jump as u16);
+
+            if is_page_crossed(self.program_counter, jump_addr) {
+                self.bus.tick(1);
+            }
 
             self.program_counter = jump_addr;
         }
@@ -544,8 +551,8 @@ impl Cpu {
         Ok(())
     }
 
-    fn get_operand_address(&mut self, mode: AddressingMode) -> Result<Option<Address>> {
-        Ok(Some(match mode {
+    fn get_operand_address(&mut self, opcode: &Opcode) -> Result<Option<Address>> {
+        Ok(Some(match opcode.mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.read(self.program_counter)?.into(),
             AddressingMode::Absolute => self.read_u16(self.program_counter)?,
@@ -564,11 +571,23 @@ impl Cpu {
             }
             AddressingMode::AbsoluteX => {
                 let base = self.read_u16(self.program_counter)?;
-                base.wrapping_add(self.register_x.into())
+                let incremented = base.wrapping_add(self.register_x.into());
+
+                if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
+                    self.bus.tick(1);
+                }
+
+                incremented
             }
             AddressingMode::AbsoluteY => {
                 let base = self.read_u16(self.program_counter)?;
-                base.wrapping_add(self.register_y.into())
+                let incremented = base.wrapping_add(self.register_y.into());
+
+                if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
+                    self.bus.tick(1);
+                }
+
+                incremented
             }
             AddressingMode::IndirectX => {
                 let base = self.read(self.program_counter)?;
@@ -583,8 +602,13 @@ impl Cpu {
                 let lo = self.read(base.into())?;
                 let hi = self.read(base.wrapping_add(1).into())?;
                 let deref_base = u16::from_le_bytes([lo, hi]);
+                let incremented = deref_base.wrapping_add(self.register_y.into());
 
-                deref_base.wrapping_add(self.register_y.into())
+                if opcode.needs_page_cross_check && is_page_crossed(deref_base, incremented) {
+                    self.bus.tick(1);
+                }
+
+                incremented
             }
             AddressingMode::Indirect => {
                 let address = self.read_u16(self.program_counter)?;
@@ -595,11 +619,11 @@ impl Cpu {
         }))
     }
 
-    fn load_value(&mut self, mode: AddressingMode) -> Result<Byte> {
-        let addr = self.get_operand_address(mode)?.ok_or_else(|| {
+    fn load_value(&mut self, opcode: &Opcode) -> Result<Byte> {
+        let addr = self.get_operand_address(opcode)?.ok_or_else(|| {
             anyhow!(
                 "Could not get operand address when loading value ({:?})",
-                mode
+                opcode.mode
             )
         })?;
         let value = self.read(addr)?;
@@ -609,10 +633,13 @@ impl Cpu {
         Ok(value)
     }
 
-    fn store_value(&mut self, value: Byte, mode: AddressingMode) -> Result<()> {
-        let addr = self
-            .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address when storing value ({:?}", mode))?;
+    fn store_value(&mut self, opcode: &Opcode, value: Byte) -> Result<()> {
+        let addr = self.get_operand_address(opcode)?.ok_or_else(|| {
+            anyhow!(
+                "Could not fetch address when storing value ({:?}",
+                opcode.mode
+            )
+        })?;
 
         self.write(addr, value)?;
 
@@ -647,6 +674,13 @@ impl Cpu {
 
         Ok(hi << 8 | lo)
     }
+}
+
+fn is_page_crossed(before: Address, after: Address) -> bool {
+    let before_hi = before & 0xff00;
+    let after_hi = after & 0xff00;
+
+    before_hi != after_hi
 }
 
 #[cfg(test)]

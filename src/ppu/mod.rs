@@ -23,6 +23,9 @@ pub struct Ppu {
     /// PPU registers
     pub registers: PpuRegisters,
 
+    pub scanline: u16,
+    pub cycles: usize,
+
     internal_data_buffer: Byte,
 }
 
@@ -34,8 +37,14 @@ impl Ppu {
             vram: [0; VRAM_SIZE],
             mirroring,
             registers: Default::default(),
+            cycles: 0,
+            scanline: 0,
             internal_data_buffer: Default::default(),
         }
+    }
+
+    pub fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as usize
     }
 
     pub fn increment_vram_address(&mut self) {

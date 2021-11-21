@@ -83,6 +83,21 @@ impl PpuRegisters {
         self.scroll.write(value);
     }
 
+    #[allow(unused)]
+    pub fn set_vblank(&mut self) {
+        self.status.insert(StatusRegister::VBLANK_STARTED);
+    }
+
+    #[allow(unused)]
+    pub fn reset_vblank(&mut self) {
+        self.status.remove(StatusRegister::VBLANK_STARTED);
+    }
+
+    #[allow(unused)]
+    pub fn generate_vblank_nmi(&self) -> bool {
+        todo!()
+    }
+
     pub fn increment_vram_address(&mut self) {
         self.address.increment(self.control.vram_addr_increment())
     }
