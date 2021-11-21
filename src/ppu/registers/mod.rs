@@ -48,8 +48,14 @@ impl PpuRegisters {
         self.oam_data[self.oam_address as usize]
     }
 
-    pub fn read_status(&self) -> Byte {
-        self.status.bits()
+    pub fn read_status(&mut self) -> Byte {
+        let status = self.status.bits();
+
+        self.status.reset_vblank();
+        self.address.reset_latch();
+        self.scroll.reset_latch();
+
+        status
     }
 
     pub fn write_address(&mut self, value: Byte) {

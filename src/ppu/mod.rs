@@ -42,7 +42,7 @@ impl Ppu {
         self.registers.increment_vram_address();
     }
 
-    pub fn read_status_register(&self) -> Byte {
+    pub fn read_status_register(&mut self) -> Byte {
         self.registers.read_status()
     }
 

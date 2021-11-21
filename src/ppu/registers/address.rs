@@ -44,7 +44,6 @@ impl AddressRegister {
         (self.high as Address) << 8 | self.low as Address
     }
 
-    #[allow(unused)]
     pub fn reset_latch(&mut self) {
         self.hi_ptr = true;
     }

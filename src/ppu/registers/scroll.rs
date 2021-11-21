@@ -17,4 +17,8 @@ impl ScrollRegister {
 
         self.latch = !self.latch;
     }
+
+    pub fn reset_latch(&mut self) {
+        self.latch = false;
+    }
 }

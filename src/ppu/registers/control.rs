@@ -28,3 +28,22 @@ impl ControlRegister {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vram_addr_increment_disabled() {
+        let register = ControlRegister::empty();
+
+        assert_eq!(1, register.vram_addr_increment());
+    }
+
+    #[test]
+    fn vram_addr_increment_enabled() {
+        let register = ControlRegister::VRAM_ADDR_INCREMENT;
+
+        assert_eq!(32, register.vram_addr_increment());
+    }
+}

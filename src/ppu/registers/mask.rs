@@ -28,8 +28,69 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
 impl MaskRegister {
     pub fn update(&mut self, value: Byte) {
         self.bits = value;
+    }
+
+    #[allow(unused)]
+    pub fn show_background(&self) -> bool {
+        self.contains(MaskRegister::SHOW_BACKGROUND)
+    }
+
+    #[allow(unused)]
+    pub fn show_sprites(&self) -> bool {
+        self.contains(MaskRegister::SHOW_SPRITES)
+    }
+
+    #[allow(unused)]
+    pub fn emphasized_colors(&self) -> Vec<Color> {
+        let mut colors = Vec::with_capacity(3);
+
+        if self.contains(MaskRegister::EMPHASISE_RED) {
+            colors.push(Color::Red);
+        }
+
+        if self.contains(MaskRegister::EMPHASISE_GREEN) {
+            colors.push(Color::Green);
+        }
+
+        if self.contains(MaskRegister::EMPHASISE_BLUE) {
+            colors.push(Color::Blue);
+        }
+
+        colors
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_colors_to_emphasize() {
+        let register = MaskRegister::empty();
+        let emphasized_colors = register.emphasized_colors();
+        let expected = Vec::<Color>::new();
+
+        assert_eq!(expected, emphasized_colors);
+    }
+
+    #[test]
+    fn all_colors_emphasized() {
+        let register = MaskRegister::EMPHASISE_RED
+            | MaskRegister::EMPHASISE_GREEN
+            | MaskRegister::EMPHASISE_BLUE;
+        let emphasized_colors = register.emphasized_colors();
+        let expected = vec![Color::Red, Color::Green, Color::Blue];
+
+        assert_eq!(expected, emphasized_colors);
     }
 }

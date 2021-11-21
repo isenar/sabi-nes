@@ -35,3 +35,9 @@ bitflags! {
         const VBLANK_STARTED  = 0b1000_0000;
     }
 }
+
+impl StatusRegister {
+    pub fn reset_vblank(&mut self) {
+        self.remove(Self::VBLANK_STARTED);
+    }
+}
