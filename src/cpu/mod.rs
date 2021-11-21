@@ -48,7 +48,7 @@ impl Debug for Cpu {
 }
 
 impl Memory for Cpu {
-    fn read(&self, addr: Address) -> Result<Byte> {
+    fn read(&mut self, addr: Address) -> Result<Byte> {
         self.bus.read(addr)
     }
 
@@ -56,7 +56,7 @@ impl Memory for Cpu {
         self.bus.write(addr, value)
     }
 
-    fn read_u16(&self, addr: Address) -> Result<u16> {
+    fn read_u16(&mut self, addr: Address) -> Result<u16> {
         self.bus.read_u16(addr)
     }
 
@@ -286,7 +286,7 @@ impl Cpu {
     fn bit(&mut self, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in BIT instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address for BIT instruction"))?;
 
         let value = self.read(addr)?;
 
@@ -416,7 +416,7 @@ impl Cpu {
     fn dec(&mut self, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in DEC instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address in DEC instruction"))?;
 
         let dec_value = self.read(addr)?.wrapping_sub(1);
 
@@ -442,7 +442,7 @@ impl Cpu {
     fn inc(&mut self, mode: AddressingMode) -> Result<()> {
         let addr = self
             .get_operand_address(mode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for {} in INC instruction"))?;
+            .ok_or_else(|| anyhow!("Could not fetch address for in INC instruction"))?;
 
         let inc_value = self.read(addr)?.wrapping_add(1);
 
@@ -544,7 +544,7 @@ impl Cpu {
         Ok(())
     }
 
-    fn get_operand_address(&self, mode: AddressingMode) -> Result<Option<Address>> {
+    fn get_operand_address(&mut self, mode: AddressingMode) -> Result<Option<Address>> {
         Ok(Some(match mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.read(self.program_counter)?.into(),
@@ -586,7 +586,11 @@ impl Cpu {
 
                 deref_base.wrapping_add(self.register_y.into())
             }
-            AddressingMode::Indirect => self.read_u16(self.read_u16(self.program_counter)?)?,
+            AddressingMode::Indirect => {
+                let address = self.read_u16(self.program_counter)?;
+
+                self.read_u16(address)?
+            }
             _ => return Ok(None),
         }))
     }
@@ -779,7 +783,7 @@ mod tests {
             // 1. store 0x75 in accumulator
             // 2. store accumulator value under address 0x1234
             let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
-            let cpu = CpuBuilder::new().build_and_run(&data);
+            let mut cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_matches!(cpu.read_u16(0x1234), Ok(0x75));
             assert!(cpu.status_register.is_empty());
@@ -790,7 +794,7 @@ mod tests {
             // 1. Store 0x12 in memory location 0xee (setup)
             // 2. Store register X value (0) in memory location 0xee
             let data = [0x86, 0xee, 0x00];
-            let cpu = CpuBuilder::new().write(0xee, 0x12).build_and_run(&data);
+            let mut cpu = CpuBuilder::new().write(0xee, 0x12).build_and_run(&data);
 
             assert_eq!(cpu.read(0xee)?, 0x00);
             // STX does not modify any flags
@@ -807,7 +811,7 @@ mod tests {
             // 4. load register Y with value from address 0x03
             // 5. call STY with ZeroPageX addressing mode (store registry value Y in byte X on page zero
             let data = [0xa6, 0x01, 0xa4, 0x03, 0x94, 0x00];
-            let cpu = CpuBuilder::new()
+            let mut cpu = CpuBuilder::new()
                 .write(0x01, 0x02)
                 .write(0x03, 0x04)
                 .build_and_run(&data);
@@ -840,7 +844,7 @@ mod tests {
         #[test]
         fn dec_zero_page() {
             let data = [0xc6, 0x11, 0x00];
-            let cpu = CpuBuilder::new().write(0x11, 0xf1).build_and_run(&data);
+            let mut cpu = CpuBuilder::new().write(0x11, 0xf1).build_and_run(&data);
 
             assert_matches!(cpu.read(0x11), Ok(0xf0));
         }
@@ -867,7 +871,7 @@ mod tests {
         fn inc_absolute_two_times() {
             // increment value under address 0x1234 two times (0 -> 2)
             let data = [0xee, 0x34, 0x12, 0xee, 0x34, 0x12, 0x00];
-            let cpu = CpuBuilder::new().build_and_run(&data);
+            let mut cpu = CpuBuilder::new().build_and_run(&data);
 
             assert_matches!(cpu.read(0x1234), Ok(0x02));
             assert_eq!(cpu.status_register, StatusRegister::empty());
@@ -975,7 +979,7 @@ mod tests {
             // 3. call ASL with 0xaa (zero page X mode) - shifts bits left in
             //    address 0xaa + 1 = 0xab
             let data = [0xe8, 0x16, 0xaa, 0x00];
-            let cpu = CpuBuilder::new()
+            let mut cpu = CpuBuilder::new()
                 .write(0xab, 0b0100_1101)
                 .build_and_run(&data);
 
@@ -1004,7 +1008,7 @@ mod tests {
         #[test]
         fn lsr_absolute_shift_into_carry() {
             let data = [0x4e, 0xda, 0x0a, 0x00];
-            let cpu = CpuBuilder::new()
+            let mut cpu = CpuBuilder::new()
                 .write(0x0ada, 0b01010111)
                 .build_and_run(&data);
 
@@ -1032,7 +1036,7 @@ mod tests {
         #[test]
         fn rol_with_carry_zero_page() {
             let data = [0x38, 0x26, 0xff, 0x00];
-            let cpu = CpuBuilder::new()
+            let mut cpu = CpuBuilder::new()
                 .write(0xff, 0b1010_1101)
                 .build_and_run(&data);
 
@@ -1060,7 +1064,7 @@ mod tests {
         #[test]
         fn ror_absolute_x_without_carry() {
             let data = [0xe8, 0x7e, 0x33, 0x12, 0x00];
-            let cpu = CpuBuilder::new()
+            let mut cpu = CpuBuilder::new()
                 .write(0x1234, 0b0100_1101)
                 .build_and_run(&data);
 
