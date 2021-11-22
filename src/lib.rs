@@ -3,6 +3,7 @@ mod cartridge;
 mod cpu;
 mod interrupts;
 mod ppu;
+pub mod render;
 mod utils;
 
 pub use anyhow::Result;
