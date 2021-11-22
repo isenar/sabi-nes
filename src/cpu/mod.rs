@@ -105,6 +105,12 @@ impl Cpu {
         F: FnMut(&mut Cpu) -> Result<()>,
     {
         loop {
+            if self.bus.poll_nmi_status().is_some() {
+                self.interrupt(NMI)?;
+            }
+
+            callback(self)?;
+
             let code = self.read(self.program_counter)?;
             self.program_counter += 1;
 
@@ -179,8 +185,6 @@ impl Cpu {
             if current_program_counter == self.program_counter {
                 self.program_counter += opcode.len();
             }
-
-            callback(self)?;
         }
     }
 
@@ -481,6 +485,9 @@ impl Cpu {
 
     fn rti(&mut self) -> Result<()> {
         self.status_register = self.pop_stack()?.into();
+        self.status_register.remove(StatusRegister::BREAK);
+        self.status_register.insert(StatusRegister::BREAK2);
+
         self.program_counter = self.pop_stack_u16()?;
 
         Ok(())
@@ -674,14 +681,49 @@ impl Cpu {
 
         Ok(hi << 8 | lo)
     }
+
+    fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {
+        self.push_stack_u16(self.program_counter)?;
+        let mut status = self.status_register;
+        status.remove(StatusRegister::BREAK);
+        status.insert(StatusRegister::BREAK2);
+
+        self.push_stack(status.bits())?;
+        self.status_register.disable_interrupt();
+
+        self.bus.tick(interrupt.cpu_cycles);
+        self.program_counter = self.read_u16(interrupt.vector_addr)?;
+
+        Ok(())
+    }
 }
 
 fn is_page_crossed(before: Address, after: Address) -> bool {
-    let before_hi = before & 0xff00;
-    let after_hi = after & 0xff00;
+    let page_before = before & 0xff00;
+    let page_after = after & 0xff00;
 
-    before_hi != after_hi
+    page_before != page_after
 }
+
+#[derive(Debug, Clone, Copy)]
+enum InterruptType {
+    Nmi,
+}
+
+#[derive(Debug)]
+struct Interrupt {
+    itype: InterruptType,
+    vector_addr: Address,
+    break_flag_mask: Byte,
+    cpu_cycles: u8,
+}
+
+const NMI: Interrupt = Interrupt {
+    itype: InterruptType::Nmi,
+    vector_addr: 0xfffa,
+    break_flag_mask: 0b0010_0000,
+    cpu_cycles: 2,
+};
 
 #[cfg(test)]
 mod tests {

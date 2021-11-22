@@ -37,6 +37,10 @@ impl Bus {
         self.ppu.tick(cycles * 3);
     }
 
+    pub fn poll_nmi_status(&mut self) -> Option<()> {
+        self.ppu.nmi_interrupt.take()
+    }
+
     fn read_prg_rom(&self, mut addr: Address) -> Byte {
         addr -= ROM_START;
 

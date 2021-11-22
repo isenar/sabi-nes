@@ -83,19 +83,28 @@ impl PpuRegisters {
         self.scroll.write(value);
     }
 
-    #[allow(unused)]
     pub fn set_vblank(&mut self) {
         self.status.insert(StatusRegister::VBLANK_STARTED);
     }
 
-    #[allow(unused)]
     pub fn reset_vblank(&mut self) {
         self.status.remove(StatusRegister::VBLANK_STARTED);
     }
 
-    #[allow(unused)]
+    pub fn set_sprite_zero_hit(&mut self) {
+        self.status.insert(StatusRegister::SPRITE_ZERO_HIT);
+    }
+
+    pub fn reset_sprite_zero_hit(&mut self) {
+        self.status.remove(StatusRegister::SPRITE_ZERO_HIT);
+    }
+
     pub fn generate_vblank_nmi(&self) -> bool {
-        todo!()
+        self.control.contains(ControlRegister::GENERATE_NMI)
+    }
+
+    pub fn is_in_vblank(&self) -> bool {
+        self.status.contains(StatusRegister::VBLANK_STARTED)
     }
 
     pub fn increment_vram_address(&mut self) {

@@ -25,6 +25,7 @@ pub struct Ppu {
 
     pub scanline: u16,
     pub cycles: usize,
+    pub nmi_interrupt: Option<()>,
 
     internal_data_buffer: Byte,
 }
@@ -39,12 +40,33 @@ impl Ppu {
             registers: Default::default(),
             cycles: 0,
             scanline: 0,
+            nmi_interrupt: None,
             internal_data_buffer: Default::default(),
         }
     }
 
     pub fn tick(&mut self, cycles: u8) {
-        self.cycles += cycles as usize
+        self.cycles += cycles as usize;
+
+        if self.cycles >= 341 {
+            self.scanline -= 341;
+            self.scanline += 1;
+
+            if self.scanline == 241 {
+                self.registers.set_vblank();
+                self.registers.reset_sprite_zero_hit();
+                if self.registers.generate_vblank_nmi() {
+                    self.nmi_interrupt = Some(());
+                }
+            }
+
+            if self.scanline == 262 {
+                self.scanline = 0;
+                self.nmi_interrupt = None;
+                self.registers.reset_vblank();
+                self.registers.set_sprite_zero_hit();
+            }
+        }
     }
 
     pub fn increment_vram_address(&mut self) {
@@ -64,7 +86,12 @@ impl Ppu {
     }
 
     pub fn write_to_control_register(&mut self, value: Byte) {
+        let before = self.registers.generate_vblank_nmi();
         self.registers.write_control(value);
+
+        if !before && self.registers.generate_vblank_nmi() && self.registers.is_in_vblank() {
+            self.nmi_interrupt = Some(());
+        }
     }
 
     pub fn write_to_mask_register(&mut self, value: Byte) {
