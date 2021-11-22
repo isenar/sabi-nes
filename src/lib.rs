@@ -1,6 +1,7 @@
 mod bus;
 mod cartridge;
 mod cpu;
+mod interrupts;
 mod ppu;
 mod utils;
 

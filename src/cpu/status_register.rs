@@ -75,4 +75,9 @@ impl StatusRegister {
     pub fn set_zero_flag(&mut self, value: bool) {
         self.set(StatusRegister::ZERO, value);
     }
+
+    #[inline]
+    pub fn disable_interrupt(&mut self) {
+        self.remove(Self::INTERRUPT_DISABLE);
+    }
 }

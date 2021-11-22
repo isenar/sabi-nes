@@ -17,6 +17,7 @@ pub struct Bus {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
     ppu: Ppu,
+    cycles: usize,
 }
 
 impl Bus {
@@ -27,7 +28,17 @@ impl Bus {
             cpu_vram: [0; VRAM_SIZE],
             rom,
             ppu,
+            cycles: 0,
         }
+    }
+
+    pub fn tick(&mut self, cycles: u8) {
+        self.cycles += cycles as usize;
+        self.ppu.tick(cycles * 3);
+    }
+
+    pub fn poll_nmi_status(&mut self) -> Option<()> {
+        self.ppu.nmi_interrupt.take()
     }
 
     fn read_prg_rom(&self, mut addr: Address) -> Byte {
