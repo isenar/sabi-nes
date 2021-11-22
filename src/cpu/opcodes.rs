@@ -31,8 +31,8 @@ impl Opcode {
         }
     }
 
-    pub const fn len(&self) -> u16 {
-        (self.bytes - 1) as u16
+    pub const fn len(&self) -> u8 {
+        self.bytes - 1
     }
 }
 

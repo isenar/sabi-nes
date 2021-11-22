@@ -107,6 +107,12 @@ impl PpuRegisters {
         self.status.contains(StatusRegister::VBLANK_STARTED)
     }
 
+    pub fn background_pattern_address(&self) -> Address {
+        self.control
+            .contains(ControlRegister::BACKROUND_PATTERN_ADDR) as Address
+            * 0x1000
+    }
+
     pub fn increment_vram_address(&mut self) {
         self.address.increment(self.control.vram_addr_increment())
     }

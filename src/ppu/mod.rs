@@ -45,11 +45,11 @@ impl Ppu {
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) {
+    pub fn tick(&mut self, cycles: u8) -> bool {
         self.cycles += cycles as usize;
 
         if self.cycles >= 341 {
-            self.scanline -= 341;
+            self.cycles -= 341;
             self.scanline += 1;
 
             if self.scanline == 241 {
@@ -65,8 +65,11 @@ impl Ppu {
                 self.nmi_interrupt = None;
                 self.registers.reset_vblank();
                 self.registers.set_sprite_zero_hit();
+                return true;
             }
         }
+
+        false
     }
 
     pub fn increment_vram_address(&mut self) {
@@ -112,7 +115,6 @@ impl Ppu {
 
     pub fn write(&mut self, value: Byte) -> Result<()> {
         let addr = self.registers.read_address();
-        self.increment_vram_address();
 
         match addr {
             0x0000..=0x1fff => bail!("Attempted to write to CHR ROM space ({:#?})", addr),
@@ -136,6 +138,8 @@ impl Ppu {
                 addr
             ),
         }
+
+        self.increment_vram_address();
 
         Ok(())
     }
@@ -189,5 +193,174 @@ impl Ppu {
         };
 
         vram_index - offset
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl Ppu {
+        fn test_ppu() -> Self {
+            Self::new(&[0; 2048], MirroringType::Horizontal)
+        }
+    }
+
+    #[test]
+    fn ppu_vram_writes() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.write_to_addr_register(0x23);
+        ppu.write_to_addr_register(0x05);
+        ppu.write(0x66).expect("Failed to write");
+
+        assert_eq!(ppu.vram[0x0305], 0x66);
+    }
+
+    #[test]
+    fn ppu_vram_reads() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.write_to_control_register(0);
+        ppu.vram[0x0305] = 0x66;
+
+        ppu.write_to_addr_register(0x23);
+        ppu.write_to_addr_register(0x05);
+
+        ppu.read().expect("Failed to perform dummy read");
+
+        assert_eq!(ppu.registers.read_address(), 0x2306);
+        assert_eq!(ppu.read().unwrap(), 0x66);
+    }
+
+    #[test]
+    fn ppu_vram_reads_with_step_32() {
+        let mut ppu = Ppu::test_ppu();
+
+        ppu.write_to_control_register(0b0100);
+        ppu.vram[0x01ff] = 0x66;
+        ppu.vram[0x01ff + 32] = 0x77;
+        ppu.vram[0x01ff + 64] = 0x88;
+
+        ppu.registers.write_address(0x21);
+        ppu.registers.write_address(0xff);
+
+        ppu.read().expect("Failed to perform dummy read");
+
+        assert_eq!(ppu.read().unwrap(), 0x66);
+        assert_eq!(ppu.read().unwrap(), 0x77);
+        assert_eq!(ppu.read().unwrap(), 0x88);
+    }
+
+    #[test]
+    fn vram_horizontal_mirror() {
+        let mut ppu = Ppu::test_ppu();
+
+        ppu.registers.write_address(0x24);
+        ppu.registers.write_address(0x05);
+
+        ppu.write(0x66).unwrap();
+
+        ppu.registers.write_address(0x28);
+        ppu.registers.write_address(0x05);
+
+        ppu.write(0x77).unwrap();
+
+        ppu.registers.write_address(0x20);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_eq!(ppu.read().unwrap(), 0x66);
+
+        ppu.registers.write_address(0x2c);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_eq!(ppu.read().unwrap(), 0x77);
+    }
+
+    #[test]
+    fn vram_vertical_mirror() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.mirroring = MirroringType::Vertical;
+
+        ppu.registers.write_address(0x20);
+        ppu.registers.write_address(0x05);
+
+        ppu.write(0x66).unwrap();
+
+        ppu.registers.write_address(0x2c);
+        ppu.registers.write_address(0x05);
+
+        ppu.write(0x77).unwrap();
+
+        ppu.registers.write_address(0x28);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_eq!(ppu.read().unwrap(), 0x66);
+
+        ppu.registers.write_address(0x24);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_eq!(ppu.read().unwrap(), 0x77);
+    }
+
+    #[test]
+    fn reading_status_resets_latch() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.vram[0x0305] = 0x66;
+
+        ppu.registers.write_address(0x21);
+        ppu.registers.write_address(0x23);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_ne!(ppu.read().unwrap(), 0x66);
+
+        ppu.read_status_register();
+
+        ppu.registers.write_address(0x23);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_eq!(ppu.read().unwrap(), 0x66);
+    }
+
+    #[test]
+    fn vram_mirroring() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.write_to_control_register(0);
+        ppu.vram[0x0305] = 0x66;
+
+        ppu.registers.write_address(0x63);
+        ppu.registers.write_address(0x05);
+
+        ppu.read().unwrap();
+        assert_eq!(ppu.read().unwrap(), 0x66);
+    }
+
+    #[test]
+    fn reading_status_resets_vblank() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.registers.set_vblank();
+
+        let status = ppu.read_status_register();
+
+        assert_eq!(status >> 7, 1);
+        assert_eq!(ppu.registers.read_status() >> 7, 0);
+    }
+
+    #[test]
+    fn oam_read_write() {
+        let mut ppu = Ppu::test_ppu();
+        ppu.write_to_oam_address_register(0x10);
+        ppu.write_to_oam_data(0x66);
+        ppu.write_to_oam_data(0x77);
+
+        ppu.write_to_oam_address_register(0x10);
+        assert_eq!(ppu.read_oam_data(), 0x66);
+
+        ppu.write_to_oam_address_register(0x11);
+        assert_eq!(ppu.read_oam_data(), 0x77);
     }
 }

@@ -24,17 +24,17 @@ pub type ProgramCounter = Address;
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
-pub struct Cpu {
+pub struct Cpu<'a> {
     accumulator: Register,
     register_x: Register,
     register_y: Register,
     status_register: StatusRegister,
     program_counter: ProgramCounter,
     stack_pointer: StackPointer,
-    bus: Bus,
+    bus: Bus<'a>,
 }
 
-impl Debug for Cpu {
+impl Debug for Cpu<'_> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
@@ -48,7 +48,7 @@ impl Debug for Cpu {
     }
 }
 
-impl Memory for Cpu {
+impl Memory for Cpu<'_> {
     fn read(&mut self, addr: Address) -> Result<Byte> {
         self.bus.read(addr)
     }
@@ -66,9 +66,9 @@ impl Memory for Cpu {
     }
 }
 
-impl Cpu {
-    pub fn new(bus: Bus) -> Self {
-        Self {
+impl<'a> Cpu<'a> {
+    pub fn new(bus: Bus) -> Cpu {
+        Cpu {
             accumulator: 0,
             register_x: 0,
             register_y: 0,
@@ -120,6 +120,9 @@ impl Cpu {
             let opcode = OPCODES_MAPPING
                 .get(&code)
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
+
+            // println!("OPCODE: {:?}", opcode);
+            // println!("CPU: {:?}", self);
 
             match opcode.name {
                 "ADC" => self.adc(opcode)?,
@@ -181,10 +184,10 @@ impl Cpu {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
-            self.bus.tick(0);
+            self.bus.tick(opcode.len());
 
             if current_program_counter == self.program_counter {
-                self.program_counter += opcode.len();
+                self.program_counter += opcode.len() as u16;
             }
         }
     }
@@ -760,7 +763,7 @@ mod tests {
 
         fn build_and_run(self, data: &[Byte]) -> Cpu {
             let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
-            let bus = Bus::new(rom);
+            let bus = Bus::new(rom, |_ppu| {});
             let mut cpu = Cpu::new(bus);
 
             for write in self.writes {

@@ -2,10 +2,11 @@ mod bus;
 mod cartridge;
 mod cpu;
 mod interrupts;
-mod ppu;
+pub mod ppu;
+pub mod render;
 mod utils;
 
-pub use anyhow::Result;
+pub use anyhow::{Error, Result};
 pub use bus::Bus;
 pub use cartridge::Rom;
 pub use cpu::{Address, Cpu, Memory};
