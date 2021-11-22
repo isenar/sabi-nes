@@ -67,7 +67,7 @@ impl Memory for Cpu<'_> {
 }
 
 impl<'a> Cpu<'a> {
-    pub fn new<'b>(bus: Bus<'b>) -> Cpu<'b> {
+    pub fn new(bus: Bus) -> Cpu {
         Cpu {
             accumulator: 0,
             register_x: 0,

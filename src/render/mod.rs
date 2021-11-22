@@ -1,4 +1,5 @@
-use crate::{Address, Byte};
+use crate::{Address, Byte, Result};
+use anyhow::anyhow;
 
 mod frame;
 pub mod palettes;
@@ -9,11 +10,15 @@ pub use frame::Frame;
 
 pub type Rgb = (Byte, Byte, Byte);
 
-pub fn render(ppu: &Ppu, frame: &mut Frame) {
+pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     let bank = ppu.registers.background_pattern_address();
 
     for addr in 0..0x03c0 {
-        let tile_addr = ppu.vram.get(addr).unwrap().clone() as Address;
+        let tile_addr = *ppu
+            .vram
+            .get(addr)
+            .ok_or_else(|| anyhow!("Failed to fetch address from VRAM ({:#x})", addr))?
+            as Address;
         let tile_x = addr % 32;
         let tile_y = addr / 32;
         let tile =
@@ -38,4 +43,6 @@ pub fn render(ppu: &Ppu, frame: &mut Frame) {
             }
         }
     }
+
+    Ok(())
 }

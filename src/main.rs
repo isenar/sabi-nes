@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     let mut frame = Frame::default();
 
     let bus = Bus::new(rom, move |ppu: &Ppu| {
-        render(ppu, &mut frame);
+        render(ppu, &mut frame).expect("Failed to render");
 
         texture.update(None, &frame.data, 256 * 3).unwrap();
 
