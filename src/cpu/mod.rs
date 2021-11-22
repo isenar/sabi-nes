@@ -15,7 +15,6 @@ use crate::interrupts::{Interrupt, NMI};
 use crate::utils::{shift_left, shift_right, NthBit};
 use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
-use std::fmt::{Debug, Formatter};
 
 pub type Register = u8;
 pub type Address = u16;
@@ -32,20 +31,6 @@ pub struct Cpu<'a> {
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
     bus: Bus<'a>,
-}
-
-impl Debug for Cpu<'_> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "A: {:#x?}\t X: {:#x?}\t Y: {:#x?}\t PC: {:#x?}\t SP: {:?}",
-            self.accumulator,
-            self.register_x,
-            self.register_y,
-            self.program_counter,
-            self.stack_pointer,
-        )
-    }
 }
 
 impl Memory for Cpu<'_> {
@@ -77,6 +62,10 @@ impl<'a> Cpu<'a> {
             stack_pointer: StackPointer::default(),
             bus,
         }
+    }
+
+    pub fn bus(&self) -> &Bus {
+        &self.bus
     }
 
     pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {

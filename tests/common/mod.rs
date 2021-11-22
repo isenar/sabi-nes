@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail};
 use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
-use sabi_nes::{Byte, Cpu, Memory, Result};
+use sabi_nes::{Address, Byte, Cpu, Memory, Result};
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read(cpu.program_counter)?;
@@ -10,16 +10,24 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         .ok_or_else(|| anyhow!("Opcode {:#x} not supported", code))?;
 
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
-
     let opcode_asm = match opcode.length() {
-        0 => opcode.name.to_string(), // TODO
-        1 => format_single_arg_instruction(opcode, cpu.read(cpu.program_counter + 1)?)?,
-        2 => opcode.name.to_string(), // TODO
+        0 => format_zero_arg_instruction(opcode)?,
+        1 => {
+            let arg = cpu.read(cpu.program_counter + 1)?;
+            format_single_arg_instruction(opcode, arg)?
+        }
+        2 => {
+            let first = cpu.read(cpu.program_counter + 1)?;
+            let second = cpu.read(cpu.program_counter + 2)?;
+            let address = Address::from_le_bytes([first, second]);
+
+            format_double_arg_instruction(opcode, address)?
+        }
         _ => unreachable!(),
     };
 
     Ok(format!(
-        "{:>04x}  {:<10}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
+        "{:>04X}  {:<10}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
         cpu.program_counter,
         opcode_hex,
         opcode_asm,
@@ -27,7 +35,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         cpu.register_x,
         cpu.register_y,
         cpu.status_register,
-        cpu.stack_pointer
+        cpu.stack_pointer,
     ))
 }
 
@@ -49,19 +57,27 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
     })
 }
 
+fn format_zero_arg_instruction(opcode: &Opcode) -> Result<String> {
+    Ok(match opcode.mode {
+        AddressingMode::Implied => opcode.name.to_owned(),
+        AddressingMode::Accumulator => format!("{} A", opcode.name),
+        _ => bail!("Should not occur"),
+    })
+}
+
 fn format_single_arg_instruction(opcode: &Opcode, arg: Byte) -> Result<String> {
     let arg = match opcode.mode {
         AddressingMode::Immediate => {
             format!("#${:02X}", arg)
         }
         AddressingMode::ZeroPage => {
-            format!("#{:02X}", arg)
+            format!("${:02X}", arg)
         }
         AddressingMode::ZeroPageX => {
-            format!("#{:02X},X", arg)
+            format!("${:02X},X", arg)
         }
         AddressingMode::ZeroPageY => {
-            format!("#{:02X},Y", arg)
+            format!("${:02X},Y", arg)
         }
         AddressingMode::IndirectX => {
             format!("(${:02X},X)", arg)
@@ -69,10 +85,35 @@ fn format_single_arg_instruction(opcode: &Opcode, arg: Byte) -> Result<String> {
         AddressingMode::IndirectY => {
             format!("(${:02X},Y)", arg)
         }
+        AddressingMode::Relative => {
+            format!("${:04X}", arg)
+        }
         _ => bail!(
-            "All single arg variants exhausted. Got addressing mode: {:?}:",
+            "All single arg variants exhausted. Got addressing mode: {:?}",
             opcode.mode
         ),
+    };
+
+    Ok(format!("{} {}", opcode.name, arg))
+}
+
+fn format_double_arg_instruction(opcode: &Opcode, address: Address) -> Result<String> {
+    let arg = match opcode.mode {
+        AddressingMode::Absolute => {
+            format!("${:04X}", address)
+        }
+        AddressingMode::AbsoluteX => {
+            format!("${:04X},X", address)
+        }
+        AddressingMode::AbsoluteY => {
+            format!("${:04X},Y", address)
+        }
+        AddressingMode::Indirect => {
+            format!("$({:04X})", address)
+        }
+        AddressingMode::Implied => "".to_owned(),
+
+        other => bail!("Unreachable - 2 args, got {:?}", other),
     };
 
     Ok(format!("{} {}", opcode.name, arg))
@@ -86,7 +127,7 @@ mod tests {
     use sabi_nes::{Bus, Byte, Rom};
 
     lazy_static! {
-        static ref TEST_ROM: Vec<Byte> = {
+        pub static ref TEST_ROM: Vec<Byte> = {
             let mut rom = vec![];
             let header = vec![
                 0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
