@@ -11,6 +11,7 @@ use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
+use crate::interrupts::{Interrupt, NMI};
 use crate::utils::{shift_left, shift_right, NthBit};
 use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
@@ -704,26 +705,6 @@ fn is_page_crossed(before: Address, after: Address) -> bool {
 
     page_before != page_after
 }
-
-#[derive(Debug, Clone, Copy)]
-enum InterruptType {
-    Nmi,
-}
-
-#[derive(Debug)]
-struct Interrupt {
-    itype: InterruptType,
-    vector_addr: Address,
-    break_flag_mask: Byte,
-    cpu_cycles: u8,
-}
-
-const NMI: Interrupt = Interrupt {
-    itype: InterruptType::Nmi,
-    vector_addr: 0xfffa,
-    break_flag_mask: 0b0010_0000,
-    cpu_cycles: 2,
-};
 
 #[cfg(test)]
 mod tests {
