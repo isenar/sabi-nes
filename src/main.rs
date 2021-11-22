@@ -7,8 +7,6 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 
 fn main() -> Result<()> {
-    println!("Starting the emulator");
-
     let sdl_context = sdl2::init().map_err(Error::msg)?;
     let video_subsystem = sdl_context.video().map_err(Error::msg)?;
     let window = video_subsystem

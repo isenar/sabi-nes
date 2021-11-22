@@ -4,10 +4,10 @@ pub mod opcodes;
 mod stack_pointer;
 mod status_register;
 
+pub use crate::cpu::addressing_mode::AddressingMode;
 pub use crate::cpu::memory::Memory;
 
 use crate::bus::Bus;
-use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
@@ -72,7 +72,7 @@ impl<'a> Cpu<'a> {
             accumulator: 0,
             register_x: 0,
             register_y: 0,
-            status_register: StatusRegister::empty(),
+            status_register: StatusRegister::INIT,
             program_counter: 0,
             stack_pointer: StackPointer::default(),
             bus,
@@ -120,9 +120,6 @@ impl<'a> Cpu<'a> {
             let opcode = OPCODES_MAPPING
                 .get(&code)
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
-
-            // println!("OPCODE: {:?}", opcode);
-            // println!("CPU: {:?}", self);
 
             match opcode.name {
                 "ADC" => self.adc(opcode)?,
@@ -184,7 +181,7 @@ impl<'a> Cpu<'a> {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
-            self.bus.tick(opcode.len());
+            self.bus.tick(opcode.length());
 
             if current_program_counter == self.program_counter {
                 self.program_counter += opcode.length() as u16;
@@ -765,6 +762,7 @@ mod tests {
             let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
             let bus = Bus::new(rom, |_ppu| {});
             let mut cpu = Cpu::new(bus);
+            cpu.status_register = StatusRegister::empty();
 
             for write in self.writes {
                 match write {
