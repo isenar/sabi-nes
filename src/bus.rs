@@ -12,29 +12,39 @@ const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
 
-#[derive(Debug)]
-pub struct Bus {
+pub struct Bus<'call> {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
     ppu: Ppu,
     cycles: usize,
+
+    gameloop_callback: Box<dyn FnMut(&Ppu) + 'call>,
 }
 
-impl Bus {
-    pub fn new(rom: Rom) -> Self {
+impl<'a> Bus<'a> {
+    pub fn new<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
+    where
+        F: FnMut(&Ppu) + 'call,
+    {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
-        Self {
+        Bus {
             cpu_vram: [0; VRAM_SIZE],
             rom,
             ppu,
             cycles: 0,
+            gameloop_callback: Box::from(gameloop_callback),
         }
     }
 
     pub fn tick(&mut self, cycles: u8) {
         self.cycles += cycles as usize;
-        self.ppu.tick(cycles * 3);
+
+        let new_frame = self.ppu.tick(cycles * 3);
+
+        if new_frame {
+            (self.gameloop_callback)(&self.ppu);
+        }
     }
 
     pub fn poll_nmi_status(&mut self) -> Option<()> {
@@ -53,7 +63,7 @@ impl Bus {
     }
 }
 
-impl Memory for Bus {
+impl Memory for Bus<'_> {
     fn read(&mut self, addr: Address) -> Result<Byte> {
         Ok(match addr {
             RAM..=RAM_MIRRORS_END => {
@@ -98,7 +108,7 @@ impl Memory for Bus {
             0x2006 => self.ppu.write_to_addr_register(value),
             0x2007 => self.ppu.write(value)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr & 0b0000_0111_1111_1111;
+                let mirror_base_addr = addr & 0b0010_0000_0000_0111;
 
                 self.write(mirror_base_addr, value)?
             }
@@ -120,6 +130,10 @@ mod tests {
     use crate::cartridge::MirroringType;
     use assert_matches::assert_matches;
 
+    fn test_bus() -> Bus<'static> {
+        Bus::new(test_rom(), |_| {})
+    }
+
     fn test_rom() -> Rom {
         Rom {
             prg_rom: vec![0x10; 8192],
@@ -131,7 +145,7 @@ mod tests {
 
     #[test]
     fn write_to_ram() {
-        let mut bus = Bus::new(test_rom());
+        let mut bus = test_bus();
         bus.write(0x0012, 0xaa).expect("Failed to write to RAM");
 
         assert_matches!(bus.read(0x0012), Ok(0xaa));
@@ -139,7 +153,7 @@ mod tests {
 
     #[test]
     fn write_to_ram_with_mirroring() {
-        let mut bus = Bus::new(test_rom());
+        let mut bus = test_bus();
         bus.write(0x1eff, 0xaa).expect("Failed to write to RAM");
 
         assert_matches!(bus.read(0x1eff), Ok(0xaa));
@@ -149,14 +163,14 @@ mod tests {
 
     #[test]
     fn read_from_cartridge_rom() {
-        let mut bus = Bus::new(test_rom());
+        let mut bus = test_bus();
 
         assert_matches!(bus.read(0x9000), Ok(0x10));
     }
 
     #[test]
     fn write_to_cartridge_rom_fails() {
-        let mut bus = Bus::new(test_rom());
+        let mut bus = test_bus();
 
         assert_matches!(bus.write(0x9000, 0xef), Err(_));
     }
