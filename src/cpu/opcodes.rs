@@ -247,6 +247,14 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x74, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
     Opcode::new(0xd4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
     Opcode::new(0xf4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    // *LAX
+    Opcode::new(0xab, "*LAX", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0xaf, "*LAX", 3, 4, AddressingMode::Absolute, false),
+    Opcode::new(0xbf, "*LAX", 3, 4, AddressingMode::AbsoluteY, true), // +1 cycle if page boundary crossed
+    Opcode::new(0xa7, "*LAX", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0xb7, "*LAX", 2, 4, AddressingMode::ZeroPageY, false),
+    Opcode::new(0xa3, "*LAX", 2, 6, AddressingMode::IndirectX, false),
+    Opcode::new(0xb3, "*LAX", 2, 5, AddressingMode::IndirectY, true), // +1 cycle if page boundary crossed
 ];
 
 lazy_static! {

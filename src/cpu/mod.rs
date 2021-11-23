@@ -173,6 +173,8 @@ impl<'a> Cpu<'a> {
                 "TXA" => self.txa(),
                 "TXS" => self.stack_pointer.set(self.register_x),
                 "TYA" => self.tya(),
+
+                "*LAX" => self.lax(opcode)?,
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -382,6 +384,13 @@ impl<'a> Cpu<'a> {
 
     fn ldy(&mut self, opcode: &Opcode) -> Result<()> {
         self.register_y = self.load_value(opcode).with_context(|| "In LDY")?;
+
+        Ok(())
+    }
+
+    fn lax(&mut self, opcode: &Opcode) -> Result<()> {
+        self.accumulator = self.load_value(opcode)?;
+        self.register_x = self.accumulator;
 
         Ok(())
     }
