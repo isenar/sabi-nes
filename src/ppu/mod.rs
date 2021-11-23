@@ -109,6 +109,10 @@ impl Ppu {
         self.registers.write_oam_data(value);
     }
 
+    pub fn write_to_oam_dma(&mut self, buffer: &[Byte; 256]) {
+        self.registers.write_oam_dma(buffer);
+    }
+
     pub fn write_to_scroll_register(&mut self, value: Byte) {
         self.registers.write_scroll(value);
     }
