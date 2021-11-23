@@ -112,7 +112,15 @@ impl Memory for Bus<'_> {
 
                 self.write(mirror_base_addr, value)?
             }
-            0x4014 => todo!("Write to OAM DMA"),
+            0x4014 => {
+                let mut buffer: [Byte; 256] = [0; 256];
+                let hi = (value as Address) << 8;
+                for addr in 0..256 {
+                    buffer[addr as usize] = self.read(hi + addr)?;
+                }
+
+                self.ppu.write_to_oam_dma(&buffer);
+            }
             ROM_START..=ROM_END => {
                 bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr)
             }

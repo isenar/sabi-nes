@@ -79,6 +79,13 @@ impl PpuRegisters {
         self.oam_address = self.oam_address.wrapping_add(1);
     }
 
+    pub fn write_oam_dma(&mut self, buffer: &[Byte; OAM_DATA_SIZE]) {
+        for byte in buffer {
+            self.oam_data[self.oam_address as usize] = *byte;
+            self.oam_address = self.oam_address.wrapping_add(1);
+        }
+    }
+
     pub fn write_scroll(&mut self, value: Byte) {
         self.scroll.write(value);
     }
