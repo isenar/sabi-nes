@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail};
 use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
-use sabi_nes::{Address, Byte, Cpu, Memory, Result};
+use sabi_nes::{Address, Cpu, Memory, Result};
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read(cpu.program_counter)?;
@@ -14,12 +14,8 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         0 => format_zero_arg_instruction(opcode)?,
         1 => format_single_arg_instruction(opcode, cpu)?,
         2 => {
-            let first = cpu.read(cpu.program_counter + 1)?;
-            let second = cpu.read(cpu.program_counter + 2)?;
-            let address = Address::from_le_bytes([first, second]);
-            let value = cpu.read(address)?;
-
-            format_double_arg_instruction(opcode, address, value, cpu)?
+            let address = cpu.read_u16(cpu.program_counter + 1)?;
+            format_double_arg_instruction(opcode, address, cpu)?
         }
         _ => unreachable!(),
     };
@@ -82,10 +78,20 @@ fn format_single_arg_instruction(opcode: &Opcode, cpu: &mut Cpu) -> Result<Strin
             format!("${:02X} = {:02X}", arg, stored_value)
         }
         AddressingMode::ZeroPageX => {
-            format!("${:02X},X", arg)
+            let incremented = arg.wrapping_add(cpu.register_x);
+            let stored_value = cpu.read(incremented.into())?;
+            format!(
+                "${:02X},X @ {:02X} = {:02X}",
+                arg, incremented, stored_value
+            )
         }
         AddressingMode::ZeroPageY => {
-            format!("${:02X},Y", arg)
+            let incremented = arg.wrapping_add(cpu.register_y);
+            let stored_value = cpu.read(incremented.into())?;
+            format!(
+                "${:02X},Y @ {:02X} = {:02X}",
+                arg, incremented, stored_value
+            )
         }
         AddressingMode::IndirectX => {
             let shifted = arg.wrapping_add(cpu.register_x);
@@ -134,23 +140,38 @@ fn format_single_arg_instruction(opcode: &Opcode, cpu: &mut Cpu) -> Result<Strin
 fn format_double_arg_instruction(
     opcode: &Opcode,
     address: Address,
-    value: Byte,
     cpu: &mut Cpu,
 ) -> Result<String> {
+    let value = cpu.read(address)?;
     let arg = match opcode.mode {
         AddressingMode::Absolute => match opcode.name {
             "JMP" | "JSR" => format!("${:04X}", address),
             _ => format!("${:04X} = {:02X}", address, value),
         },
         AddressingMode::AbsoluteX => {
-            format!("${:04X},X", address)
+            let incremented = address.wrapping_add(cpu.register_x.into());
+            let value = cpu.read(incremented)?;
+
+            format!("${:04X},X @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::AbsoluteY => {
-            format!("${:04X},Y", address)
+            let incremented = address.wrapping_add(cpu.register_y.into());
+            let value = cpu.read(incremented)?;
+
+            format!("${:04X},Y @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::Indirect => {
-            let addr = cpu.read_u16(address)?;
-            format!("(${:04X}) = {:04X}", address, addr)
+            let x = if address & 0x00ff == 0x00ff {
+                let lo = cpu.read(address)? as Address;
+                let hi = cpu.read(address & 0xff00)? as Address;
+                let addr = hi << 8 | lo;
+
+                addr
+            } else {
+                cpu.read_u16(address)?
+            };
+
+            format!("(${:04X}) = {:04X}", address, x)
         }
         AddressingMode::Implied => String::new(),
 

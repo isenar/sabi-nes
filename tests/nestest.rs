@@ -17,7 +17,6 @@ where
 }
 
 // FIXME
-#[ignore]
 #[test]
 fn cpu_validation_test() -> Result<()> {
     let test_rom_data = std::fs::read("tests/test_roms/nestest.nes")?;
@@ -35,8 +34,18 @@ fn cpu_validation_test() -> Result<()> {
         Ok(())
     })?;
 
+    // let formatted: Vec<_> = traces
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(line, trace)| format!("{}    {}", line + 1, trace))
+    //     .collect();
+    //
+    // println!("{:#?}", formatted);
+
     let expected_traces = read_lines("tests/expected_logs/nestest.log")?;
-    for (line_num, (expected_trace, actual_trace)) in expected_traces.zip(traces).enumerate() {
+    for (line_num, (expected_trace, actual_trace)) in
+        expected_traces.zip(traces).enumerate().take(5003)
+    {
         let expected_trace = expected_trace?;
 
         assert_eq!(

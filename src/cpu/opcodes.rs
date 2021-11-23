@@ -224,7 +224,6 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x5a, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0x7a, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0xda, "*NOP", 1, 2, AddressingMode::Implied, false),
-    Opcode::new(0xea, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0xfa, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0x80, "*NOP", 2, 2, AddressingMode::Immediate, false),
     Opcode::new(0x82, "*NOP", 2, 2, AddressingMode::Immediate, false),

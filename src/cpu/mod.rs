@@ -205,7 +205,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn adc(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self.get_operand_address(opcode)?;
+        let addr = self.operand_address(opcode)?;
         let addr =
             addr.ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
 
@@ -217,7 +217,7 @@ impl<'a> Cpu<'a> {
 
     fn sbc(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
 
         let value = self.read(addr)?;
@@ -245,7 +245,7 @@ impl<'a> Cpu<'a> {
 
     fn compare(&mut self, opcode: &Opcode, register: Register) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
         let value = self.read(addr)?;
         let result = register.wrapping_sub(value);
@@ -285,7 +285,7 @@ impl<'a> Cpu<'a> {
         logical_op: fn(Byte, Byte) -> Byte,
     ) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
         let value = self.read(addr)?;
 
@@ -298,7 +298,7 @@ impl<'a> Cpu<'a> {
 
     fn bit(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for BIT instruction"))?;
         let value = self.read(addr)?;
 
@@ -355,7 +355,7 @@ impl<'a> Cpu<'a> {
         input_carry: Byte,
         shift_op: fn(Byte) -> Byte,
     ) -> Result<(Byte, Byte)> {
-        let address = self.get_operand_address(opcode)?;
+        let address = self.operand_address(opcode)?;
 
         let (old_value, shifted) = match address {
             Some(addr) => {
@@ -404,7 +404,7 @@ impl<'a> Cpu<'a> {
 
     fn sax(&mut self, opcode: &Opcode) -> Result<()> {
         let address = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address in LAX instruction"))?;
         let result = self.accumulator & self.register_x;
 
@@ -445,7 +445,7 @@ impl<'a> Cpu<'a> {
 
     fn dec(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address in DEC instruction"))?;
         let dec_value = self.read(addr)?.wrapping_sub(1);
 
@@ -470,7 +470,7 @@ impl<'a> Cpu<'a> {
 
     fn inc(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for in INC instruction"))?;
         let inc_value = self.read(addr)?.wrapping_add(1);
 
@@ -495,7 +495,7 @@ impl<'a> Cpu<'a> {
 
     fn jmp(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .get_operand_address(opcode)?
+            .operand_address(opcode)?
             .ok_or_else(|| anyhow!("Failed to fetch operand address for JMP instruction"))?;
         self.program_counter = addr;
 
@@ -585,7 +585,7 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn get_operand_address(&mut self, opcode: &Opcode) -> Result<Option<Address>> {
+    pub fn operand_address(&mut self, opcode: &Opcode) -> Result<Option<Address>> {
         Ok(Some(match opcode.mode {
             AddressingMode::Immediate => self.program_counter,
             AddressingMode::ZeroPage => self.read(self.program_counter)?.into(),
@@ -665,7 +665,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn load_value(&mut self, opcode: &Opcode) -> Result<Byte> {
-        let addr = self.get_operand_address(opcode)?.ok_or_else(|| {
+        let addr = self.operand_address(opcode)?.ok_or_else(|| {
             anyhow!(
                 "Could not get operand address when loading value ({:?})",
                 opcode.mode
@@ -679,7 +679,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn store_value(&mut self, opcode: &Opcode, value: Byte) -> Result<()> {
-        let addr = self.get_operand_address(opcode)?.ok_or_else(|| {
+        let addr = self.operand_address(opcode)?.ok_or_else(|| {
             anyhow!(
                 "Could not fetch address when storing value ({:?}",
                 opcode.mode
