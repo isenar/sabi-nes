@@ -1,13 +1,13 @@
 mod addressing_mode;
 mod memory;
-mod opcodes;
+pub mod opcodes;
 mod stack_pointer;
 mod status_register;
 
+pub use crate::cpu::addressing_mode::AddressingMode;
 pub use crate::cpu::memory::Memory;
 
 use crate::bus::Bus;
-use crate::cpu::addressing_mode::AddressingMode;
 use crate::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
@@ -15,7 +15,6 @@ use crate::interrupts::{Interrupt, NMI};
 use crate::utils::{shift_left, shift_right, NthBit};
 use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
-use std::fmt::{Debug, Formatter};
 
 pub type Register = u8;
 pub type Address = u16;
@@ -25,27 +24,13 @@ const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
 pub struct Cpu<'a> {
-    accumulator: Register,
-    register_x: Register,
-    register_y: Register,
-    status_register: StatusRegister,
-    program_counter: ProgramCounter,
-    stack_pointer: StackPointer,
+    pub accumulator: Register,
+    pub register_x: Register,
+    pub register_y: Register,
+    pub status_register: StatusRegister,
+    pub program_counter: ProgramCounter,
+    pub stack_pointer: StackPointer,
     bus: Bus<'a>,
-}
-
-impl Debug for Cpu<'_> {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "A: {:#x?}\t X: {:#x?}\t Y: {:#x?}\t PC: {:#x?}\t SP: {:?}",
-            self.accumulator,
-            self.register_x,
-            self.register_y,
-            self.program_counter,
-            self.stack_pointer,
-        )
-    }
 }
 
 impl Memory for Cpu<'_> {
@@ -72,11 +57,15 @@ impl<'a> Cpu<'a> {
             accumulator: 0,
             register_x: 0,
             register_y: 0,
-            status_register: StatusRegister::empty(),
+            status_register: StatusRegister::INIT,
             program_counter: 0,
-            stack_pointer: StackPointer::new(),
+            stack_pointer: StackPointer::default(),
             bus,
         }
+    }
+
+    pub fn bus(&self) -> &Bus {
+        &self.bus
     }
 
     pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {
@@ -120,9 +109,6 @@ impl<'a> Cpu<'a> {
             let opcode = OPCODES_MAPPING
                 .get(&code)
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
-
-            // println!("OPCODE: {:?}", opcode);
-            // println!("CPU: {:?}", self);
 
             match opcode.name {
                 "ADC" => self.adc(opcode)?,
@@ -184,10 +170,10 @@ impl<'a> Cpu<'a> {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
-            self.bus.tick(opcode.len());
+            self.bus.tick(opcode.length());
 
             if current_program_counter == self.program_counter {
-                self.program_counter += opcode.len() as u16;
+                self.program_counter += opcode.length() as u16;
             }
         }
     }
@@ -464,10 +450,14 @@ impl<'a> Cpu<'a> {
 
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
     }
 
     fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
     }
 
     fn jmp(&mut self, opcode: &Opcode) -> Result<()> {
@@ -546,7 +536,7 @@ impl<'a> Cpu<'a> {
         if condition {
             self.bus.tick(1);
 
-            let jump: i8 = self.read(self.program_counter)? as i8;
+            let jump = self.read(self.program_counter)? as i8;
             let jump_addr = self
                 .program_counter
                 .wrapping_add(1)
@@ -712,7 +702,7 @@ fn is_page_crossed(before: Address, after: Address) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Rom;
+    use crate::cartridge::Rom;
     use assert_matches::assert_matches;
     use lazy_static::lazy_static;
 
@@ -765,6 +755,7 @@ mod tests {
             let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
             let bus = Bus::new(rom, |_ppu| {});
             let mut cpu = Cpu::new(bus);
+            cpu.status_register = StatusRegister::empty();
 
             for write in self.writes {
                 match write {

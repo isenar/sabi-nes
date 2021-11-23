@@ -1,6 +1,6 @@
-mod bus;
-mod cartridge;
-mod cpu;
+pub mod bus;
+pub mod cartridge;
+pub mod cpu;
 mod interrupts;
 pub mod ppu;
 pub mod render;

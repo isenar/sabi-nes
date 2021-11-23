@@ -17,10 +17,12 @@
 //! ```
 //! - [the B flag](https://wiki.nesdev.org/w/index.php/Status_flags#The_B_flag)
 
+use crate::Byte;
 use bitflags::bitflags;
+use std::fmt::{Display, Formatter};
 
 bitflags! {
-    pub struct StatusRegister: u8 {
+    pub struct StatusRegister: Byte {
         const CARRY             = 0b0000_0001;
         const ZERO              = 0b0000_0010;
         const INTERRUPT_DISABLE = 0b0000_0100;
@@ -29,6 +31,14 @@ bitflags! {
         const BREAK2            = 0b0010_0000; // not used by NES
         const OVERFLOW          = 0b0100_0000;
         const NEGATIVE          = 0b1000_0000;
+
+        const INIT = StatusRegister::INTERRUPT_DISABLE.bits | StatusRegister::BREAK2.bits;
+    }
+}
+
+impl Display for StatusRegister {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{:02X}", self.bits)
     }
 }
 

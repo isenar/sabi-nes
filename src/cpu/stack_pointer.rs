@@ -1,6 +1,6 @@
 use crate::cpu::Address;
 use crate::Byte;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 const STACK_BEGIN_ADDR: Address = 0x0100; // stack is located at page $01 (0x100 - 0x01ff)
 const STACK_RESET: u8 = 0xfd;
@@ -15,11 +15,19 @@ impl Debug for StackPointer {
     }
 }
 
-impl StackPointer {
-    pub fn new() -> Self {
+impl Display for StackPointer {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{:02X}", self.0)
+    }
+}
+
+impl Default for StackPointer {
+    fn default() -> Self {
         Self(STACK_RESET)
     }
+}
 
+impl StackPointer {
     pub fn value(&self) -> Byte {
         self.0
     }
