@@ -19,7 +19,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
             let address = Address::from_le_bytes([first, second]);
             let value = cpu.read(address)?;
 
-            format_double_arg_instruction(opcode, address, value)?
+            format_double_arg_instruction(opcode, address, value, cpu)?
         }
         _ => unreachable!(),
     };
@@ -88,23 +88,33 @@ fn format_single_arg_instruction(opcode: &Opcode, cpu: &mut Cpu) -> Result<Strin
             format!("${:02X},Y", arg)
         }
         AddressingMode::IndirectX => {
-            let base_address = cpu.read_u16(arg.into())?;
-            let addr_with_y_offset = base_address.wrapping_add(cpu.register_x as u16);
-            let target_cell_value = cpu.read(addr_with_y_offset)?;
+            let shifted = arg.wrapping_add(cpu.register_x);
+            let first = cpu.read(shifted.into())?;
+            let second = cpu.read(shifted.wrapping_add(1).into())?;
+            let address = Address::from_le_bytes([first, second]);
+            let target_cell_value = cpu.read(address)?;
 
             format!(
-                "(${:02X}),X = {:04X} @ {:04X} = {:02X}",
-                arg, base_address, addr_with_y_offset, target_cell_value
+                "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
+                arg,
+                arg.wrapping_add(cpu.register_x),
+                address,
+                target_cell_value
             )
         }
         AddressingMode::IndirectY => {
-            let base_address = cpu.read_u16(arg.into())?;
-            let addr_with_y_offset = base_address.wrapping_add(cpu.register_y as u16);
-            let target_cell_value = cpu.read(addr_with_y_offset)?;
+            let first = cpu.read(arg.into())?;
+            let second = cpu.read(arg.wrapping_add(1).into())?;
+            let address = Address::from_le_bytes([first, second]);
+            let address_shifted = address.wrapping_add(cpu.register_y.into());
+            let target_cell_value = cpu.read(address_shifted)?;
 
             format!(
                 "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
-                arg, base_address, addr_with_y_offset, target_cell_value
+                arg,
+                address,
+                address.wrapping_add(cpu.register_y.into()),
+                target_cell_value,
             )
         }
         AddressingMode::Relative => {
@@ -121,7 +131,12 @@ fn format_single_arg_instruction(opcode: &Opcode, cpu: &mut Cpu) -> Result<Strin
     Ok(format!("{} {}", opcode.name, arg))
 }
 
-fn format_double_arg_instruction(opcode: &Opcode, address: Address, value: Byte) -> Result<String> {
+fn format_double_arg_instruction(
+    opcode: &Opcode,
+    address: Address,
+    value: Byte,
+    cpu: &mut Cpu,
+) -> Result<String> {
     let arg = match opcode.mode {
         AddressingMode::Absolute => match opcode.name {
             "JMP" | "JSR" => format!("${:04X}", address),
@@ -134,9 +149,10 @@ fn format_double_arg_instruction(opcode: &Opcode, address: Address, value: Byte)
             format!("${:04X},Y", address)
         }
         AddressingMode::Indirect => {
-            format!("$({:04X})", address)
+            let addr = cpu.read_u16(address)?;
+            format!("(${:04X}) = {:04X}", address, addr)
         }
-        AddressingMode::Implied => "".to_owned(),
+        AddressingMode::Implied => String::new(),
 
         other => bail!("Unreachable - 2 args, got {:?}", other),
     };

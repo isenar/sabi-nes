@@ -144,7 +144,7 @@ impl<'a> Cpu<'a> {
                 "LDX" => self.ldx(opcode)?,
                 "LDY" => self.ldy(opcode)?,
                 "LSR" => self.lsr(opcode)?,
-                "NOP" => {}
+                "NOP" | "*NOP" => {}
                 "ORA" => self.ora(opcode)?,
                 "PHA" => self.push_stack(self.accumulator)?,
                 "PHP" => self.php()?,
@@ -152,8 +152,14 @@ impl<'a> Cpu<'a> {
                 "PLP" => self.plp()?,
                 "ROL" => self.rol(opcode)?,
                 "ROR" => self.ror(opcode)?,
-                "RTI" => self.rti()?,
-                "RTS" => self.rts()?,
+                "RTI" => {
+                    self.rti()?;
+                    continue;
+                }
+                "RTS" => {
+                    self.rts()?;
+                    continue;
+                }
                 "SBC" => self.sbc(opcode)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
@@ -614,7 +620,18 @@ impl<'a> Cpu<'a> {
             AddressingMode::Indirect => {
                 let address = self.read_u16(self.program_counter)?;
 
-                self.read_u16(address)?
+                // recreate the CPU bug with page boundaries:
+                // "The indirect jump instruction does not increment the page address when the indirect pointer
+                // crosses a page boundary.
+                // JMP ($xxFF) will fetch the address from $xxFF and $xx00."
+                if address & 0x00ff == 0x00ff {
+                    let lo = self.read(address)? as Address;
+                    let hi = self.read(address & 0xff00)? as Address;
+
+                    hi << 8 | lo
+                } else {
+                    self.read_u16(address)?
+                }
             }
             _ => return Ok(None),
         }))
