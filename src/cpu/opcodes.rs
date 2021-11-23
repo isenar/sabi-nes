@@ -255,6 +255,13 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xb7, "*LAX", 2, 4, AddressingMode::ZeroPageY, false),
     Opcode::new(0xa3, "*LAX", 2, 6, AddressingMode::IndirectX, false),
     Opcode::new(0xb3, "*LAX", 2, 5, AddressingMode::IndirectY, true), // +1 cycle if page boundary crossed
+    // *SAX
+    Opcode::new(0x8f, "*SAX", 3, 4, AddressingMode::Absolute, false),
+    Opcode::new(0x87, "*SAX", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0x97, "*SAX", 2, 4, AddressingMode::ZeroPageY, false),
+    Opcode::new(0x83, "*SAX", 2, 6, AddressingMode::IndirectX, false),
+    // *SBC
+    Opcode::new(0xeb, "*SBC", 2, 2, AddressingMode::Immediate, false),
 ];
 
 lazy_static! {

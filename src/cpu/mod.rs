@@ -160,7 +160,7 @@ impl<'a> Cpu<'a> {
                     self.rts()?;
                     continue;
                 }
-                "SBC" => self.sbc(opcode)?,
+                "SBC" | "*SBC" => self.sbc(opcode)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
                 "SEI" => self.status_register.set_interrupt_flag(true),
@@ -175,6 +175,7 @@ impl<'a> Cpu<'a> {
                 "TYA" => self.tya(),
 
                 "*LAX" => self.lax(opcode)?,
+                "*SAX" => self.sax(opcode)?,
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -391,6 +392,17 @@ impl<'a> Cpu<'a> {
     fn lax(&mut self, opcode: &Opcode) -> Result<()> {
         self.accumulator = self.load_value(opcode)?;
         self.register_x = self.accumulator;
+
+        Ok(())
+    }
+
+    fn sax(&mut self, opcode: &Opcode) -> Result<()> {
+        let address = self
+            .get_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Could not fetch address in LAX instruction"))?;
+        let result = self.accumulator & self.register_x;
+
+        self.write(address, result)?;
 
         Ok(())
     }
