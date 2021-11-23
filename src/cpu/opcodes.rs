@@ -217,6 +217,36 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x20, "JSR", 3, 6, AddressingMode::Absolute, false),
     Opcode::new(0x40, "RTI", 3, 6, AddressingMode::Implied, false),
     Opcode::new(0x60, "RTS", 3, 6, AddressingMode::Implied, false),
+    //------------------------------------- NON-STANDARD OPCODES -------------------------------------
+    // *NOP
+    Opcode::new(0x1a, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0x3a, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0x5a, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0x7a, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0xda, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0xea, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0xfa, "*NOP", 1, 2, AddressingMode::Implied, false),
+    Opcode::new(0x80, "*NOP", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0x82, "*NOP", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0x89, "*NOP", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0xc2, "*NOP", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0xe2, "*NOP", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0x0c, "*NOP", 3, 4, AddressingMode::Absolute, false),
+    Opcode::new(0x1c, "*NOP", 3, 4, AddressingMode::AbsoluteX, true), // +1 cycle if page boundary crossed
+    Opcode::new(0x3c, "*NOP", 3, 4, AddressingMode::AbsoluteX, true), // +1 cycle if page boundary crossed
+    Opcode::new(0x5c, "*NOP", 3, 4, AddressingMode::AbsoluteX, true), // +1 cycle if page boundary crossed
+    Opcode::new(0x7c, "*NOP", 3, 4, AddressingMode::AbsoluteX, true), // +1 cycle if page boundary crossed
+    Opcode::new(0xdc, "*NOP", 3, 4, AddressingMode::AbsoluteX, true), // +1 cycle if page boundary crossed
+    Opcode::new(0xfc, "*NOP", 3, 4, AddressingMode::AbsoluteX, true), // +1 cycle if page boundary crossed
+    Opcode::new(0x04, "*NOP", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0x44, "*NOP", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0x64, "*NOP", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0x14, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x34, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x54, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x74, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    Opcode::new(0xd4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    Opcode::new(0xf4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
 ];
 
 lazy_static! {

@@ -144,7 +144,7 @@ impl<'a> Cpu<'a> {
                 "LDX" => self.ldx(opcode)?,
                 "LDY" => self.ldy(opcode)?,
                 "LSR" => self.lsr(opcode)?,
-                "NOP" => {}
+                "NOP" | "*NOP" => {}
                 "ORA" => self.ora(opcode)?,
                 "PHA" => self.push_stack(self.accumulator)?,
                 "PHP" => self.php()?,
