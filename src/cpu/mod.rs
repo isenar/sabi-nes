@@ -176,6 +176,12 @@ impl<'a> Cpu<'a> {
 
                 "*LAX" => self.lax(opcode)?,
                 "*SAX" => self.sax(opcode)?,
+                "*DCP" => self.dcp(opcode)?,
+                "*ISB" => self.isb(opcode)?,
+                "*SLO" => self.slo(opcode)?,
+                "*RLA" => self.rla(opcode)?,
+                "*SRE" => self.sre(opcode)?,
+                "*RRA" => self.rra(opcode)?,
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -726,6 +732,36 @@ impl<'a> Cpu<'a> {
         self.bus.tick(interrupt.cpu_cycles);
         self.program_counter = self.read_u16(interrupt.vector_addr)?;
 
+        Ok(())
+    }
+
+    // TODO
+    fn dcp(&mut self, _opcode: &Opcode) -> Result<()> {
+        Ok(())
+    }
+
+    // TODO
+    fn isb(&mut self, _opcode: &Opcode) -> Result<()> {
+        Ok(())
+    }
+
+    // TODO
+    fn slo(&mut self, _opcode: &Opcode) -> Result<()> {
+        Ok(())
+    }
+
+    // TODO
+    fn rla(&mut self, _opcode: &Opcode) -> Result<()> {
+        Ok(())
+    }
+
+    // TODO
+    fn sre(&mut self, _opcode: &Opcode) -> Result<()> {
+        Ok(())
+    }
+
+    // TODO
+    fn rra(&mut self, _opcode: &Opcode) -> Result<()> {
         Ok(())
     }
 }
