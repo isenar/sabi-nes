@@ -450,10 +450,14 @@ impl<'a> Cpu<'a> {
 
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
     }
 
     fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
+        self.status_register
+            .update_zero_and_negative_flags(self.register_y);
     }
 
     fn jmp(&mut self, opcode: &Opcode) -> Result<()> {
@@ -532,7 +536,7 @@ impl<'a> Cpu<'a> {
         if condition {
             self.bus.tick(1);
 
-            let jump: i8 = self.read(self.program_counter)? as i8;
+            let jump = self.read(self.program_counter)? as i8;
             let jump_addr = self
                 .program_counter
                 .wrapping_add(1)

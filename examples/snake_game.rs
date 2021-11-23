@@ -98,8 +98,6 @@ fn main() -> Result<()> {
     let mut cpu = Cpu::new(bus);
     cpu.reset()?;
     cpu.run_with_callback(|cpu| {
-        // println!("{:?}", cpu);
-
         handle_user_input(cpu, &mut event_pump)?;
         cpu.write(0xfe, rng.gen_range(1..16))?;
 

@@ -12,16 +12,14 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
     let opcode_asm = match opcode.length() {
         0 => format_zero_arg_instruction(opcode)?,
-        1 => {
-            let arg = cpu.read(cpu.program_counter + 1)?;
-            format_single_arg_instruction(opcode, arg)?
-        }
+        1 => format_single_arg_instruction(opcode, cpu)?,
         2 => {
             let first = cpu.read(cpu.program_counter + 1)?;
             let second = cpu.read(cpu.program_counter + 2)?;
             let address = Address::from_le_bytes([first, second]);
+            let value = cpu.read(address)?;
 
-            format_double_arg_instruction(opcode, address)?
+            format_double_arg_instruction(opcode, address, value)?
         }
         _ => unreachable!(),
     };
@@ -47,12 +45,19 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             opcode.code,
             cpu.read(cpu.program_counter + 1)?
         ),
-        2 => format!(
-            "{:02X} {:02X} {:02X}",
-            opcode.code,
-            cpu.read(cpu.program_counter + 1)?,
-            cpu.read(cpu.program_counter + 2)?,
-        ),
+        2 => match opcode.mode {
+            AddressingMode::Implied => {
+                format!("{:02X}", opcode.code)
+            }
+            _ => {
+                format!(
+                    "{:02X} {:02X} {:02X}",
+                    opcode.code,
+                    cpu.read(cpu.program_counter + 1)?,
+                    cpu.read(cpu.program_counter + 2)?,
+                )
+            }
+        },
         _ => bail!("Unreachable - got opcode with more than 2 args"),
     })
 }
@@ -65,13 +70,16 @@ fn format_zero_arg_instruction(opcode: &Opcode) -> Result<String> {
     })
 }
 
-fn format_single_arg_instruction(opcode: &Opcode, arg: Byte) -> Result<String> {
+fn format_single_arg_instruction(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
+    let arg = cpu.read(cpu.program_counter + 1)?;
+
     let arg = match opcode.mode {
         AddressingMode::Immediate => {
             format!("#${:02X}", arg)
         }
         AddressingMode::ZeroPage => {
-            format!("${:02X}", arg)
+            let stored_value = cpu.read(arg.into())?;
+            format!("${:02X} = {:02X}", arg, stored_value)
         }
         AddressingMode::ZeroPageX => {
             format!("${:02X},X", arg)
@@ -80,13 +88,29 @@ fn format_single_arg_instruction(opcode: &Opcode, arg: Byte) -> Result<String> {
             format!("${:02X},Y", arg)
         }
         AddressingMode::IndirectX => {
-            format!("(${:02X},X)", arg)
+            let base_address = cpu.read_u16(arg.into())?;
+            let addr_with_y_offset = base_address.wrapping_add(cpu.register_x as u16);
+            let target_cell_value = cpu.read(addr_with_y_offset)?;
+
+            format!(
+                "(${:02X}),X = {:04X} @ {:04X} = {:02X}",
+                arg, base_address, addr_with_y_offset, target_cell_value
+            )
         }
         AddressingMode::IndirectY => {
-            format!("(${:02X},Y)", arg)
+            let base_address = cpu.read_u16(arg.into())?;
+            let addr_with_y_offset = base_address.wrapping_add(cpu.register_y as u16);
+            let target_cell_value = cpu.read(addr_with_y_offset)?;
+
+            format!(
+                "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
+                arg, base_address, addr_with_y_offset, target_cell_value
+            )
         }
         AddressingMode::Relative => {
-            format!("${:04X}", arg)
+            let jmp_addr = cpu.program_counter.wrapping_add(2).wrapping_add(arg.into());
+
+            format!("${:04X}", jmp_addr)
         }
         _ => bail!(
             "All single arg variants exhausted. Got addressing mode: {:?}",
@@ -97,11 +121,12 @@ fn format_single_arg_instruction(opcode: &Opcode, arg: Byte) -> Result<String> {
     Ok(format!("{} {}", opcode.name, arg))
 }
 
-fn format_double_arg_instruction(opcode: &Opcode, address: Address) -> Result<String> {
+fn format_double_arg_instruction(opcode: &Opcode, address: Address, value: Byte) -> Result<String> {
     let arg = match opcode.mode {
-        AddressingMode::Absolute => {
-            format!("${:04X}", address)
-        }
+        AddressingMode::Absolute => match opcode.name {
+            "JMP" | "JSR" => format!("${:04X}", address),
+            _ => format!("${:04X} = {:02X}", address, value),
+        },
         AddressingMode::AbsoluteX => {
             format!("${:04X},X", address)
         }
@@ -172,6 +197,40 @@ mod tests {
         ];
 
         assert_eq!(expected, traces);
+
+        Ok(())
+    }
+
+    #[test]
+    fn trace_format_mem_access() -> Result<()> {
+        let rom = Rom::new(&TEST_ROM)?;
+        let mut bus = Bus::new(rom, |_| {});
+
+        // ORA ($33),Y
+        bus.write(0x64, 0x11)?;
+        bus.write(0x65, 0x33)?;
+
+        //data
+        bus.write(0x33, 0x00)?;
+        bus.write(0x34, 0x04)?;
+
+        //target cell
+        bus.write(0x0405, 0xaa)?;
+
+        let mut cpu = Cpu::new(bus);
+        cpu.program_counter = 0x64;
+        cpu.register_y = 5;
+
+        let mut traces = vec![];
+        cpu.run_with_callback(|cpu| {
+            traces.push(trace(cpu)?);
+            Ok(())
+        })?;
+
+        assert_eq!(
+            "0064  11 33     ORA ($33),Y = 0400 @ 0405 = AA  A:00 X:00 Y:05 P:24 SP:FD",
+            traces[0]
+        );
 
         Ok(())
     }
