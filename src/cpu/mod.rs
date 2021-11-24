@@ -205,7 +205,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn adc(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self.operand_address(opcode)?;
+        let addr = self.pc_operand_address(opcode)?;
         let addr =
             addr.ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
 
@@ -217,7 +217,7 @@ impl<'a> Cpu<'a> {
 
     fn sbc(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
 
         let value = self.read(addr)?;
@@ -245,7 +245,7 @@ impl<'a> Cpu<'a> {
 
     fn compare(&mut self, opcode: &Opcode, register: Register) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
         let value = self.read(addr)?;
         let result = register.wrapping_sub(value);
@@ -285,7 +285,7 @@ impl<'a> Cpu<'a> {
         logical_op: fn(Byte, Byte) -> Byte,
     ) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
         let value = self.read(addr)?;
 
@@ -298,7 +298,7 @@ impl<'a> Cpu<'a> {
 
     fn bit(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for BIT instruction"))?;
         let value = self.read(addr)?;
 
@@ -355,7 +355,7 @@ impl<'a> Cpu<'a> {
         input_carry: Byte,
         shift_op: fn(Byte) -> Byte,
     ) -> Result<(Byte, Byte)> {
-        let address = self.operand_address(opcode)?;
+        let address = self.pc_operand_address(opcode)?;
 
         let (old_value, shifted) = match address {
             Some(addr) => {
@@ -404,7 +404,7 @@ impl<'a> Cpu<'a> {
 
     fn sax(&mut self, opcode: &Opcode) -> Result<()> {
         let address = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address in LAX instruction"))?;
         let result = self.accumulator & self.register_x;
 
@@ -445,7 +445,7 @@ impl<'a> Cpu<'a> {
 
     fn dec(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address in DEC instruction"))?;
         let dec_value = self.read(addr)?.wrapping_sub(1);
 
@@ -470,7 +470,7 @@ impl<'a> Cpu<'a> {
 
     fn inc(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Could not fetch address for in INC instruction"))?;
         let inc_value = self.read(addr)?.wrapping_add(1);
 
@@ -495,7 +495,7 @@ impl<'a> Cpu<'a> {
 
     fn jmp(&mut self, opcode: &Opcode) -> Result<()> {
         let addr = self
-            .operand_address(opcode)?
+            .pc_operand_address(opcode)?
             .ok_or_else(|| anyhow!("Failed to fetch operand address for JMP instruction"))?;
         self.program_counter = addr;
 
@@ -585,26 +585,34 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    pub fn operand_address(&mut self, opcode: &Opcode) -> Result<Option<Address>> {
+    pub fn pc_operand_address(&mut self, opcode: &Opcode) -> Result<Option<Address>> {
+        self.operand_address(opcode, self.program_counter)
+    }
+
+    pub fn operand_address(
+        &mut self,
+        opcode: &Opcode,
+        address: Address,
+    ) -> Result<Option<Address>> {
         Ok(Some(match opcode.mode {
-            AddressingMode::Immediate => self.program_counter,
-            AddressingMode::ZeroPage => self.read(self.program_counter)?.into(),
-            AddressingMode::Absolute => self.read_u16(self.program_counter)?,
+            AddressingMode::Immediate => address,
+            AddressingMode::ZeroPage => self.read(address)?.into(),
+            AddressingMode::Absolute => self.read_u16(address)?,
             AddressingMode::ZeroPageX => {
-                let pos = self.read(self.program_counter)?;
+                let pos = self.read(address)?;
                 let addr = pos.wrapping_add(self.register_x);
 
                 addr.into()
             }
 
             AddressingMode::ZeroPageY => {
-                let pos = self.read(self.program_counter)?;
+                let pos = self.read(address)?;
                 let addr = pos.wrapping_add(self.register_y);
 
                 addr.into()
             }
             AddressingMode::AbsoluteX => {
-                let base = self.read_u16(self.program_counter)?;
+                let base = self.read_u16(address)?;
                 let incremented = base.wrapping_add(self.register_x.into());
 
                 if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
@@ -614,7 +622,7 @@ impl<'a> Cpu<'a> {
                 incremented
             }
             AddressingMode::AbsoluteY => {
-                let base = self.read_u16(self.program_counter)?;
+                let base = self.read_u16(address)?;
                 let incremented = base.wrapping_add(self.register_y.into());
 
                 if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
@@ -624,7 +632,7 @@ impl<'a> Cpu<'a> {
                 incremented
             }
             AddressingMode::IndirectX => {
-                let base = self.read(self.program_counter)?;
+                let base = self.read(address)?;
                 let ptr = base.wrapping_add(self.register_x);
                 let lo = self.read(ptr.into())?;
                 let hi = self.read(ptr.wrapping_add(1).into())?;
@@ -632,7 +640,7 @@ impl<'a> Cpu<'a> {
                 u16::from_le_bytes([lo, hi])
             }
             AddressingMode::IndirectY => {
-                let base = self.read(self.program_counter)?;
+                let base = self.read(address)?;
                 let lo = self.read(base.into())?;
                 let hi = self.read(base.wrapping_add(1).into())?;
                 let deref_base = u16::from_le_bytes([lo, hi]);
@@ -645,27 +653,28 @@ impl<'a> Cpu<'a> {
                 incremented
             }
             AddressingMode::Indirect => {
-                let address = self.read_u16(self.program_counter)?;
+                let target_address = self.read_u16(address)?;
 
                 // recreate the CPU bug with page boundaries:
                 // "The indirect jump instruction does not increment the page address when the indirect pointer
                 // crosses a page boundary.
                 // JMP ($xxFF) will fetch the address from $xxFF and $xx00."
-                if address & 0x00ff == 0x00ff {
-                    let lo = self.read(address)? as Address;
-                    let hi = self.read(address & 0xff00)? as Address;
+                if target_address & 0x00ff == 0x00ff {
+                    let lo = self.read(target_address)? as Address;
+                    let hi = self.read(target_address & 0xff00)? as Address;
 
                     hi << 8 | lo
                 } else {
-                    self.read_u16(address)?
+                    self.read_u16(target_address)?
                 }
             }
+
             _ => return Ok(None),
         }))
     }
 
     fn load_value(&mut self, opcode: &Opcode) -> Result<Byte> {
-        let addr = self.operand_address(opcode)?.ok_or_else(|| {
+        let addr = self.pc_operand_address(opcode)?.ok_or_else(|| {
             anyhow!(
                 "Could not get operand address when loading value ({:?})",
                 opcode.mode
@@ -679,7 +688,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn store_value(&mut self, opcode: &Opcode, value: Byte) -> Result<()> {
-        let addr = self.operand_address(opcode)?.ok_or_else(|| {
+        let addr = self.pc_operand_address(opcode)?.ok_or_else(|| {
             anyhow!(
                 "Could not fetch address when storing value ({:?}",
                 opcode.mode
