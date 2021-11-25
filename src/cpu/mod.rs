@@ -109,12 +109,16 @@ impl<'a> Cpu<'a> {
             let opcode = OPCODES_MAPPING
                 .get(&code)
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
+            let address = self
+                .pc_operand_address(opcode)
+                .with_context(|| format!("Failed to fetch address for {}", opcode.name))?
+                .unwrap_or_default();
 
             match opcode.name {
-                "ADC" => self.adc(opcode)?,
-                "AND" => self.and(opcode)?,
-                "ASL" => self.asl(opcode)?,
-                "BIT" => self.bit(opcode)?,
+                "ADC" => self.adc(address)?,
+                "AND" => self.and(address)?,
+                "ASL" => self.asl(address, opcode.mode)?,
+                "BIT" => self.bit(address)?,
                 "BCC" => self.branch(!self.status_register.contains(StatusRegister::CARRY))?,
                 "BCS" => self.branch(self.status_register.contains(StatusRegister::CARRY))?,
                 "BEQ" => self.branch(self.status_register.contains(StatusRegister::ZERO))?,
@@ -128,30 +132,30 @@ impl<'a> Cpu<'a> {
                 "CLD" => self.status_register.set_decimal_flag(false),
                 "CLI" => self.status_register.set_interrupt_flag(false),
                 "CLV" => self.status_register.set_overflow_flag(false),
-                "CMP" => self.compare(opcode, self.accumulator)?,
-                "CPX" => self.compare(opcode, self.register_x)?,
-                "CPY" => self.compare(opcode, self.register_y)?,
-                "DEC" => self.dec(opcode)?,
+                "CMP" => self.compare(address, self.accumulator)?,
+                "CPX" => self.compare(address, self.register_x)?,
+                "CPY" => self.compare(address, self.register_y)?,
+                "DEC" => self.dec(address)?,
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
-                "EOR" => self.eor(opcode)?,
-                "INC" => self.inc(opcode)?,
+                "EOR" => self.eor(address)?,
+                "INC" => self.inc(address)?,
                 "INX" => self.inx(),
                 "INY" => self.iny(),
-                "JMP" => self.jmp(opcode)?,
+                "JMP" => self.program_counter = address,
                 "JSR" => self.jsr()?,
-                "LDA" => self.lda(opcode)?,
-                "LDX" => self.ldx(opcode)?,
-                "LDY" => self.ldy(opcode)?,
-                "LSR" => self.lsr(opcode)?,
+                "LDA" => self.lda(address)?,
+                "LDX" => self.ldx(address)?,
+                "LDY" => self.ldy(address)?,
+                "LSR" => self.lsr(address, opcode.mode)?,
                 "NOP" | "*NOP" => {}
-                "ORA" => self.ora(opcode)?,
+                "ORA" => self.ora(address)?,
                 "PHA" => self.push_stack(self.accumulator)?,
                 "PHP" => self.php()?,
                 "PLA" => self.pla()?,
                 "PLP" => self.plp()?,
-                "ROL" => self.rol(opcode)?,
-                "ROR" => self.ror(opcode)?,
+                "ROL" => self.rol(address, opcode.mode)?,
+                "ROR" => self.ror(address, opcode.mode)?,
                 "RTI" => {
                     self.rti()?;
                     continue;
@@ -160,13 +164,13 @@ impl<'a> Cpu<'a> {
                     self.rts()?;
                     continue;
                 }
-                "SBC" | "*SBC" => self.sbc(opcode)?,
+                "SBC" | "*SBC" => self.sbc(address)?,
                 "SEC" => self.status_register.set_carry_flag(true),
                 "SED" => self.status_register.set_decimal_flag(true),
                 "SEI" => self.status_register.set_interrupt_flag(true),
-                "STA" => self.sta(opcode)?,
-                "STX" => self.stx(opcode)?,
-                "STY" => self.sty(opcode)?,
+                "STA" => self.write(address, self.accumulator)?,
+                "STX" => self.write(address, self.register_x)?,
+                "STY" => self.write(address, self.register_y)?,
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
@@ -174,14 +178,14 @@ impl<'a> Cpu<'a> {
                 "TXS" => self.stack_pointer.set(self.register_x),
                 "TYA" => self.tya(),
 
-                "*LAX" => self.lax(opcode)?,
-                "*SAX" => self.sax(opcode)?,
-                "*DCP" => self.dcp(opcode)?,
-                "*ISB" => self.isb(opcode)?,
-                "*SLO" => self.slo(opcode)?,
-                "*RLA" => self.rla(opcode)?,
-                "*SRE" => self.sre(opcode)?,
-                "*RRA" => self.rra(opcode)?,
+                "*LAX" => self.lax(address)?,
+                "*SAX" => self.sax(address)?,
+                "*DCP" => self.dcp(address)?,
+                "*ISB" => self.isb(address)?,
+                "*SLO" => self.slo(address)?,
+                "*RLA" => self.rla(address, opcode.mode)?,
+                "*SRE" => self.sre(address)?,
+                "*RRA" => self.rra(address, opcode.mode)?,
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -204,23 +208,15 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn adc(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self.pc_operand_address(opcode)?;
-        let addr =
-            addr.ok_or_else(|| anyhow!("Could not fetch address for performing ADC instruction"))?;
-
-        let value = self.read(addr)?;
+    fn adc(&mut self, address: Address) -> Result<()> {
+        let value = self.read(address)?;
         self.add_to_acc(value);
 
         Ok(())
     }
 
-    fn sbc(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for performing SBC instruction"))?;
-
-        let value = self.read(addr)?;
+    fn sbc(&mut self, address: Address) -> Result<()> {
+        let value = self.read(address)?;
         let neg = ((value as i8).wrapping_neg().wrapping_sub(1)) as Byte;
 
         self.add_to_acc(neg);
@@ -243,11 +239,8 @@ impl<'a> Cpu<'a> {
             .update_zero_and_negative_flags(self.accumulator);
     }
 
-    fn compare(&mut self, opcode: &Opcode, register: Register) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to get operand address for compare instruction"))?;
-        let value = self.read(addr)?;
+    fn compare(&mut self, address: Address, register: Register) -> Result<()> {
+        let value = self.read(address)?;
         let result = register.wrapping_sub(value);
 
         self.status_register.set_carry_flag(value <= register);
@@ -256,24 +249,24 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn and(&mut self, opcode: &Opcode) -> Result<()> {
+    fn and(&mut self, address: Address) -> Result<()> {
         let and = |acc, value| acc & value;
-        self.logical_op_with_acc(opcode, and)
+        self.logical_op_with_acc(address, and)
             .with_context(|| "AND")?;
 
         Ok(())
     }
 
-    fn eor(&mut self, opcode: &Opcode) -> Result<()> {
+    fn eor(&mut self, address: Address) -> Result<()> {
         let xor = |acc, value| acc ^ value;
-        self.logical_op_with_acc(opcode, xor)
+        self.logical_op_with_acc(address, xor)
             .with_context(|| "EOR")?;
 
         Ok(())
     }
-    fn ora(&mut self, opcode: &Opcode) -> Result<()> {
+    fn ora(&mut self, address: Address) -> Result<()> {
         let or = |acc, value| acc | value;
-        self.logical_op_with_acc(opcode, or)
+        self.logical_op_with_acc(address, or)
             .with_context(|| "ORA")?;
 
         Ok(())
@@ -281,13 +274,10 @@ impl<'a> Cpu<'a> {
 
     fn logical_op_with_acc(
         &mut self,
-        opcode: &Opcode,
+        address: Address,
         logical_op: fn(Byte, Byte) -> Byte,
     ) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for performing logical instruction"))?;
-        let value = self.read(addr)?;
+        let value = self.read(address)?;
 
         self.accumulator = logical_op(self.accumulator, value);
         self.status_register
@@ -296,11 +286,8 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn bit(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for BIT instruction"))?;
-        let value = self.read(addr)?;
+    fn bit(&mut self, address: Address) -> Result<()> {
+        let value = self.read(address)?;
 
         self.status_register.set_overflow_flag(value.nth_bit(6));
         self.status_register.set_negative_flag(value.nth_bit(7));
@@ -310,8 +297,8 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn asl(&mut self, opcode: &Opcode) -> Result<()> {
-        let (old_value, shifted) = self.shift(opcode, 0, shift_left)?;
+    fn asl(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
+        let (old_value, shifted) = self.shift(address, mode, 0, shift_left)?;
 
         self.status_register.set_carry_flag(old_value.nth_bit(7));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -319,8 +306,8 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn lsr(&mut self, opcode: &Opcode) -> Result<()> {
-        let (old_value, shifted) = self.shift(opcode, 0, shift_right)?;
+    fn lsr(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
+        let (old_value, shifted) = self.shift(address, mode, 0, shift_right)?;
 
         self.status_register.set_carry_flag(old_value.nth_bit(0));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -328,9 +315,9 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn rol(&mut self, opcode: &Opcode) -> Result<()> {
+    fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as u8;
-        let (previous, shifted) = self.shift(opcode, input_carry, shift_left)?;
+        let (previous, shifted) = self.shift(address, mode, input_carry, shift_left)?;
 
         self.status_register.set_carry_flag(previous.nth_bit(7));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -338,10 +325,10 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn ror(&mut self, opcode: &Opcode) -> Result<()> {
+    fn ror(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry =
             self.status_register.contains(StatusRegister::CARRY) as Byte * 0b1000_0000;
-        let (previous, shifted) = self.shift(opcode, input_carry, shift_right)?;
+        let (previous, shifted) = self.shift(address, mode, input_carry, shift_right)?;
 
         self.status_register.set_carry_flag(previous.nth_bit(0));
         self.status_register.update_zero_and_negative_flags(shifted);
@@ -351,63 +338,58 @@ impl<'a> Cpu<'a> {
 
     fn shift(
         &mut self,
-        opcode: &Opcode,
+        address: Address,
+        mode: AddressingMode,
         input_carry: Byte,
         shift_op: fn(Byte) -> Byte,
     ) -> Result<(Byte, Byte)> {
-        let address = self.pc_operand_address(opcode)?;
-
-        let (old_value, shifted) = match address {
-            Some(addr) => {
-                let value = self.read(addr)?;
-                let shifted = shift_op(value) | input_carry;
-
-                self.write(addr, shifted)?;
-
-                (value, shifted)
-            }
-            None => {
+        let (old_value, shifted) = match mode {
+            AddressingMode::Accumulator => {
                 let old_acc = self.accumulator;
                 self.accumulator = shift_op(self.accumulator) | input_carry;
 
                 (old_acc, self.accumulator)
+            }
+            _ => {
+                let value = self.read(address)?;
+                let shifted = shift_op(value) | input_carry;
+
+                self.write(address, shifted)?;
+
+                (value, shifted)
             }
         };
 
         Ok((old_value, shifted))
     }
 
-    fn lda(&mut self, opcode: &Opcode) -> Result<()> {
-        self.accumulator = self.load_value(opcode)?;
+    fn lda(&mut self, address: Address) -> Result<()> {
+        self.accumulator = self.load_value(address)?;
 
         Ok(())
     }
 
-    fn ldx(&mut self, opcode: &Opcode) -> Result<()> {
-        self.register_x = self.load_value(opcode)?;
+    fn ldx(&mut self, address: Address) -> Result<()> {
+        self.register_x = self.load_value(address)?;
 
         Ok(())
     }
 
-    fn ldy(&mut self, opcode: &Opcode) -> Result<()> {
-        self.register_y = self.load_value(opcode).with_context(|| "In LDY")?;
+    fn ldy(&mut self, address: Address) -> Result<()> {
+        self.register_y = self.load_value(address)?;
 
         Ok(())
     }
 
-    fn lax(&mut self, opcode: &Opcode) -> Result<()> {
-        self.accumulator = self.load_value(opcode)?;
+    fn lax(&mut self, address: Address) -> Result<()> {
+        self.accumulator = self.load_value(address)?;
         self.register_x = self.accumulator;
 
         Ok(())
     }
 
-    fn sax(&mut self, opcode: &Opcode) -> Result<()> {
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Could not fetch address in LAX instruction"))?;
+    fn sax(&mut self, address: Address) -> Result<()> {
         let result = self.accumulator & self.register_x;
-
         self.write(address, result)?;
 
         Ok(())
@@ -443,13 +425,10 @@ impl<'a> Cpu<'a> {
             .update_zero_and_negative_flags(self.accumulator);
     }
 
-    fn dec(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Could not fetch address in DEC instruction"))?;
-        let dec_value = self.read(addr)?.wrapping_sub(1);
+    fn dec(&mut self, address: Address) -> Result<()> {
+        let dec_value = self.read(address)?.wrapping_sub(1);
 
-        self.write(addr, dec_value)?;
+        self.write(address, dec_value)?;
         self.status_register
             .update_zero_and_negative_flags(dec_value);
 
@@ -468,13 +447,10 @@ impl<'a> Cpu<'a> {
             .update_zero_and_negative_flags(self.register_y);
     }
 
-    fn inc(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Could not fetch address for in INC instruction"))?;
-        let inc_value = self.read(addr)?.wrapping_add(1);
+    fn inc(&mut self, address: Address) -> Result<()> {
+        let inc_value = self.read(address)?.wrapping_add(1);
 
-        self.write(addr, inc_value)?;
+        self.write(address, inc_value)?;
         self.status_register
             .update_zero_and_negative_flags(inc_value);
 
@@ -491,15 +467,6 @@ impl<'a> Cpu<'a> {
         self.register_y = self.register_y.wrapping_add(1);
         self.status_register
             .update_zero_and_negative_flags(self.register_y);
-    }
-
-    fn jmp(&mut self, opcode: &Opcode) -> Result<()> {
-        let addr = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for JMP instruction"))?;
-        self.program_counter = addr;
-
-        Ok(())
     }
 
     fn jsr(&mut self) -> Result<()> {
@@ -551,18 +518,6 @@ impl<'a> Cpu<'a> {
         status_register_with_b_flags.insert(StatusRegister::BREAK | StatusRegister::BREAK2);
 
         self.push_stack(status_register_with_b_flags.bits())
-    }
-
-    fn sta(&mut self, opcode: &Opcode) -> Result<()> {
-        self.store_value(opcode, self.accumulator)
-    }
-
-    fn stx(&mut self, opcode: &Opcode) -> Result<()> {
-        self.store_value(opcode, self.register_x)
-    }
-
-    fn sty(&mut self, opcode: &Opcode) -> Result<()> {
-        self.store_value(opcode, self.register_y)
     }
 
     fn branch(&mut self, condition: bool) -> Result<()> {
@@ -673,31 +628,11 @@ impl<'a> Cpu<'a> {
         }))
     }
 
-    fn load_value(&mut self, opcode: &Opcode) -> Result<Byte> {
-        let addr = self.pc_operand_address(opcode)?.ok_or_else(|| {
-            anyhow!(
-                "Could not get operand address when loading value ({:?})",
-                opcode.mode
-            )
-        })?;
-        let value = self.read(addr)?;
-
+    fn load_value(&mut self, address: Address) -> Result<Byte> {
+        let value = self.read(address)?;
         self.status_register.update_zero_and_negative_flags(value);
 
         Ok(value)
-    }
-
-    fn store_value(&mut self, opcode: &Opcode, value: Byte) -> Result<()> {
-        let addr = self.pc_operand_address(opcode)?.ok_or_else(|| {
-            anyhow!(
-                "Could not fetch address when storing value ({:?}",
-                opcode.mode
-            )
-        })?;
-
-        self.write(addr, value)?;
-
-        Ok(())
     }
 
     fn push_stack(&mut self, value: Byte) -> Result<()> {
@@ -744,55 +679,39 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn dcp(&mut self, opcode: &Opcode) -> Result<()> {
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for *DCP instruction"))?;
-
+    fn dcp(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
         let decremented = value.wrapping_sub(1);
         self.write(address, decremented)?;
 
-        self.compare(opcode, self.accumulator)?;
+        self.compare(address, self.accumulator)?;
 
         Ok(())
     }
 
-    fn isb(&mut self, opcode: &Opcode) -> Result<()> {
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for *ISB instruction"))?;
-
+    fn isb(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
         let incremented = value.wrapping_add(1);
-        self.write(address, incremented)?;
 
-        self.sbc(opcode)?;
+        self.write(address, incremented)?;
+        self.sbc(address)?;
 
         Ok(())
     }
 
-    fn slo(&mut self, opcode: &Opcode) -> Result<()> {
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for *ISB instruction"))?;
-
+    fn slo(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
         let shifted_left = value << 1;
         self.status_register.set_carry_flag(value.nth_bit(7));
 
         self.write(address, shifted_left)?;
-        self.ora(opcode)?;
+        self.ora(address)?;
 
         Ok(())
     }
 
-    fn rla(&mut self, opcode: &Opcode) -> Result<()> {
-        self.rol(opcode)?;
-
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for *RLA instruction"))?;
+    fn rla(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
+        self.rol(address, mode)?;
         let value = self.read(address)?;
 
         self.accumulator &= value;
@@ -800,28 +719,20 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn sre(&mut self, opcode: &Opcode) -> Result<()> {
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for *SRE instruction"))?;
+    fn sre(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
         let shifted_right = value >> 1;
 
         self.status_register.set_carry_flag(value.nth_bit(0));
         self.write(address, shifted_right)?;
-        self.eor(opcode)?;
+        self.eor(address)?;
 
         Ok(())
     }
 
-    fn rra(&mut self, opcode: &Opcode) -> Result<()> {
-        self.ror(opcode)?;
-
-        let address = self
-            .pc_operand_address(opcode)?
-            .ok_or_else(|| anyhow!("Failed to fetch operand address for *SRE instruction"))?;
+    fn rra(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
+        self.ror(address, mode)?;
         let value = self.read(address)?;
-
         self.add_to_acc(value);
 
         Ok(())
