@@ -224,7 +224,6 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x5a, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0x7a, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0xda, "*NOP", 1, 2, AddressingMode::Implied, false),
-    Opcode::new(0xea, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0xfa, "*NOP", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0x80, "*NOP", 2, 2, AddressingMode::Immediate, false),
     Opcode::new(0x82, "*NOP", 2, 2, AddressingMode::Immediate, false),
@@ -247,6 +246,69 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x74, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
     Opcode::new(0xd4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
     Opcode::new(0xf4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
+    // *LAX
+    Opcode::new(0xab, "*LAX", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0xaf, "*LAX", 3, 4, AddressingMode::Absolute, false),
+    Opcode::new(0xbf, "*LAX", 3, 4, AddressingMode::AbsoluteY, true), // +1 cycle if page boundary crossed
+    Opcode::new(0xa7, "*LAX", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0xb7, "*LAX", 2, 4, AddressingMode::ZeroPageY, false),
+    Opcode::new(0xa3, "*LAX", 2, 6, AddressingMode::IndirectX, false),
+    Opcode::new(0xb3, "*LAX", 2, 5, AddressingMode::IndirectY, true), // +1 cycle if page boundary crossed
+    // *SAX
+    Opcode::new(0x8f, "*SAX", 3, 4, AddressingMode::Absolute, false),
+    Opcode::new(0x87, "*SAX", 2, 3, AddressingMode::ZeroPage, false),
+    Opcode::new(0x97, "*SAX", 2, 4, AddressingMode::ZeroPageY, false),
+    Opcode::new(0x83, "*SAX", 2, 6, AddressingMode::IndirectX, false),
+    // *SBC
+    Opcode::new(0xeb, "*SBC", 2, 2, AddressingMode::Immediate, false),
+    // *DCP
+    Opcode::new(0xcf, "*DCP", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0xdf, "*DCP", 3, 7, AddressingMode::AbsoluteX, false),
+    Opcode::new(0xdb, "*DCP", 3, 7, AddressingMode::AbsoluteY, false),
+    Opcode::new(0xc7, "*DCP", 2, 5, AddressingMode::ZeroPage, false),
+    Opcode::new(0xd7, "*DCP", 2, 6, AddressingMode::ZeroPageX, false),
+    Opcode::new(0xc3, "*DCP", 2, 8, AddressingMode::IndirectX, false),
+    Opcode::new(0xd3, "*DCP", 2, 8, AddressingMode::IndirectY, false),
+    // *ISB
+    Opcode::new(0xef, "*ISB", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0xff, "*ISB", 3, 7, AddressingMode::AbsoluteX, false),
+    Opcode::new(0xfb, "*ISB", 3, 7, AddressingMode::AbsoluteY, false),
+    Opcode::new(0xe7, "*ISB", 2, 5, AddressingMode::ZeroPage, false),
+    Opcode::new(0xf7, "*ISB", 2, 6, AddressingMode::ZeroPageX, false),
+    Opcode::new(0xe3, "*ISB", 2, 8, AddressingMode::IndirectX, false),
+    Opcode::new(0xf3, "*ISB", 2, 8, AddressingMode::IndirectY, false),
+    // *SLO
+    Opcode::new(0x0f, "*SLO", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0x1f, "*SLO", 3, 7, AddressingMode::AbsoluteX, false),
+    Opcode::new(0x1b, "*SLO", 3, 7, AddressingMode::AbsoluteY, false),
+    Opcode::new(0x07, "*SLO", 2, 5, AddressingMode::ZeroPage, false),
+    Opcode::new(0x17, "*SLO", 2, 6, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x03, "*SLO", 2, 8, AddressingMode::IndirectX, false),
+    Opcode::new(0x13, "*SLO", 2, 8, AddressingMode::IndirectY, false),
+    // *RLA
+    Opcode::new(0x2f, "*RLA", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0x3f, "*RLA", 3, 7, AddressingMode::AbsoluteX, false),
+    Opcode::new(0x3b, "*RLA", 3, 7, AddressingMode::AbsoluteY, false),
+    Opcode::new(0x27, "*RLA", 2, 5, AddressingMode::ZeroPage, false),
+    Opcode::new(0x37, "*RLA", 2, 6, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x23, "*RLA", 2, 8, AddressingMode::IndirectX, false),
+    Opcode::new(0x33, "*RLA", 2, 8, AddressingMode::IndirectY, false),
+    // *SRE
+    Opcode::new(0x4f, "*SRE", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0x5f, "*SRE", 3, 7, AddressingMode::AbsoluteX, false),
+    Opcode::new(0x5b, "*SRE", 3, 7, AddressingMode::AbsoluteY, false),
+    Opcode::new(0x47, "*SRE", 2, 5, AddressingMode::ZeroPage, false),
+    Opcode::new(0x57, "*SRE", 2, 6, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x43, "*SRE", 2, 8, AddressingMode::IndirectX, false),
+    Opcode::new(0x53, "*SRE", 2, 8, AddressingMode::IndirectY, false),
+    // *RRA
+    Opcode::new(0x6f, "*RRA", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0x7f, "*RRA", 3, 7, AddressingMode::AbsoluteX, false),
+    Opcode::new(0x7b, "*RRA", 3, 7, AddressingMode::AbsoluteY, false),
+    Opcode::new(0x67, "*RRA", 2, 5, AddressingMode::ZeroPage, false),
+    Opcode::new(0x77, "*RRA", 2, 6, AddressingMode::ZeroPageX, false),
+    Opcode::new(0x63, "*RRA", 2, 8, AddressingMode::IndirectX, false),
+    Opcode::new(0x73, "*RRA", 2, 8, AddressingMode::IndirectY, false),
 ];
 
 lazy_static! {

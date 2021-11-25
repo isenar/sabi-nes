@@ -1,30 +1,17 @@
 use anyhow::{anyhow, bail};
 use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
-use sabi_nes::{Address, Byte, Cpu, Memory, Result};
+use sabi_nes::{Address, Cpu, Memory, Result};
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read(cpu.program_counter)?;
     let opcode = OPCODES_MAPPING
         .get(&code)
         .ok_or_else(|| anyhow!("Opcode {:#x} not supported", code))?;
-
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
-    let opcode_asm = match opcode.length() {
-        0 => format_zero_arg_instruction(opcode)?,
-        1 => format_single_arg_instruction(opcode, cpu)?,
-        2 => {
-            let first = cpu.read(cpu.program_counter + 1)?;
-            let second = cpu.read(cpu.program_counter + 2)?;
-            let address = Address::from_le_bytes([first, second]);
-            let value = cpu.read(address)?;
+    let opcode_asm = opcode_asm_representation(opcode, cpu)?;
 
-            format_double_arg_instruction(opcode, address, value, cpu)?
-        }
-        _ => unreachable!(),
-    };
-
-    Ok(format!(
+    let mut fmt = format!(
         "{:>04X}  {:<10}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
         cpu.program_counter,
         opcode_hex,
@@ -34,7 +21,15 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         cpu.register_y,
         cpu.status_register,
         cpu.stack_pointer,
-    ))
+    );
+
+    // TODO: there has to be a better way..
+    if opcode.name.starts_with('*') {
+        fmt.remove(15);
+        fmt.insert(47, ' ');
+    }
+
+    Ok(fmt)
 }
 
 fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
@@ -62,102 +57,89 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
     })
 }
 
-fn format_zero_arg_instruction(opcode: &Opcode) -> Result<String> {
-    Ok(match opcode.mode {
-        AddressingMode::Implied => opcode.name.to_owned(),
-        AddressingMode::Accumulator => format!("{} A", opcode.name),
-        _ => bail!("Should not occur"),
-    })
-}
+fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
+    let value = cpu.read(cpu.program_counter + 1)?;
+    let address = cpu.read_u16(cpu.program_counter + 1)?;
+    let target_address = cpu.operand_address(opcode, cpu.program_counter + 1)?;
 
-fn format_single_arg_instruction(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
-    let arg = cpu.read(cpu.program_counter + 1)?;
-
-    let arg = match opcode.mode {
+    let opcode_asm_args = match opcode.mode {
         AddressingMode::Immediate => {
-            format!("#${:02X}", arg)
+            format!("#${:02X}", value)
         }
         AddressingMode::ZeroPage => {
-            let stored_value = cpu.read(arg.into())?;
-            format!("${:02X} = {:02X}", arg, stored_value)
+            let stored_value = cpu.read(value.into())?;
+            format!("${:02X} = {:02X}", value, stored_value)
         }
         AddressingMode::ZeroPageX => {
-            format!("${:02X},X", arg)
+            let stored_value = cpu.read(target_address)?;
+
+            format!(
+                "${:02X},X @ {:02X} = {:02X}",
+                value, target_address, stored_value
+            )
         }
         AddressingMode::ZeroPageY => {
-            format!("${:02X},Y", arg)
+            let stored_value = cpu.read(target_address)?;
+            format!(
+                "${:02X},Y @ {:02X} = {:02X}",
+                value, target_address, stored_value
+            )
+        }
+        AddressingMode::Absolute => {
+            let stored_value = cpu.read(target_address)?;
+            match opcode.name {
+                "JMP" | "JSR" => format!("${:04X}", target_address),
+                _ => format!("${:04X} = {:02X}", target_address, stored_value),
+            }
+        }
+        AddressingMode::AbsoluteX => {
+            let incremented = address.wrapping_add(cpu.register_x.into());
+            let value = cpu.read(incremented)?;
+
+            format!("${:04X},X @ {:04X} = {:02X}", address, incremented, value)
+        }
+        AddressingMode::AbsoluteY => {
+            let incremented = address.wrapping_add(cpu.register_y.into());
+            let value = cpu.read(incremented)?;
+
+            format!("${:04X},Y @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::IndirectX => {
-            let shifted = arg.wrapping_add(cpu.register_x);
-            let first = cpu.read(shifted.into())?;
-            let second = cpu.read(shifted.wrapping_add(1).into())?;
-            let address = Address::from_le_bytes([first, second]);
-            let target_cell_value = cpu.read(address)?;
+            let incremented = value.wrapping_add(cpu.register_x);
+            let target_cell_value = cpu.read(target_address)?;
 
             format!(
                 "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
-                arg,
-                arg.wrapping_add(cpu.register_x),
-                address,
-                target_cell_value
+                value, incremented, target_address, target_cell_value
             )
         }
         AddressingMode::IndirectY => {
-            let first = cpu.read(arg.into())?;
-            let second = cpu.read(arg.wrapping_add(1).into())?;
-            let address = Address::from_le_bytes([first, second]);
-            let address_shifted = address.wrapping_add(cpu.register_y.into());
-            let target_cell_value = cpu.read(address_shifted)?;
+            let address = target_address.wrapping_sub(cpu.register_y.into());
+            let target_cell_value = cpu.read(target_address)?;
 
             format!(
                 "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
-                arg,
-                address,
-                address.wrapping_add(cpu.register_y.into()),
-                target_cell_value,
+                value, address, target_address, target_cell_value,
             )
         }
+        AddressingMode::Implied => String::new(),
+        AddressingMode::Accumulator => "A".into(),
         AddressingMode::Relative => {
-            let jmp_addr = cpu.program_counter.wrapping_add(2).wrapping_add(arg.into());
+            let offset = value as i8;
+            let jmp_addr = cpu
+                .program_counter
+                .wrapping_add(2)
+                .wrapping_add(offset as Address);
 
             format!("${:04X}", jmp_addr)
         }
-        _ => bail!(
-            "All single arg variants exhausted. Got addressing mode: {:?}",
-            opcode.mode
-        ),
-    };
-
-    Ok(format!("{} {}", opcode.name, arg))
-}
-
-fn format_double_arg_instruction(
-    opcode: &Opcode,
-    address: Address,
-    value: Byte,
-    cpu: &mut Cpu,
-) -> Result<String> {
-    let arg = match opcode.mode {
-        AddressingMode::Absolute => match opcode.name {
-            "JMP" | "JSR" => format!("${:04X}", address),
-            _ => format!("${:04X} = {:02X}", address, value),
-        },
-        AddressingMode::AbsoluteX => {
-            format!("${:04X},X", address)
-        }
-        AddressingMode::AbsoluteY => {
-            format!("${:04X},Y", address)
-        }
         AddressingMode::Indirect => {
-            let addr = cpu.read_u16(address)?;
-            format!("(${:04X}) = {:04X}", address, addr)
+            format!("(${:04X}) = {:04X}", address, target_address)
         }
-        AddressingMode::Implied => String::new(),
-
-        other => bail!("Unreachable - 2 args, got {:?}", other),
     };
+    let opcode_asm = format!("{} {}", opcode.name, opcode_asm_args);
 
-    Ok(format!("{} {}", opcode.name, arg))
+    Ok(opcode_asm)
 }
 
 #[cfg(test)]
@@ -188,11 +170,11 @@ mod tests {
     fn trace_format() -> Result<()> {
         let rom = Rom::new(&TEST_ROM)?;
         let mut bus = Bus::new(rom, |_| {});
-        bus.write(100, 0xa2)?;
-        bus.write(101, 0x01)?;
-        bus.write(102, 0xca)?;
-        bus.write(103, 0x88)?;
-        bus.write(104, 0x00)?;
+        bus.write(0x64, 0xa2)?;
+        bus.write(0x65, 0x01)?;
+        bus.write(0x66, 0xca)?;
+        bus.write(0x67, 0x88)?;
+        bus.write(0x68, 0x00)?;
 
         let mut cpu = Cpu::new(bus);
         cpu.program_counter = 0x64;
