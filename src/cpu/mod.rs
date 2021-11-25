@@ -744,33 +744,86 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    // TODO
-    fn dcp(&mut self, _opcode: &Opcode) -> Result<()> {
+    fn dcp(&mut self, opcode: &Opcode) -> Result<()> {
+        let address = self
+            .pc_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for *DCP instruction"))?;
+
+        let value = self.read(address)?;
+        let decremented = value.wrapping_sub(1);
+        self.write(address, decremented)?;
+
+        self.compare(opcode, self.accumulator)?;
+
         Ok(())
     }
 
-    // TODO
-    fn isb(&mut self, _opcode: &Opcode) -> Result<()> {
+    fn isb(&mut self, opcode: &Opcode) -> Result<()> {
+        let address = self
+            .pc_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for *ISB instruction"))?;
+
+        let value = self.read(address)?;
+        let incremented = value.wrapping_add(1);
+        self.write(address, incremented)?;
+
+        self.sbc(opcode)?;
+
         Ok(())
     }
 
-    // TODO
-    fn slo(&mut self, _opcode: &Opcode) -> Result<()> {
+    fn slo(&mut self, opcode: &Opcode) -> Result<()> {
+        let address = self
+            .pc_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for *ISB instruction"))?;
+
+        let value = self.read(address)?;
+        let shifted_left = value << 1;
+        self.status_register.set_carry_flag(value.nth_bit(7));
+
+        self.write(address, shifted_left)?;
+        self.ora(opcode)?;
+
         Ok(())
     }
 
-    // TODO
-    fn rla(&mut self, _opcode: &Opcode) -> Result<()> {
+    fn rla(&mut self, opcode: &Opcode) -> Result<()> {
+        self.rol(opcode)?;
+
+        let address = self
+            .pc_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for *RLA instruction"))?;
+        let value = self.read(address)?;
+
+        self.accumulator &= value;
+
         Ok(())
     }
 
-    // TODO
-    fn sre(&mut self, _opcode: &Opcode) -> Result<()> {
+    fn sre(&mut self, opcode: &Opcode) -> Result<()> {
+        let address = self
+            .pc_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for *SRE instruction"))?;
+        let value = self.read(address)?;
+        let shifted_right = value >> 1;
+
+        self.status_register.set_carry_flag(value.nth_bit(0));
+        self.write(address, shifted_right)?;
+        self.eor(opcode)?;
+
         Ok(())
     }
 
-    // TODO
-    fn rra(&mut self, _opcode: &Opcode) -> Result<()> {
+    fn rra(&mut self, opcode: &Opcode) -> Result<()> {
+        self.ror(opcode)?;
+
+        let address = self
+            .pc_operand_address(opcode)?
+            .ok_or_else(|| anyhow!("Failed to fetch operand address for *SRE instruction"))?;
+        let value = self.read(address)?;
+
+        self.add_to_acc(value);
+
         Ok(())
     }
 }

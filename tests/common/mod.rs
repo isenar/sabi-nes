@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail};
 use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
-use sabi_nes::{Cpu, Memory, Result};
+use sabi_nes::{Address, Cpu, Memory, Result};
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read(cpu.program_counter)?;
@@ -11,7 +11,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
     let opcode_asm = opcode_asm_representation(opcode, cpu)?;
 
-    Ok(format!(
+    let mut fmt = format!(
         "{:>04X}  {:<10}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
         cpu.program_counter,
         opcode_hex,
@@ -21,7 +21,15 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         cpu.register_y,
         cpu.status_register,
         cpu.stack_pointer,
-    ))
+    );
+
+    // TODO: there has to be a better way..
+    if opcode.name.starts_with('*') {
+        fmt.remove(15);
+        fmt.insert(47, ' ');
+    }
+
+    Ok(fmt)
 }
 
 fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
@@ -119,10 +127,11 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
         AddressingMode::Implied => String::new(),
         AddressingMode::Accumulator => "A".into(),
         AddressingMode::Relative => {
+            let offset = value as i8;
             let jmp_addr = cpu
                 .program_counter
                 .wrapping_add(2)
-                .wrapping_add(value.into());
+                .wrapping_add(offset as Address);
 
             format!("${:04X}", jmp_addr)
         }
