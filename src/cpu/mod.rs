@@ -105,14 +105,12 @@ impl<'a> Cpu<'a> {
             self.program_counter += 1;
 
             let current_program_counter = self.program_counter;
-
             let opcode = OPCODES_MAPPING
                 .get(&code)
                 .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
             let address = self
                 .pc_operand_address(opcode)
-                .with_context(|| format!("Failed to fetch address for {}", opcode.name))?
-                .unwrap_or_default();
+                .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
 
             match opcode.name {
                 "ADC" => self.adc(address)?,
@@ -227,7 +225,6 @@ impl<'a> Cpu<'a> {
     fn add_to_acc(&mut self, data: u8) {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as u16;
         let sum_wide = self.accumulator as u16 + data as u16 + input_carry;
-
         let result = sum_wide as Byte;
 
         self.status_register.set_carry_flag(sum_wide > 0xff);
@@ -540,16 +537,12 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    pub fn pc_operand_address(&mut self, opcode: &Opcode) -> Result<Option<Address>> {
+    pub fn pc_operand_address(&mut self, opcode: &Opcode) -> Result<Address> {
         self.operand_address(opcode, self.program_counter)
     }
 
-    pub fn operand_address(
-        &mut self,
-        opcode: &Opcode,
-        address: Address,
-    ) -> Result<Option<Address>> {
-        Ok(Some(match opcode.mode {
+    pub fn operand_address(&mut self, opcode: &Opcode, address: Address) -> Result<Address> {
+        Ok(match opcode.mode {
             AddressingMode::Immediate => address,
             AddressingMode::ZeroPage => self.read(address)?.into(),
             AddressingMode::Absolute => self.read_u16(address)?,
@@ -623,9 +616,8 @@ impl<'a> Cpu<'a> {
                     self.read_u16(target_address)?
                 }
             }
-
-            _ => return Ok(None),
-        }))
+            _ => 0,
+        })
     }
 
     fn load_value(&mut self, address: Address) -> Result<Byte> {

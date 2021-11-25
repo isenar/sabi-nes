@@ -60,9 +60,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
     let value = cpu.read(cpu.program_counter + 1)?;
     let address = cpu.read_u16(cpu.program_counter + 1)?;
-    let target_address = cpu
-        .operand_address(opcode, cpu.program_counter + 1)?
-        .unwrap_or_default();
+    let target_address = cpu.operand_address(opcode, cpu.program_counter + 1)?;
 
     let opcode_asm_args = match opcode.mode {
         AddressingMode::Immediate => {
@@ -139,7 +137,6 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             format!("(${:04X}) = {:04X}", address, target_address)
         }
     };
-
     let opcode_asm = format!("{} {}", opcode.name, opcode_asm_args);
 
     Ok(opcode_asm)
