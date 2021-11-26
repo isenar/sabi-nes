@@ -10,9 +10,9 @@ pub struct ScrollRegister {
 impl ScrollRegister {
     pub fn write(&mut self, value: Byte) {
         if self.latch {
-            self.scroll_x = value;
-        } else {
             self.scroll_y = value;
+        } else {
+            self.scroll_x = value;
         }
 
         self.latch = !self.latch;

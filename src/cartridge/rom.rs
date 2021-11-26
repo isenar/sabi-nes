@@ -90,7 +90,7 @@ impl RomHeader {
         }
 
         if !data[8..16].iter().all(|&byte| byte == 0) {
-            bail!("last 8 bites of the header are not 0s");
+            bail!("last 8 bytes of the header are not 0s");
         }
 
         Ok(())

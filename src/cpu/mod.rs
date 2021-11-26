@@ -269,11 +269,10 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn logical_op_with_acc(
-        &mut self,
-        address: Address,
-        logical_op: fn(Byte, Byte) -> Byte,
-    ) -> Result<()> {
+    fn logical_op_with_acc<Op>(&mut self, address: Address, logical_op: Op) -> Result<()>
+    where
+        Op: Fn(Byte, Byte) -> Byte,
+    {
         let value = self.read(address)?;
 
         self.accumulator = logical_op(self.accumulator, value);
@@ -333,13 +332,16 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn shift(
+    fn shift<Op>(
         &mut self,
         address: Address,
         mode: AddressingMode,
         input_carry: Byte,
-        shift_op: fn(Byte) -> Byte,
-    ) -> Result<(Byte, Byte)> {
+        shift_op: Op,
+    ) -> Result<(Byte, Byte)>
+    where
+        Op: Fn(Byte) -> Byte,
+    {
         let (old_value, shifted) = match mode {
             AddressingMode::Accumulator => {
                 let old_acc = self.accumulator;

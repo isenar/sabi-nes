@@ -64,7 +64,7 @@ impl Ppu {
                 self.scanline = 0;
                 self.nmi_interrupt = None;
                 self.registers.reset_vblank();
-                self.registers.set_sprite_zero_hit();
+                self.registers.reset_sprite_zero_hit();
                 return true;
             }
         }
@@ -123,19 +123,19 @@ impl Ppu {
         match addr {
             0x0000..=0x1fff => bail!("Attempted to write to CHR ROM space ({:#?})", addr),
             0x2000..=0x2fff => {
-                let mirrored_addr = self.mirror_vram_addr(addr);
-                self.vram[mirrored_addr as usize] = value;
+                let mirrored_addr = self.mirror_vram_addr(addr) as usize;
+                self.vram[mirrored_addr] = value;
             }
             0x3000..=0x3eff => bail!("Requested invalid address from PPU ({:#x})", addr),
             0x3f00..=0x3fff => {
-                let mut addr = addr;
+                let mut addr = addr as usize;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
                 if [0x3f10, 0x3f14, 0x3f18, 0x3f1c].contains(&addr) {
                     addr -= 0x10;
                 }
 
                 let offset_addr = addr - 0x3f00;
-                self.palette_table[offset_addr as usize] = value;
+                self.palette_table[offset_addr] = value;
             }
             0x4000.. => bail!(
                 "Unexpected access to mirrored space on PPU write ({:#x})",
@@ -168,14 +168,14 @@ impl Ppu {
             }
             0x3000..=0x3eff => bail!("Requested invalid address from PPU ({:#x})", addr),
             0x3f00..=0x3fff => {
-                let mut addr = addr;
+                let mut addr = addr as usize;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
                 if [0x3f10, 0x3f14, 0x3f18, 0x3f1c].contains(&addr) {
                     addr -= 0x10;
                 }
 
                 let offset_addr = addr - 0x3f00;
-                Ok(self.palette_table[offset_addr as usize])
+                Ok(self.palette_table[offset_addr])
             }
             0x4000.. => bail!(
                 "Unexpected access to mirrored space on PPU read ({:#x})",
