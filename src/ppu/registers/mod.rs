@@ -48,6 +48,10 @@ impl PpuRegisters {
         self.oam_data[self.oam_address as usize]
     }
 
+    pub fn read_all_oam_data(&self) -> &[Byte] {
+        &self.oam_data
+    }
+
     pub fn read_status(&mut self) -> Byte {
         let status = self.status.bits();
 
@@ -56,6 +60,10 @@ impl PpuRegisters {
         self.scroll.reset_latch();
 
         status
+    }
+
+    pub fn read_sprite_pattern_address(&self) -> Address {
+        self.control.sprite_pattern_address()
     }
 
     pub fn write_address(&mut self, value: Byte) {

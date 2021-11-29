@@ -1,4 +1,4 @@
-use crate::Byte;
+use crate::{Address, Byte};
 use bitflags::bitflags;
 
 bitflags! {
@@ -26,6 +26,10 @@ impl ControlRegister {
         } else {
             32
         }
+    }
+
+    pub fn sprite_pattern_address(&self) -> Address {
+        self.contains(Self::SPRITE_PATTERN_ADDR) as Address * 0x1000
     }
 }
 
