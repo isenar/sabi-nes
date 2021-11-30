@@ -2,6 +2,7 @@ mod registers;
 
 use crate::cartridge::MirroringType;
 use crate::ppu::registers::PpuRegisters;
+use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Result};
 use anyhow::bail;
 
@@ -189,7 +190,7 @@ impl Ppu {
     }
 
     pub fn mirror_vram_addr(&self, addr: Address) -> Address {
-        let mirrored_vram_addr = addr & 0b0010_1111_1111_1111;
+        let mirrored_vram_addr = addr.mirror_ppu_addr();
         let vram_index = mirrored_vram_addr - 0x2000;
         let name_table = vram_index / 0x0400;
 
@@ -207,6 +208,7 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches::assert_matches;
 
     impl Ppu {
         fn test_ppu() -> Self {
@@ -344,7 +346,7 @@ mod tests {
         ppu.registers.write_address(0x05);
 
         ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x66);
+        assert_matches!(ppu.read(), Ok(0x66));
     }
 
     #[test]

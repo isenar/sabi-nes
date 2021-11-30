@@ -1,3 +1,4 @@
+use crate::utils::MirroredAddress;
 use crate::{Address, Byte};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -55,7 +56,7 @@ impl AddressRegister {
 
     fn mirror_down(&mut self) {
         if self.get() > 0x3fff {
-            self.set(self.get() & 0b0011_1111_1111_1111)
+            self.set(self.get().mirror_ppu_addr());
         }
     }
 }

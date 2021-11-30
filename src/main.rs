@@ -49,17 +49,13 @@ fn main() -> Result<()> {
 
     let game_bytes = std::fs::read("examples/pacman.nes")?;
     let rom = Rom::new(&game_bytes)?;
-
     let mut frame = Frame::default();
 
     let bus = Bus::new_with_callback(rom, move |ppu: &Ppu, joypad: &mut Joypad| -> Result<()> {
-        render(ppu, &mut frame).expect("Failed to render");
+        render(ppu, &mut frame)?;
 
-        texture
-            .update(None, &frame.pixel_data, (WIDTH * SCALE) as usize)
-            .unwrap();
-
-        canvas.copy(&texture, None, None).unwrap();
+        texture.update(None, &frame.pixel_data, (WIDTH * SCALE) as usize)?;
+        canvas.copy(&texture, None, None).map_err(Error::msg)?;
         canvas.present();
 
         for event in event_pump.poll_iter() {
