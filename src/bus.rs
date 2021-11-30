@@ -1,6 +1,8 @@
 use crate::cartridge::Rom;
 use crate::cpu::Address;
+use crate::input::joypad::Joypad;
 use crate::ppu::Ppu;
+use crate::utils::MirroredAddress;
 use crate::{Byte, Memory, Result};
 use anyhow::bail;
 
@@ -16,15 +18,20 @@ pub struct Bus<'call> {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
     ppu: Ppu,
+    joypad: Joypad,
     cycles: usize,
 
-    gameloop_callback: Box<dyn FnMut(&Ppu) + 'call>,
+    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call>,
 }
 
 impl<'a> Bus<'a> {
-    pub fn new<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
+    pub fn new(rom: Rom) -> Bus<'a> {
+        Self::new_with_callback(rom, |_, _| Ok(()))
+    }
+
+    pub fn new_with_callback<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
     where
-        F: FnMut(&Ppu) + 'call,
+        F: FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call,
     {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
@@ -32,19 +39,21 @@ impl<'a> Bus<'a> {
             cpu_vram: [0; VRAM_SIZE],
             rom,
             ppu,
+            joypad: Joypad::default(),
             cycles: 0,
             gameloop_callback: Box::from(gameloop_callback),
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) {
+    pub fn tick(&mut self, cycles: u8) -> Result<()> {
         self.cycles += cycles as usize;
 
         let new_frame = self.ppu.tick(cycles * 3);
-
         if new_frame {
-            (self.gameloop_callback)(&self.ppu);
+            (self.gameloop_callback)(&self.ppu, &mut self.joypad)?;
         }
+
+        Ok(())
     }
 
     pub fn poll_nmi_status(&mut self) -> Option<()> {
@@ -67,10 +76,8 @@ impl Memory for Bus<'_> {
     fn read(&mut self, addr: Address) -> Result<Byte> {
         Ok(match addr {
             RAM..=RAM_MIRRORS_END => {
-                // truncate to 11 bits
-                let mirror_base_addr = addr & 0b0000_0111_1111_1111;
-
-                self.cpu_vram[mirror_base_addr as usize]
+                let mirror_base_addr = addr.mirror_cpu_vram_addr() as usize;
+                self.cpu_vram[mirror_base_addr]
             }
             0x2000 => bail!("Attempted to read from write-only PPU control register"),
             0x2001 => bail!("Attempted to read from write-only PPU mask register"),
@@ -81,11 +88,12 @@ impl Memory for Bus<'_> {
             0x2006 => bail!("Attempted to read from write-only PPU address register"),
             0x2007 => self.ppu.read()?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr & 0b0000_0111_1111_1111;
+                let mirror_base_addr = addr.mirror_cpu_vram_addr();
                 self.read(mirror_base_addr)?
             }
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
             ROM_START..=ROM_END => self.read_prg_rom(addr),
+            0x4016 => self.joypad.read(),
             _ => {
                 println!("Ignoring mem access at {:x?}", addr);
                 0
@@ -96,8 +104,8 @@ impl Memory for Bus<'_> {
     fn write(&mut self, addr: Address, value: Byte) -> Result<()> {
         match addr {
             RAM..=RAM_MIRRORS_END => {
-                let mirror_base_addr = addr & 0b0000_0111_1111_1111;
-                self.cpu_vram[mirror_base_addr as usize] = value;
+                let mirror_base_addr = addr.mirror_cpu_vram_addr() as usize;
+                self.cpu_vram[mirror_base_addr] = value;
             }
             0x2000 => self.ppu.write_to_control_register(value),
             0x2001 => self.ppu.write_to_mask_register(value),
@@ -108,7 +116,7 @@ impl Memory for Bus<'_> {
             0x2006 => self.ppu.write_to_addr_register(value),
             0x2007 => self.ppu.write(value)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr & 0b0010_0000_0000_0111;
+                let mirror_base_addr = addr.mirror_ppu_addr();
 
                 self.write(mirror_base_addr, value)?
             }
@@ -121,6 +129,7 @@ impl Memory for Bus<'_> {
 
                 self.ppu.write_to_oam_dma(&buffer);
             }
+            0x4016 => self.joypad.write(value),
             ROM_START..=ROM_END => {
                 bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr)
             }
@@ -139,7 +148,7 @@ mod tests {
     use assert_matches::assert_matches;
 
     fn test_bus() -> Bus<'static> {
-        Bus::new(test_rom(), |_| {})
+        Bus::new(test_rom())
     }
 
     fn test_rom() -> Rom {

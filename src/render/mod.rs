@@ -4,7 +4,7 @@ pub mod palettes;
 
 use crate::ppu::Ppu;
 use crate::render::bg_tile::BgTile;
-use crate::render::palettes::SYSTEM_PALLETE;
+use crate::render::palettes::SYSTEM_PALETTE;
 use crate::{Address, Byte, Result};
 
 pub use frame::Frame;
@@ -36,7 +36,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 let value = ((1 & lower) << 1 | (1 & upper)) as usize;
                 upper >>= 1;
                 lower >>= 1;
-                let rgb = SYSTEM_PALLETE[bg_palette[value] as usize];
+                let rgb = SYSTEM_PALETTE[bg_palette[value] as usize];
                 frame.set_pixel(tile_new.column() * 8 + x, tile_new.row() * 8 + y, rgb)
             }
         }
@@ -70,7 +70,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 lower >>= 1;
                 let rgb = match value {
                     0 => continue 'ololo, // skip coloring the pixel
-                    _ => SYSTEM_PALLETE[sprite_palette[value] as usize],
+                    _ => SYSTEM_PALETTE[sprite_palette[value] as usize],
                 };
                 match (flip_horizontal, flip_vertical) {
                     (false, false) => frame.set_pixel(tile_x + x, tile_y + y, rgb),

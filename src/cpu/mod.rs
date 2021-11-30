@@ -187,7 +187,7 @@ impl<'a> Cpu<'a> {
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
-            self.bus.tick(opcode.length());
+            self.bus.tick(opcode.cycles)?;
 
             if current_program_counter == self.program_counter {
                 self.program_counter += opcode.length() as u16;
@@ -521,7 +521,7 @@ impl<'a> Cpu<'a> {
 
     fn branch(&mut self, condition: bool) -> Result<()> {
         if condition {
-            self.bus.tick(1);
+            self.bus.tick(1)?;
 
             let jump = self.read(self.program_counter)? as i8;
             let jump_addr = self
@@ -530,7 +530,7 @@ impl<'a> Cpu<'a> {
                 .wrapping_add(jump as u16);
 
             if is_page_crossed(self.program_counter, jump_addr) {
-                self.bus.tick(1);
+                self.bus.tick(1)?;
             }
 
             self.program_counter = jump_addr;
@@ -566,7 +566,7 @@ impl<'a> Cpu<'a> {
                 let incremented = base.wrapping_add(self.register_x.into());
 
                 if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
-                    self.bus.tick(1);
+                    self.bus.tick(1)?;
                 }
 
                 incremented
@@ -576,7 +576,7 @@ impl<'a> Cpu<'a> {
                 let incremented = base.wrapping_add(self.register_y.into());
 
                 if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
-                    self.bus.tick(1);
+                    self.bus.tick(1)?;
                 }
 
                 incremented
@@ -597,7 +597,7 @@ impl<'a> Cpu<'a> {
                 let incremented = deref_base.wrapping_add(self.register_y.into());
 
                 if opcode.needs_page_cross_check && is_page_crossed(deref_base, incremented) {
-                    self.bus.tick(1);
+                    self.bus.tick(1)?;
                 }
 
                 incremented
@@ -667,7 +667,7 @@ impl<'a> Cpu<'a> {
         self.push_stack(status.bits())?;
         self.status_register.disable_interrupt();
 
-        self.bus.tick(interrupt.cpu_cycles);
+        self.bus.tick(interrupt.cpu_cycles)?;
         self.program_counter = self.read_u16(interrupt.vector_addr)?;
 
         Ok(())
@@ -794,7 +794,7 @@ mod tests {
 
         fn build_and_run(self, data: &[Byte]) -> Cpu {
             let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
-            let bus = Bus::new(rom, |_ppu| {});
+            let bus = Bus::new(rom);
             let mut cpu = Cpu::new(bus);
             cpu.status_register = StatusRegister::empty();
 
