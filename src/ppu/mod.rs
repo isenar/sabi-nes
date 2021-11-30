@@ -84,6 +84,10 @@ impl Ppu {
         self.registers.read_oam_data()
     }
 
+    pub fn read_sprite_pattern_address(&self) -> Address {
+        self.registers.read_sprite_pattern_address()
+    }
+
     pub fn write_to_addr_register(&mut self, value: Byte) {
         self.registers.write_address(value);
     }

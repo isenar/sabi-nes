@@ -3,13 +3,13 @@ use crate::Byte;
 
 #[derive(Debug)]
 pub struct Frame {
-    pub data: Vec<Byte>,
+    pub pixel_data: Vec<Byte>,
 }
 
 impl Default for Frame {
     fn default() -> Self {
         Self {
-            data: vec![0; Self::WIDTH * Self::HEIGHT * 3],
+            pixel_data: vec![0; Self::WIDTH * Self::HEIGHT * 3],
         }
     }
 }
@@ -21,10 +21,10 @@ impl Frame {
     pub fn set_pixel(&mut self, x: usize, y: usize, rgb: Rgb) {
         let base = y * 3 * Self::WIDTH + x * 3;
 
-        if base + 2 < self.data.len() {
-            self.data[base] = rgb.0;
-            self.data[base + 1] = rgb.1;
-            self.data[base + 2] = rgb.2;
+        if base + 2 < self.pixel_data.len() {
+            self.pixel_data[base] = rgb.0;
+            self.pixel_data[base + 1] = rgb.1;
+            self.pixel_data[base + 2] = rgb.2;
         }
     }
 }
