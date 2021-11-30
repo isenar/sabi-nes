@@ -1,5 +1,6 @@
 use crate::cartridge::Rom;
 use crate::cpu::Address;
+use crate::input::joypad::Joypad;
 use crate::ppu::Ppu;
 use crate::{Byte, Memory, Result};
 use anyhow::bail;
@@ -16,15 +17,16 @@ pub struct Bus<'call> {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
     ppu: Ppu,
+    joypad: Joypad,
     cycles: usize,
 
-    gameloop_callback: Box<dyn FnMut(&Ppu) + 'call>,
+    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) + 'call>,
 }
 
 impl<'a> Bus<'a> {
     pub fn new<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
     where
-        F: FnMut(&Ppu) + 'call,
+        F: FnMut(&Ppu, &mut Joypad) + 'call,
     {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
@@ -32,6 +34,7 @@ impl<'a> Bus<'a> {
             cpu_vram: [0; VRAM_SIZE],
             rom,
             ppu,
+            joypad: Joypad::default(),
             cycles: 0,
             gameloop_callback: Box::from(gameloop_callback),
         }
@@ -43,7 +46,7 @@ impl<'a> Bus<'a> {
         let new_frame = self.ppu.tick(cycles * 3);
 
         if new_frame {
-            (self.gameloop_callback)(&self.ppu);
+            (self.gameloop_callback)(&self.ppu, &mut self.joypad);
         }
     }
 
@@ -86,6 +89,7 @@ impl Memory for Bus<'_> {
             }
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
             ROM_START..=ROM_END => self.read_prg_rom(addr),
+            0x4016 => self.joypad.read(),
             _ => {
                 println!("Ignoring mem access at {:x?}", addr);
                 0
@@ -121,6 +125,7 @@ impl Memory for Bus<'_> {
 
                 self.ppu.write_to_oam_dma(&buffer);
             }
+            0x4016 => self.joypad.write(value),
             ROM_START..=ROM_END => {
                 bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr)
             }
@@ -139,7 +144,7 @@ mod tests {
     use assert_matches::assert_matches;
 
     fn test_bus() -> Bus<'static> {
-        Bus::new(test_rom(), |_| {})
+        Bus::new(test_rom(), |_, _| {})
     }
 
     fn test_rom() -> Rom {

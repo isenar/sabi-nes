@@ -1,5 +1,5 @@
 use anyhow::bail;
-use sabi_nes::render::palettes::SYSTEM_PALLETE;
+use sabi_nes::render::palettes::SYSTEM_PALETTE;
 use sabi_nes::render::Frame;
 use sabi_nes::{Byte, Result, Rom};
 use sdl2::event::Event;
@@ -30,10 +30,10 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
                 upper >>= 1;
                 lower >>= 1;
                 let rgb = match value {
-                    0 => SYSTEM_PALLETE[0x02],
-                    1 => SYSTEM_PALLETE[0x23],
-                    2 => SYSTEM_PALLETE[0x27],
-                    3 => SYSTEM_PALLETE[0x30],
+                    0 => SYSTEM_PALETTE[0x02],
+                    1 => SYSTEM_PALETTE[0x23],
+                    2 => SYSTEM_PALETTE[0x27],
+                    3 => SYSTEM_PALETTE[0x30],
                     _ => bail!("RGB color must fit within 2 bits! Got value: {}", value),
                 };
                 frame.set_pixel(tile_x + x, tile_y + y, rgb)

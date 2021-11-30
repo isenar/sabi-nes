@@ -1,6 +1,6 @@
 use crate::render::Rgb;
 
-pub const SYSTEM_PALLETE: [Rgb; 64] = [
+pub const SYSTEM_PALETTE: [Rgb; 64] = [
     (0x80, 0x80, 0x80),
     (0x00, 0x3D, 0xA6),
     (0x00, 0x12, 0xB0),
