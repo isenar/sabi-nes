@@ -20,7 +20,7 @@ where
 fn cpu_validation_test() -> Result<()> {
     let test_rom_data = std::fs::read("tests/test_roms/nestest.nes")?;
     let rom = Rom::new(&test_rom_data)?;
-    let bus = Bus::new(rom, |_, _| {});
+    let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
 
     // PC starts here (as seen in nestest.log).

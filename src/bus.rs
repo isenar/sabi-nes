@@ -20,13 +20,17 @@ pub struct Bus<'call> {
     joypad: Joypad,
     cycles: usize,
 
-    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) + 'call>,
+    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call>,
 }
 
 impl<'a> Bus<'a> {
-    pub fn new<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
+    pub fn new(rom: Rom) -> Bus<'a> {
+        Self::new_with_callback(rom, |_, _| Ok(()))
+    }
+
+    pub fn new_with_callback<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
     where
-        F: FnMut(&Ppu, &mut Joypad) + 'call,
+        F: FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call,
     {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
@@ -46,7 +50,7 @@ impl<'a> Bus<'a> {
         let new_frame = self.ppu.tick(cycles * 3);
 
         if new_frame {
-            (self.gameloop_callback)(&self.ppu, &mut self.joypad);
+            (self.gameloop_callback)(&self.ppu, &mut self.joypad).unwrap();
         }
     }
 
@@ -144,7 +148,7 @@ mod tests {
     use assert_matches::assert_matches;
 
     fn test_bus() -> Bus<'static> {
-        Bus::new(test_rom(), |_, _| {})
+        Bus::new(test_rom())
     }
 
     fn test_rom() -> Rom {

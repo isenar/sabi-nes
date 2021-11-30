@@ -52,7 +52,7 @@ fn main() -> Result<()> {
 
     let mut frame = Frame::default();
 
-    let bus = Bus::new(rom, move |ppu: &Ppu, joypad: &mut Joypad| {
+    let bus = Bus::new_with_callback(rom, move |ppu: &Ppu, joypad: &mut Joypad| -> Result<()> {
         render(ppu, &mut frame).expect("Failed to render");
 
         texture
@@ -88,6 +88,8 @@ fn main() -> Result<()> {
                 _ => {}
             }
         }
+
+        Ok(())
     });
 
     let mut cpu = Cpu::new(bus);
