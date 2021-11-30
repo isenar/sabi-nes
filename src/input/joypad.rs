@@ -15,21 +15,11 @@ bitflags! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Joypad {
     strobe_mode: bool,
     button_index: Byte,
     button_status: JoypadButton,
-}
-
-impl Default for Joypad {
-    fn default() -> Self {
-        Self {
-            strobe_mode: false,
-            button_index: 0,
-            button_status: JoypadButton::default(),
-        }
-    }
 }
 
 impl Joypad {
