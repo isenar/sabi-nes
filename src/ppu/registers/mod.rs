@@ -48,7 +48,7 @@ impl PpuRegisters {
         self.oam_data[self.oam_address as usize]
     }
 
-    pub fn read_all_oam_data(&self) -> &[Byte] {
+    pub fn read_oam_dma(&self) -> &[Byte] {
         &self.oam_data
     }
 

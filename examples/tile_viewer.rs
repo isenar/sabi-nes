@@ -66,7 +66,7 @@ fn main() -> Result<()> {
 
     let right_bank = show_tiles(&rom.chr_rom, 0)?;
 
-    texture.update(None, &right_bank.data, 256 * 3)?;
+    texture.update(None, &right_bank.pixel_data, 256 * 3)?;
     canvas
         .copy(&texture, None, None)
         .map_err(anyhow::Error::msg)?;
