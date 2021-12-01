@@ -1,20 +1,20 @@
+mod config;
+
 use lazy_static::lazy_static;
+use sabi_nes::input::joypad::{Joypad, JoypadButton};
 use sabi_nes::ppu::Ppu;
 use sabi_nes::render::{render, Frame};
 use sabi_nes::{Bus, Cpu, Error, Result, Rom};
-
-use sabi_nes::input::joypad::{Joypad, JoypadButton};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
-
 use sdl2::render::WindowCanvas;
 use sdl2::EventPump;
-use std::collections::HashMap;
+use structopt::StructOpt;
 
-const WIDTH: u32 = 256;
-const HEIGHT: u32 = 240;
-const SCALE: u32 = 3;
+use crate::config::Config;
+
+use std::collections::HashMap;
 
 lazy_static! {
     static ref JOYPAD_BUTTON_MAP: HashMap<Keycode, JoypadButton> = {
@@ -31,19 +31,24 @@ lazy_static! {
 
         button_map
     };
+    static ref EMU_CONFIG: Config = Config::from_args();
 }
 
 fn canvas_and_event_pump() -> Result<(WindowCanvas, EventPump)> {
     let sdl_context = sdl2::init().map_err(Error::msg)?;
     let video_subsystem = sdl_context.video().map_err(Error::msg)?;
     let window = video_subsystem
-        .window("Sabi NES", WIDTH * SCALE, HEIGHT * SCALE)
+        .window(
+            "Sabi NES",
+            EMU_CONFIG.window_width * EMU_CONFIG.scale,
+            EMU_CONFIG.window_height * EMU_CONFIG.scale,
+        )
         .position_centered()
         .build()?;
     let mut canvas = window.into_canvas().present_vsync().build()?;
     let event_pump = sdl_context.event_pump().map_err(Error::msg)?;
     canvas
-        .set_scale(SCALE as f32, SCALE as f32)
+        .set_scale(EMU_CONFIG.scale as f32, EMU_CONFIG.scale as f32)
         .map_err(Error::msg)?;
 
     Ok((canvas, event_pump))
@@ -77,19 +82,28 @@ fn handle_event(event: Event, joypad: &mut Joypad) {
 }
 
 fn main() -> Result<()> {
+    let emu_config = Config::from_args();
     let (mut canvas, mut event_pump) = canvas_and_event_pump()?;
 
     let creator = canvas.texture_creator();
-    let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, WIDTH, HEIGHT)?;
+    let mut texture = creator.create_texture_target(
+        PixelFormatEnum::RGB24,
+        EMU_CONFIG.window_width,
+        EMU_CONFIG.window_height,
+    )?;
 
-    let game_bytes = std::fs::read("roms/pacman.nes")?;
+    let game_bytes = std::fs::read(emu_config.rom_path)?;
     let rom = Rom::new(&game_bytes)?;
     let mut frame = Frame::default();
 
     let bus = Bus::new_with_callback(rom, move |ppu: &Ppu, joypad: &mut Joypad| -> Result<()> {
         render(ppu, &mut frame)?;
 
-        texture.update(None, &frame.pixel_data, (WIDTH * SCALE) as usize)?;
+        texture.update(
+            None,
+            &frame.pixel_data,
+            (EMU_CONFIG.window_width * EMU_CONFIG.scale) as usize,
+        )?;
         canvas.copy(&texture, None, None).map_err(Error::msg)?;
         canvas.present();
 

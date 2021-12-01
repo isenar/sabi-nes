@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 sabi-nes = { path = "../sabi-nes" }
-sdl2 = "0.35.1"
+
 lazy_static = "1.4.0"
+sdl2 = "0.35.1"
+structopt = "0.3.25"
