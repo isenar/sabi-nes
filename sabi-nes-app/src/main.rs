@@ -8,6 +8,8 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 
+use sdl2::render::WindowCanvas;
+use sdl2::EventPump;
 use std::collections::HashMap;
 
 const WIDTH: u32 = 256;
@@ -31,7 +33,7 @@ lazy_static! {
     };
 }
 
-fn main() -> Result<()> {
+fn canvas_and_event_pump() -> Result<(WindowCanvas, EventPump)> {
     let sdl_context = sdl2::init().map_err(Error::msg)?;
     let video_subsystem = sdl_context.video().map_err(Error::msg)?;
     let window = video_subsystem
@@ -39,15 +41,48 @@ fn main() -> Result<()> {
         .position_centered()
         .build()?;
     let mut canvas = window.into_canvas().present_vsync().build()?;
-    let mut event_pump = sdl_context.event_pump().map_err(Error::msg)?;
+    let event_pump = sdl_context.event_pump().map_err(Error::msg)?;
     canvas
         .set_scale(SCALE as f32, SCALE as f32)
         .map_err(Error::msg)?;
 
+    Ok((canvas, event_pump))
+}
+
+fn handle_event(event: Event, joypad: &mut Joypad) {
+    match event {
+        Event::Quit { .. }
+        | Event::KeyDown {
+            keycode: Some(Keycode::Escape),
+            ..
+        } => std::process::exit(0),
+        Event::KeyDown {
+            keycode: Some(keycode),
+            ..
+        } => {
+            if let Some(&key) = JOYPAD_BUTTON_MAP.get(&keycode) {
+                joypad.set_button_pressed_status(key, true);
+            }
+        }
+        Event::KeyUp {
+            keycode: Some(keycode),
+            ..
+        } => {
+            if let Some(&key) = JOYPAD_BUTTON_MAP.get(&keycode) {
+                joypad.set_button_pressed_status(key, false);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn main() -> Result<()> {
+    let (mut canvas, mut event_pump) = canvas_and_event_pump()?;
+
     let creator = canvas.texture_creator();
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, WIDTH, HEIGHT)?;
 
-    let game_bytes = std::fs::read("examples/pacman.nes")?;
+    let game_bytes = std::fs::read("roms/pacman.nes")?;
     let rom = Rom::new(&game_bytes)?;
     let mut frame = Frame::default();
 
@@ -59,30 +94,7 @@ fn main() -> Result<()> {
         canvas.present();
 
         for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => std::process::exit(0),
-                Event::KeyDown {
-                    keycode: Some(keycode),
-                    ..
-                } => {
-                    if let Some(&key) = JOYPAD_BUTTON_MAP.get(&keycode) {
-                        joypad.set_button_pressed_status(key, true);
-                    }
-                }
-                Event::KeyUp {
-                    keycode: Some(keycode),
-                    ..
-                } => {
-                    if let Some(&key) = JOYPAD_BUTTON_MAP.get(&keycode) {
-                        joypad.set_button_pressed_status(key, false);
-                    }
-                }
-                _ => {}
-            }
+            handle_event(event, joypad);
         }
 
         Ok(())
