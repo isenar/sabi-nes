@@ -18,7 +18,7 @@ where
 
 #[test]
 fn cpu_validation_test() -> Result<()> {
-    let test_rom_data = std::fs::read("tests/test_roms/nestest.nes")?;
+    let test_rom_data = std::fs::read("../sabi-nes/tests/test_roms/nestest.nes")?;
     let rom = Rom::new(&test_rom_data)?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
@@ -33,7 +33,7 @@ fn cpu_validation_test() -> Result<()> {
         Ok(())
     })?;
 
-    let expected_traces = read_lines("tests/expected_logs/nestest.log")?;
+    let expected_traces = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?;
     for (line_num, (expected_trace, actual_trace)) in
         expected_traces.zip(traces).enumerate().take(8980)
     {

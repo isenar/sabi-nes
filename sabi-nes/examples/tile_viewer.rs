@@ -61,7 +61,7 @@ fn main() -> Result<()> {
     let creator = canvas.texture_creator();
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 256, 240)?;
 
-    let bytes = std::fs::read("examples/pacman.nes")?;
+    let bytes = std::fs::read("pacman.nes")?;
     let rom = Rom::new(&bytes)?;
 
     let right_bank = show_tiles(&rom.chr_rom, 0)?;

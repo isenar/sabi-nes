@@ -1,0 +1,13 @@
+[package]
+name = "sabi-nes-app"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sabi-nes = { path = "../sabi-nes" }
+
+lazy_static = "1.4.0"
+sdl2 = "0.35.1"
+structopt = "0.3.25"
