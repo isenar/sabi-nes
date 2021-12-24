@@ -130,7 +130,7 @@ impl Ppu {
         let addr = self.registers.read_address();
 
         match addr {
-            0x0000..=0x1fff => bail!("Attempted to write to CHR ROM space ({:#?})", addr),
+            0x0000..=0x1fff => println!("Attempted to write to CHR ROM space ({:#?})", addr),
             0x2000..=0x2fff => {
                 let mirrored_addr = self.mirror_vram_addr(addr) as usize;
                 self.vram[mirrored_addr] = value;

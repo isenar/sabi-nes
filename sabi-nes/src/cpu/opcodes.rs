@@ -312,13 +312,6 @@ const OPCODES: &[Opcode] = &[
 ];
 
 lazy_static! {
-    pub static ref OPCODES_MAPPING: HashMap<u8, &'static Opcode> = {
-        let mut mapping = HashMap::with_capacity(OPCODES.len());
-
-        for opcode in OPCODES {
-            mapping.insert(opcode.code, opcode);
-        }
-
-        mapping
-    };
+    pub static ref OPCODES_MAPPING: HashMap<u8, &'static Opcode> =
+        OPCODES.iter().map(|opcode| (opcode.code, opcode)).collect();
 }

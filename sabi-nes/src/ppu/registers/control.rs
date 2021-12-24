@@ -31,6 +31,18 @@ impl ControlRegister {
     pub fn sprite_pattern_address(&self) -> Address {
         self.contains(Self::SPRITE_PATTERN_ADDR) as Address * 0x1000
     }
+
+    pub fn name_table_address(&self) -> Address {
+        let address_bit1 = self.contains(Self::NAMETABLE1);
+        let address_bit2 = self.contains(Self::NAMETABLE2);
+
+        match (address_bit2, address_bit1) {
+            (false, false) => 0x2000,
+            (false, true) => 0x2400,
+            (true, false) => 0x2800,
+            (true, true) => 0x2c00,
+        }
+    }
 }
 
 #[cfg(test)]

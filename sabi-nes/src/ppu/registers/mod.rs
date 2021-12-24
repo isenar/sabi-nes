@@ -16,9 +16,9 @@ const OAM_DATA_SIZE: usize = 256;
 #[derive(Debug)]
 pub struct PpuRegisters {
     address: AddressRegister,
-    control: ControlRegister,
+    pub control: ControlRegister,
     mask: MaskRegister,
-    scroll: ScrollRegister,
+    pub scroll: ScrollRegister,
     status: StatusRegister,
     oam_address: Byte,
     /// Internal memory to keep state of sprites (Object Attribute Memory)
