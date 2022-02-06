@@ -2,8 +2,8 @@ use crate::Byte;
 
 #[derive(Debug, Default)]
 pub struct ScrollRegister {
-    scroll_x: Byte,
-    scroll_y: Byte,
+    pub scroll_x: Byte,
+    pub scroll_y: Byte,
     latch: bool,
 }
 

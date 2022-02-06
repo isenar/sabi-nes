@@ -16,9 +16,9 @@ const OAM_DATA_SIZE: usize = 256;
 #[derive(Debug)]
 pub struct PpuRegisters {
     address: AddressRegister,
-    control: ControlRegister,
+    pub control: ControlRegister,
     mask: MaskRegister,
-    scroll: ScrollRegister,
+    pub scroll: ScrollRegister,
     status: StatusRegister,
     oam_address: Byte,
     /// Internal memory to keep state of sprites (Object Attribute Memory)
@@ -130,5 +130,9 @@ impl PpuRegisters {
 
     pub fn increment_vram_address(&mut self) {
         self.address.increment(self.control.vram_addr_increment())
+    }
+
+    pub fn show_sprites(&self) -> bool {
+        self.mask.contains(MaskRegister::SHOW_SPRITES)
     }
 }

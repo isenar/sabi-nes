@@ -50,6 +50,10 @@ impl Ppu {
         self.cycles += cycles as usize;
 
         if self.cycles >= 341 {
+            if self.is_sprite_zero_hit() {
+                self.registers.set_sprite_zero_hit();
+            }
+
             self.cycles -= 341;
             self.scanline += 1;
 
@@ -126,7 +130,7 @@ impl Ppu {
         let addr = self.registers.read_address();
 
         match addr {
-            0x0000..=0x1fff => bail!("Attempted to write to CHR ROM space ({:#?})", addr),
+            0x0000..=0x1fff => println!("Attempted to write to CHR ROM space ({:#?})", addr),
             0x2000..=0x2fff => {
                 let mirrored_addr = self.mirror_vram_addr(addr) as usize;
                 self.vram[mirrored_addr] = value;
@@ -202,6 +206,15 @@ impl Ppu {
         };
 
         vram_index - offset
+    }
+
+    fn is_sprite_zero_hit(&self) -> bool {
+        let oam_data = self.registers.read_oam_dma();
+        let y = oam_data[0] as usize;
+        let x = oam_data[3] as usize;
+        let scanline = self.scanline as usize;
+
+        y == scanline && x <= self.cycles && self.registers.show_sprites()
     }
 }
 

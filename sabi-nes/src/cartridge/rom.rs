@@ -58,6 +58,7 @@ struct RomHeader {
     pub control_byte1: ControlByte1,
     pub control_byte2: ControlByte2,
     /// Size of PRG RAM in 8kB units
+    #[allow(unused)]
     pub prg_ram_units: usize,
 }
 
