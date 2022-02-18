@@ -96,9 +96,9 @@ impl RomHeader {
     }
 
     fn mapper(&self) -> Result<Box<dyn Mapper>> {
-        let mapper_value =
+        let ines_mapper_id =
             self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi();
-        Ok(match mapper_value {
+        Ok(match ines_mapper_id {
             0 => {
                 if self.prg_rom_banks == 1 {
                     Box::new(Nrom128 {})
@@ -106,7 +106,7 @@ impl RomHeader {
                     Box::new(Nrom256 {})
                 }
             }
-            _ => bail!("Unsupported mapper type (ID: {mapper_value})"),
+            _ => bail!("Unsupported mapper type (ID: {ines_mapper_id})"),
         })
     }
 }
