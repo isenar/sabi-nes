@@ -147,17 +147,18 @@ mod tests {
     use super::*;
     use lazy_static::lazy_static;
     use pretty_assertions::assert_eq;
+    use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
     use sabi_nes::{Bus, Byte, Rom};
 
     lazy_static! {
         pub static ref TEST_ROM: Vec<Byte> = {
             let mut rom = vec![];
             let header = vec![
-                0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x31, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                 0x00, 0x00,
             ];
-            let prg_rom = vec![0x00; 2 * 16384];
-            let chr_rom = vec![0x00; 8192];
+            let prg_rom = vec![0x00; 2 * PRG_ROM_BANK_SIZE];
+            let chr_rom = vec![0x00; CHR_ROM_BANK_SIZE];
 
             rom.extend(header);
             rom.extend(prg_rom);

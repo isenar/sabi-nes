@@ -7,7 +7,7 @@ use crate::{Address, Byte, Result};
 use anyhow::bail;
 
 const VRAM_SIZE: usize = 2048;
-const PALETTE_TABLE_SIZE: usize = 32;
+const PALETTE_TABLE_SIZE: usize = 64;
 
 #[derive(Debug)]
 pub struct Ppu {

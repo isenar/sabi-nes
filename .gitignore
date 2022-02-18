@@ -15,8 +15,9 @@ Cargo.lock
 **/**/target
 
 /.idea/
-
 /roms/
+.DS_Store
+
 
 # Added by cargo
 #

@@ -59,17 +59,6 @@ impl<'a> Bus<'a> {
     pub fn poll_nmi_status(&mut self) -> Option<()> {
         self.ppu.nmi_interrupt.take()
     }
-
-    fn read_prg_rom(&self, mut addr: Address) -> Byte {
-        addr -= ROM_START;
-
-        if self.rom.prg_rom.len() == 0x4000 && addr >= 0x4000 {
-            //mirror if needed
-            addr %= 0x4000;
-        }
-
-        self.rom.prg_rom[addr as usize]
-    }
 }
 
 impl Memory for Bus<'_> {
@@ -92,7 +81,12 @@ impl Memory for Bus<'_> {
                 self.read(mirror_base_addr)?
             }
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
-            ROM_START..=ROM_END => self.read_prg_rom(addr),
+            ROM_START..=ROM_END => {
+                let address = addr - ROM_START;
+                let mapped_address = self.rom.mapper.map_address(address)?;
+
+                self.rom.prg_rom[mapped_address as usize]
+            }
             0x4016 => self.joypad.read(),
             _ => {
                 println!("Ignoring mem access at {:x?}", addr);
@@ -131,7 +125,7 @@ impl Memory for Bus<'_> {
             }
             0x4016 => self.joypad.write(value),
             ROM_START..=ROM_END => {
-                bail!("Attempted to write into cartridge ROM (addr: {:#x})", addr)
+                bail!("Attempted to write into cartridge ROM (addr: {addr:#x})")
             }
 
             _ => println!("Ignoring mem-write access at {:#x?}", addr),
@@ -144,6 +138,7 @@ impl Memory for Bus<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cartridge::mappers::Nrom128;
     use crate::cartridge::MirroringType;
     use assert_matches::assert_matches;
 
@@ -155,7 +150,7 @@ mod tests {
         Rom {
             prg_rom: vec![0x10; 8192],
             chr_rom: vec![0x20; 1024],
-            mapper: 1,
+            mapper: Box::new(Nrom128 {}),
             screen_mirroring: MirroringType::Horizontal,
         }
     }
