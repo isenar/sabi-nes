@@ -1,13 +1,11 @@
-use crate::cartridge::MirroringType;
+use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
+use crate::cartridge::{MirroringType, CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
 use crate::Byte;
 use anyhow::{anyhow, bail, Result};
 use bitflags::bitflags;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
 const NES_TAG: [Byte; 4] = [0x4e, 0x45, 0x53, 0x1a];
-
-const PRG_ROM_PAGE_SIZE: usize = 16384;
-const CHR_ROM_PAGE_SIZE: usize = 8192;
 
 bitflags! {
     struct ControlByte1: u8 {
@@ -97,16 +95,25 @@ impl RomHeader {
         Ok(())
     }
 
-    fn mapper(&self) -> Byte {
-        self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi()
+    fn mapper(&self) -> Result<Box<dyn Mapper>> {
+        let mapper_value =
+            self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi();
+        Ok(match mapper_value {
+            0 => {
+                if self.prg_rom_banks == 1 {
+                    Box::new(Nrom128 {})
+                } else {
+                    Box::new(Nrom256 {})
+                }
+            }
+            _ => bail!("Unsupported mapper type (ID: {mapper_value})"),
+        })
     }
 }
-
-#[derive(Debug)]
 pub struct Rom {
     pub prg_rom: Vec<Byte>,
     pub chr_rom: Vec<Byte>,
-    pub mapper: Byte,
+    pub mapper: Box<dyn Mapper>,
     pub screen_mirroring: MirroringType,
 }
 
@@ -122,18 +129,19 @@ impl Rom {
             .contains(ControlByte1::FOUR_SCREEN_VRAM_LAYOUT);
         let vertical_mirroring = header.control_byte1.contains(ControlByte1::MIRRORING);
         let screen_mirroring = MirroringType::new(four_screen, vertical_mirroring);
-        let mapper = header.mapper();
+        let mapper = header.mapper()?;
+
         let skip_trainer = header.control_byte1.contains(ControlByte1::HAS_TRAINER);
-        let prg_rom_size = header.prg_rom_banks * PRG_ROM_PAGE_SIZE;
-        let chr_rom_size = header.chr_rom_banks * CHR_ROM_PAGE_SIZE;
+        let prg_rom_size = header.prg_rom_banks * PRG_ROM_BANK_SIZE;
+        let chr_rom_size = header.chr_rom_banks * CHR_ROM_BANK_SIZE;
         let prg_rom_start = 16 + skip_trainer as usize * 512;
         let chr_rom_start = prg_rom_start + prg_rom_size;
 
-        let prg_rom = data
+        let prg_rom: Vec<_> = data
             .get(prg_rom_start..(prg_rom_start + prg_rom_size))
             .ok_or_else(|| anyhow!("Failed to retrieve PRG ROM data - not enough bytes"))?
             .into();
-        let chr_rom = data
+        let chr_rom: Vec<_> = data
             .get(chr_rom_start..(chr_rom_start + chr_rom_size))
             .ok_or_else(|| anyhow!("Failed to retrieve CHR ROM data - not enough bytes"))?
             .into();
