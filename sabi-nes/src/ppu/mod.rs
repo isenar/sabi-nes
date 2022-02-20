@@ -1,4 +1,7 @@
+mod nmi_status;
 mod registers;
+
+pub use nmi_status::NmiStatus;
 
 use crate::cartridge::MirroringType;
 use crate::ppu::registers::PpuRegisters;
@@ -26,7 +29,7 @@ pub struct Ppu {
 
     pub scanline: u16,
     pub cycles: usize,
-    pub nmi_interrupt: Option<()>,
+    pub nmi_interrupt: NmiStatus,
 
     internal_data_buffer: Byte,
 }
@@ -41,12 +44,12 @@ impl Ppu {
             registers: Default::default(),
             cycles: 0,
             scanline: 0,
-            nmi_interrupt: None,
+            nmi_interrupt: NmiStatus::Inactive,
             internal_data_buffer: Default::default(),
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) -> bool {
+    pub fn tick(&mut self, cycles: u8) -> NmiStatus {
         self.cycles += cycles as usize;
 
         if self.cycles >= 341 {
@@ -58,23 +61,20 @@ impl Ppu {
             self.scanline += 1;
 
             if self.scanline == 241 {
-                self.registers.set_vblank();
-                self.registers.reset_sprite_zero_hit();
-                if self.registers.generate_vblank_nmi() {
-                    self.nmi_interrupt = Some(());
+                self.registers.set_vblank().reset_sprite_zero_hit();
+                if self.registers.is_generating_nmi() {
+                    self.nmi_interrupt = NmiStatus::Active;
                 }
             }
 
-            if self.scanline == 262 {
+            if self.scanline >= 262 {
                 self.scanline = 0;
-                self.nmi_interrupt = None;
-                self.registers.reset_vblank();
-                self.registers.reset_sprite_zero_hit();
-                return true;
+                self.nmi_interrupt = NmiStatus::Inactive;
+                self.registers.reset_vblank().reset_sprite_zero_hit();
             }
         }
 
-        false
+        self.nmi_interrupt
     }
 
     pub fn increment_vram_address(&mut self) {
@@ -98,11 +98,12 @@ impl Ppu {
     }
 
     pub fn write_to_control_register(&mut self, value: Byte) {
-        let before = self.registers.generate_vblank_nmi();
+        let before = self.registers.is_generating_nmi();
         self.registers.write_control(value);
+        let after = self.registers.is_generating_nmi();
 
-        if !before && self.registers.generate_vblank_nmi() && self.registers.is_in_vblank() {
-            self.nmi_interrupt = Some(());
+        if !before && after && self.registers.is_in_vblank() {
+            self.nmi_interrupt = NmiStatus::Active;
         }
     }
 
@@ -210,9 +211,9 @@ impl Ppu {
 
     fn is_sprite_zero_hit(&self) -> bool {
         let oam_data = self.registers.read_oam_dma();
-        let y = oam_data[0] as usize;
+        let y = oam_data[0] as u16;
         let x = oam_data[3] as usize;
-        let scanline = self.scanline as usize;
+        let scanline = self.scanline;
 
         y == scanline && x <= self.cycles && self.registers.show_sprites()
     }

@@ -12,6 +12,7 @@ use crate::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::interrupts::{Interrupt, NMI};
+use crate::ppu::NmiStatus;
 use crate::utils::{shift_left, shift_right, NthBit};
 use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
@@ -95,7 +96,7 @@ impl<'a> Cpu<'a> {
         F: FnMut(&mut Cpu) -> Result<()>,
     {
         loop {
-            if self.bus.poll_nmi_status().is_some() {
+            if self.bus.poll_nmi_status() == NmiStatus::Active {
                 self.interrupt(NMI)?;
             }
 

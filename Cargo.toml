@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "sabi-nes",
     "sabi-nes-app"

@@ -13,3 +13,13 @@ pub struct Config {
     #[structopt(default_value = "3", long = "scale")]
     pub scale: u32,
 }
+
+impl Config {
+    pub fn window_width(&self) -> u32 {
+        self.window_width * self.scale
+    }
+
+    pub fn window_height(&self) -> u32 {
+        self.window_height * self.scale
+    }
+}

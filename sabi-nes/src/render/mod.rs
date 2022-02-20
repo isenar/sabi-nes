@@ -16,8 +16,13 @@ pub type Rgb = (Byte, Byte, Byte);
 type MetaTile = [Byte; 4];
 
 pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
-    render_background(ppu, frame)?;
-    render_sprites(ppu, frame)?;
+    if ppu.registers.show_background() {
+        render_background(ppu, frame)?;
+    }
+
+    if ppu.registers.show_sprites() {
+        render_sprites(ppu, frame)?;
+    }
 
     Ok(())
 }
