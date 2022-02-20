@@ -40,8 +40,8 @@ fn canvas_and_event_pump() -> Result<(WindowCanvas, EventPump)> {
     let window = video_subsystem
         .window(
             "Sabi NES",
-            EMU_CONFIG.window_width * EMU_CONFIG.scale,
-            EMU_CONFIG.window_height * EMU_CONFIG.scale,
+            EMU_CONFIG.window_width(),
+            EMU_CONFIG.window_height(),
         )
         .position_centered()
         .build()?;
@@ -99,11 +99,7 @@ fn main() -> Result<()> {
     let bus = Bus::new_with_callback(rom, move |ppu: &Ppu, joypad: &mut Joypad| -> Result<()> {
         render(ppu, &mut frame)?;
 
-        texture.update(
-            None,
-            &frame.pixel_data,
-            (EMU_CONFIG.window_width * EMU_CONFIG.scale) as usize,
-        )?;
+        texture.update(None, &frame.pixel_data, EMU_CONFIG.window_width() as usize)?;
         canvas.copy(&texture, None, None).map_err(Error::msg)?;
         canvas.present();
 

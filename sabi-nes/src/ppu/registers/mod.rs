@@ -98,23 +98,27 @@ impl PpuRegisters {
         self.scroll.write(value);
     }
 
-    pub fn set_vblank(&mut self) {
-        self.status.insert(StatusRegister::VBLANK_STARTED);
+    pub fn set_vblank(&mut self) -> &mut Self {
+        self.status.vblank_started();
+        self
     }
 
-    pub fn reset_vblank(&mut self) {
+    pub fn reset_vblank(&mut self) -> &mut Self {
         self.status.remove(StatusRegister::VBLANK_STARTED);
+        self
     }
 
-    pub fn set_sprite_zero_hit(&mut self) {
+    pub fn set_sprite_zero_hit(&mut self) -> &mut Self {
         self.status.insert(StatusRegister::SPRITE_ZERO_HIT);
+        self
     }
 
-    pub fn reset_sprite_zero_hit(&mut self) {
+    pub fn reset_sprite_zero_hit(&mut self) -> &mut Self {
         self.status.remove(StatusRegister::SPRITE_ZERO_HIT);
+        self
     }
 
-    pub fn generate_vblank_nmi(&self) -> bool {
+    pub fn is_generating_nmi(&self) -> bool {
         self.control.contains(ControlRegister::GENERATE_NMI)
     }
 
@@ -133,6 +137,10 @@ impl PpuRegisters {
     }
 
     pub fn show_sprites(&self) -> bool {
-        self.mask.contains(MaskRegister::SHOW_SPRITES)
+        self.mask.show_sprites()
+    }
+
+    pub fn show_background(&self) -> bool {
+        self.mask.show_background()
     }
 }

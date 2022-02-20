@@ -40,12 +40,10 @@ impl MaskRegister {
         self.bits = value;
     }
 
-    #[allow(unused)]
     pub fn show_background(&self) -> bool {
         self.contains(MaskRegister::SHOW_BACKGROUND)
     }
 
-    #[allow(unused)]
     pub fn show_sprites(&self) -> bool {
         self.contains(MaskRegister::SHOW_SPRITES)
     }

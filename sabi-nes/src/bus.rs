@@ -1,7 +1,7 @@
 use crate::cartridge::Rom;
 use crate::cpu::Address;
 use crate::input::joypad::Joypad;
-use crate::ppu::Ppu;
+use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
 use crate::{Byte, Memory, Result};
 use anyhow::bail;
@@ -48,16 +48,21 @@ impl<'a> Bus<'a> {
     pub fn tick(&mut self, cycles: u8) -> Result<()> {
         self.cycles += cycles as usize;
 
-        let new_frame = self.ppu.tick(cycles * 3);
-        if new_frame {
-            (self.gameloop_callback)(&self.ppu, &mut self.joypad)?;
+        let nmi_before = self.ppu.nmi_interrupt;
+        let nmi_after = self.ppu.tick(cycles * 3);
+
+        if NmiStatus::activated(nmi_before, nmi_after) {
+            (self.gameloop_callback)(&mut self.ppu, &mut self.joypad)?;
         }
 
         Ok(())
     }
 
-    pub fn poll_nmi_status(&mut self) -> Option<()> {
-        self.ppu.nmi_interrupt.take()
+    pub fn poll_nmi_status(&mut self) -> NmiStatus {
+        let current = self.ppu.nmi_interrupt;
+        self.ppu.nmi_interrupt = NmiStatus::Inactive;
+
+        current
     }
 }
 
@@ -89,7 +94,7 @@ impl Memory for Bus<'_> {
             }
             0x4016 => self.joypad.read(),
             _ => {
-                println!("Ignoring mem access at {:x?}", addr);
+                println!("Ignoring mem access at ${:x?}", addr);
                 0
             }
         })
@@ -128,7 +133,7 @@ impl Memory for Bus<'_> {
                 bail!("Attempted to write into cartridge ROM (addr: {addr:#x})")
             }
 
-            _ => println!("Ignoring mem-write access at {:#x?}", addr),
+            _ => println!("Ignoring mem-write access at ${:x?}", addr),
         }
 
         Ok(())
