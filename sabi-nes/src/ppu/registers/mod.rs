@@ -1,9 +1,11 @@
 mod address;
 mod control;
 mod mask;
+mod oam;
 mod scroll;
 mod status;
 
+use crate::ppu::registers::oam::Oam;
 use crate::{Address, Byte};
 pub use address::AddressRegister;
 pub use control::ControlRegister;
@@ -11,32 +13,14 @@ pub use mask::MaskRegister;
 pub use scroll::ScrollRegister;
 pub use status::StatusRegister;
 
-const OAM_DATA_SIZE: usize = 256;
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PpuRegisters {
     address: AddressRegister,
     pub control: ControlRegister,
     mask: MaskRegister,
     pub scroll: ScrollRegister,
     status: StatusRegister,
-    oam_address: Byte,
-    /// Internal memory to keep state of sprites (Object Attribute Memory)
-    oam_data: [Byte; OAM_DATA_SIZE],
-}
-
-impl Default for PpuRegisters {
-    fn default() -> Self {
-        Self {
-            address: AddressRegister::default(),
-            control: ControlRegister::default(),
-            mask: MaskRegister::default(),
-            scroll: ScrollRegister::default(),
-            status: StatusRegister::default(),
-            oam_address: Byte::default(),
-            oam_data: [0; OAM_DATA_SIZE],
-        }
-    }
+    oam: Oam,
 }
 
 impl PpuRegisters {
@@ -45,11 +29,11 @@ impl PpuRegisters {
     }
 
     pub fn read_oam_data(&self) -> Byte {
-        self.oam_data[self.oam_address as usize]
+        self.oam.read()
     }
 
     pub fn read_oam_dma(&self) -> &[Byte] {
-        &self.oam_data
+        self.oam.read_all()
     }
 
     pub fn read_status(&mut self) -> Byte {
@@ -79,19 +63,15 @@ impl PpuRegisters {
     }
 
     pub fn write_oam_address(&mut self, value: Byte) {
-        self.oam_address = value;
+        self.oam.write_address(value);
     }
 
     pub fn write_oam_data(&mut self, value: Byte) {
-        self.oam_data[self.oam_address as usize] = value;
-        self.oam_address = self.oam_address.wrapping_add(1);
+        self.oam.write(value);
     }
 
-    pub fn write_oam_dma(&mut self, buffer: &[Byte; OAM_DATA_SIZE]) {
-        for byte in buffer {
-            self.oam_data[self.oam_address as usize] = *byte;
-            self.oam_address = self.oam_address.wrapping_add(1);
-        }
+    pub fn write_oam_dma(&mut self, buffer: &[Byte]) {
+        self.oam.write_all(buffer);
     }
 
     pub fn write_scroll(&mut self, value: Byte) {
