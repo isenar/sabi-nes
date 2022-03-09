@@ -11,7 +11,7 @@ pub trait MirroredAddress {
 
 impl NthBit for u8 {
     #[inline]
-    fn nth_bit(&self, bit_n: u8) -> bool {
+    fn nth_bit(&self, bit_n: Self) -> bool {
         self >> bit_n & 1 == 1
     }
 }
@@ -26,10 +26,10 @@ impl MirroredAddress for Address {
     }
 }
 
-pub fn shift_right(value: Byte) -> u8 {
+pub const fn shift_right(value: Byte) -> u8 {
     value >> 1
 }
 
-pub fn shift_left(value: Byte) -> u8 {
+pub const fn shift_left(value: Byte) -> u8 {
     value << 1
 }

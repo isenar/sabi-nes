@@ -62,7 +62,7 @@ impl Default for Oam {
     fn default() -> Self {
         Self {
             sprites: [SpriteData::default(); OAM_DATA_SIZE],
-            address: Default::default(),
+            address: Byte::default(),
         }
     }
 }

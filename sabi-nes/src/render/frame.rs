@@ -15,8 +15,8 @@ impl Default for Frame {
 }
 
 impl Frame {
-    const WIDTH: usize = 256;
-    const HEIGHT: usize = 240;
+    pub const WIDTH: usize = 256;
+    pub const HEIGHT: usize = 240;
 
     pub fn set_pixel(&mut self, x: usize, y: usize, rgb: Rgb) {
         let base = y * 3 * Self::WIDTH + x * 3;

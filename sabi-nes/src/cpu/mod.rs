@@ -116,7 +116,7 @@ impl<'a> Cpu<'a> {
             match opcode.name {
                 "ADC" => self.adc(address)?,
                 "AND" => self.and(address)?,
-                "ASL" => self.asl(address, opcode.mode)?,
+                "ASL" => self.asl(address, opcode.addressing_mode)?,
                 "BIT" => self.bit(address)?,
                 "BCC" => self.branch(!self.status_register.contains(StatusRegister::CARRY))?,
                 "BCS" => self.branch(self.status_register.contains(StatusRegister::CARRY))?,
@@ -146,15 +146,15 @@ impl<'a> Cpu<'a> {
                 "LDA" => self.lda(address)?,
                 "LDX" => self.ldx(address)?,
                 "LDY" => self.ldy(address)?,
-                "LSR" => self.lsr(address, opcode.mode)?,
-                "NOP" | "*NOP" => {}
+                "LSR" => self.lsr(address, opcode.addressing_mode)?,
+                "NOP" | "*NOP" => {} // noop - do nothing
                 "ORA" => self.ora(address)?,
                 "PHA" => self.push_stack(self.accumulator)?,
                 "PHP" => self.php()?,
                 "PLA" => self.pla()?,
                 "PLP" => self.plp()?,
-                "ROL" => self.rol(address, opcode.mode)?,
-                "ROR" => self.ror(address, opcode.mode)?,
+                "ROL" => self.rol(address, opcode.addressing_mode)?,
+                "ROR" => self.ror(address, opcode.addressing_mode)?,
                 "RTI" => {
                     self.rti()?;
                     continue;
@@ -182,9 +182,9 @@ impl<'a> Cpu<'a> {
                 "*DCP" => self.dcp(address)?,
                 "*ISB" => self.isb(address)?,
                 "*SLO" => self.slo(address)?,
-                "*RLA" => self.rla(address, opcode.mode)?,
+                "*RLA" => self.rla(address, opcode.addressing_mode)?,
                 "*SRE" => self.sre(address)?,
-                "*RRA" => self.rra(address, opcode.mode)?,
+                "*RRA" => self.rra(address, opcode.addressing_mode)?,
                 _ => bail!("Unsupported opcode name: {}", opcode.name),
             }
 
@@ -545,7 +545,7 @@ impl<'a> Cpu<'a> {
     }
 
     pub fn operand_address(&mut self, opcode: &Opcode, address: Address) -> Result<Address> {
-        Ok(match opcode.mode {
+        Ok(match opcode.addressing_mode {
             AddressingMode::Immediate => address,
             AddressingMode::ZeroPage => self.read(address)?.into(),
             AddressingMode::Absolute => self.read_u16(address)?,
@@ -1102,10 +1102,10 @@ mod tests {
         fn lsr_absolute_shift_into_carry() {
             let data = [0x4e, 0xda, 0x0a, 0x00];
             let mut cpu = CpuBuilder::new()
-                .write(0x0ada, 0b01010111)
+                .write(0x0ada, 0b0101_0111)
                 .build_and_run(&data);
 
-            assert_matches!(cpu.read(0x0ada), Ok(0b00101011));
+            assert_matches!(cpu.read(0x0ada), Ok(0b0010_1011));
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 

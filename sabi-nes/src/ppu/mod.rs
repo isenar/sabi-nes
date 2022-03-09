@@ -41,11 +41,11 @@ impl Ppu {
             palette_table: [0; PALETTE_TABLE_SIZE],
             vram: [0; VRAM_SIZE],
             mirroring,
-            registers: Default::default(),
+            registers: PpuRegisters::default(),
             cycles: 0,
             scanline: 0,
             nmi_interrupt: NmiStatus::Inactive,
-            internal_data_buffer: Default::default(),
+            internal_data_buffer: Byte::default(),
         }
     }
 
@@ -200,9 +200,8 @@ impl Ppu {
         let name_table = vram_index / 0x0400;
 
         let offset = match (self.mirroring, name_table) {
-            (MirroringType::Vertical, 2 | 3) => 0x800,
+            (MirroringType::Vertical, 2 | 3) | (MirroringType::Horizontal, 3) => 0x800,
             (MirroringType::Horizontal, 1 | 2) => 0x400,
-            (MirroringType::Horizontal, 3) => 0x800,
             _ => 0x000,
         };
 
@@ -211,7 +210,7 @@ impl Ppu {
 
     fn is_sprite_zero_hit(&self) -> bool {
         let oam_data = self.registers.read_oam_dma();
-        let y = oam_data[0].y as u16;
+        let y = u16::from(oam_data[0].y);
         let x = oam_data[0].x as usize;
         let scanline = self.scanline;
 

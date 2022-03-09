@@ -114,13 +114,13 @@ impl Memory for Bus<'_> {
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = addr.mirror_ppu_addr();
 
-                self.write(mirror_base_addr, value)?
+                self.write(mirror_base_addr, value)?;
             }
             0x4014 => {
-                let mut buffer: [Byte; 256] = [0; 256];
+                let mut buffer = [0; 256];
                 let hi = (value as Address) << 8;
-                for addr in 0..256 {
-                    buffer[addr as usize] = self.read(hi + addr)?;
+                for addr in 0..buffer.len() {
+                    buffer[addr as usize] = self.read(hi + addr as Address)?;
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);

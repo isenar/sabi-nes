@@ -12,6 +12,8 @@ use crate::cartridge::MirroringType;
 use crate::render::viewport::Viewport;
 pub use frame::Frame;
 
+const TRANSPARENT_PIXEL: usize = 0b00;
+
 type MetaTile = [Byte; 4];
 
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +48,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         _ => todo!(),
     };
 
-    let viewport = Viewport::new(scroll_x, 256, scroll_y, 240);
+    let viewport = Viewport::new(scroll_x, Frame::WIDTH, scroll_y, Frame::HEIGHT);
     render_name_table(
         ppu,
         frame,
@@ -57,13 +59,13 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     )?;
 
     if scroll_x > 0 {
-        let viewport = Viewport::new(0, scroll_x, 0, 240);
+        let viewport = Viewport::new(0, scroll_x, 0, Frame::HEIGHT);
         render_name_table(
             ppu,
             frame,
             secondary_table,
             viewport,
-            (256 - scroll_x) as isize,
+            (Frame::WIDTH - scroll_x) as isize,
             0,
         )?;
     } else if scroll_y > 0 {
@@ -71,9 +73,9 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             ppu,
             frame,
             secondary_table,
-            Viewport::new(0, 256, 0, scroll_y),
+            Viewport::new(0, Frame::WIDTH, 0, scroll_y),
             0,
-            (240 - scroll_y) as isize,
+            (Frame::HEIGHT - scroll_y) as isize,
         )?;
     }
 
@@ -144,14 +146,15 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         for y_offset in 0..=7 {
             let mut upper = tile[y_offset];
             let mut lower = tile[y_offset + 8];
-            'inner_loop: for x_offset in (0..=7usize).rev() {
+            for x_offset in (0..=7).rev() {
                 let value = ((1 & lower) << 1 | (1 & upper)) as usize;
                 upper >>= 1;
                 lower >>= 1;
-                let rgb = match value {
-                    0 => continue 'inner_loop, // skip coloring the pixel
-                    _ => SYSTEM_PALETTE[sprite_palette[value] as usize],
-                };
+
+                if value == TRANSPARENT_PIXEL {
+                    continue;
+                }
+                let rgb = SYSTEM_PALETTE[sprite_palette[value] as usize];
 
                 frame.set_pixel(sprite.x_pos(x_offset), sprite.y_pos(y_offset), rgb)
             }

@@ -126,7 +126,7 @@ impl PpuRegisters {
     }
 
     pub fn increment_vram_address(&mut self) {
-        self.address.increment(self.control.vram_addr_increment())
+        self.address.increment(self.control.vram_addr_increment());
     }
 
     pub fn show_sprites(&self) -> bool {
