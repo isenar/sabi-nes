@@ -28,11 +28,11 @@ impl Default for StackPointer {
 }
 
 impl StackPointer {
-    pub fn value(&self) -> Byte {
+    pub const fn value(&self) -> Byte {
         self.0
     }
 
-    pub fn address(&self) -> Address {
+    pub const fn address(&self) -> Address {
         STACK_BEGIN_ADDR + self.0 as Address
     }
 

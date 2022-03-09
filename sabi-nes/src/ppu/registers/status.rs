@@ -41,6 +41,6 @@ impl StatusRegister {
         self.remove(Self::VBLANK_STARTED);
     }
     pub fn vblank_started(&mut self) {
-        self.insert(Self::VBLANK_STARTED)
+        self.insert(Self::VBLANK_STARTED);
     }
 }

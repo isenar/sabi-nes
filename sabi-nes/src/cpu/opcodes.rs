@@ -8,7 +8,7 @@ pub struct Opcode {
     pub name: &'static str,
     pub bytes: u8,
     pub cycles: u8,
-    pub mode: AddressingMode,
+    pub addressing_mode: AddressingMode,
     pub needs_page_cross_check: bool,
 }
 
@@ -18,7 +18,7 @@ impl Opcode {
         name: &'static str,
         bytes: u8,
         cycles: u8,
-        mode: AddressingMode,
+        addressing_mode: AddressingMode,
         needs_page_cross_check: bool,
     ) -> Self {
         Self {
@@ -26,7 +26,7 @@ impl Opcode {
             name,
             bytes,
             cycles,
-            mode,
+            addressing_mode,
             needs_page_cross_check,
         }
     }

@@ -25,12 +25,12 @@ impl BgTile {
     }
 
     #[allow(dead_code)]
-    pub fn attribute_table_idx(&self) -> usize {
+    pub fn attribute_table_idx(self) -> usize {
         self.row() / 4 * 8 + self.column() / 4
     }
 
     #[allow(dead_code)]
-    pub fn palette_table_idx(&self, attribute_byte: Byte) -> Byte {
+    pub fn palette_table_idx(self, attribute_byte: Byte) -> Byte {
         let indices = (self.column() % 4 / 2, self.row() % 4 / 2);
         let shift_by = indices.0 * 2 + indices.1 * 4;
 
@@ -40,18 +40,18 @@ impl BgTile {
     }
 
     #[allow(dead_code)]
-    pub fn range(&self, bank: Address) -> RangeInclusive<usize> {
+    pub const fn range(self, bank: Address) -> RangeInclusive<usize> {
         let tile_addr = self.address_in_attr_table as usize;
         let bank = bank as usize;
 
         (bank + tile_addr * 16)..=(bank + tile_addr * 16 + 15)
     }
 
-    pub fn column(&self) -> usize {
+    pub fn column(self) -> usize {
         (self.address % 32).into()
     }
 
-    pub fn row(&self) -> usize {
+    pub fn row(self) -> usize {
         (self.address / 32).into()
     }
 }
