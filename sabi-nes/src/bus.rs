@@ -93,10 +93,7 @@ impl Memory for Bus<'_> {
                 self.rom.prg_rom[mapped_address as usize]
             }
             0x4016 => self.joypad.read(),
-            _ => {
-                println!("Ignoring mem access at ${:x?}", addr);
-                0
-            }
+            _ => 0,
         })
     }
 
@@ -132,8 +129,7 @@ impl Memory for Bus<'_> {
             ROM_START..=ROM_END => {
                 bail!("Attempted to write into cartridge ROM (addr: {addr:#x})")
             }
-
-            _ => println!("Ignoring mem-write access at ${:x?}", addr),
+            _ => {}
         }
 
         Ok(())
@@ -144,7 +140,7 @@ impl Memory for Bus<'_> {
 mod tests {
     use super::*;
     use crate::cartridge::mappers::Nrom128;
-    use crate::cartridge::MirroringType;
+    use crate::cartridge::{MirroringType, CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
     use assert_matches::assert_matches;
 
     fn test_bus() -> Bus<'static> {
@@ -153,8 +149,8 @@ mod tests {
 
     fn test_rom() -> Rom {
         Rom {
-            prg_rom: vec![0x10; 8192],
-            chr_rom: vec![0x20; 1024],
+            prg_rom: vec![0x10; PRG_ROM_BANK_SIZE],
+            chr_rom: vec![0x20; CHR_ROM_BANK_SIZE],
             mapper: Box::new(Nrom128 {}),
             screen_mirroring: MirroringType::Horizontal,
         }

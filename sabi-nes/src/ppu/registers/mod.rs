@@ -5,20 +5,21 @@ mod oam;
 mod scroll;
 mod status;
 
-use crate::ppu::registers::oam::Oam;
-use crate::{Address, Byte};
 pub use address::AddressRegister;
 pub use control::ControlRegister;
 pub use mask::MaskRegister;
 pub use scroll::ScrollRegister;
 pub use status::StatusRegister;
 
+use crate::ppu::registers::oam::{Oam, SpriteData};
+use crate::{Address, Byte};
+
 #[derive(Debug, Default)]
 pub struct PpuRegisters {
     address: AddressRegister,
-    pub control: ControlRegister,
+    control: ControlRegister,
     mask: MaskRegister,
-    pub scroll: ScrollRegister,
+    scroll: ScrollRegister,
     status: StatusRegister,
     oam: Oam,
 }
@@ -32,7 +33,7 @@ impl PpuRegisters {
         self.oam.read()
     }
 
-    pub fn read_oam_dma(&self) -> &[Byte] {
+    pub fn read_oam_dma(&self) -> &[SpriteData] {
         self.oam.read_all()
     }
 
@@ -48,6 +49,10 @@ impl PpuRegisters {
 
     pub fn read_sprite_pattern_address(&self) -> Address {
         self.control.sprite_pattern_address()
+    }
+
+    pub fn read_name_table_address(&self) -> Address {
+        self.control.name_table_address()
     }
 
     pub fn write_address(&mut self, value: Byte) {
@@ -76,6 +81,14 @@ impl PpuRegisters {
 
     pub fn write_scroll(&mut self, value: Byte) {
         self.scroll.write(value);
+    }
+
+    pub fn read_scroll_x(&self) -> Byte {
+        self.scroll.scroll_x
+    }
+
+    pub fn read_scroll_y(&self) -> Byte {
+        self.scroll.scroll_y
     }
 
     pub fn set_vblank(&mut self) -> &mut Self {

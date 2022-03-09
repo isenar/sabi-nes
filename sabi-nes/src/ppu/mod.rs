@@ -211,8 +211,8 @@ impl Ppu {
 
     fn is_sprite_zero_hit(&self) -> bool {
         let oam_data = self.registers.read_oam_dma();
-        let y = oam_data[0] as u16;
-        let x = oam_data[3] as usize;
+        let y = oam_data[0].y as u16;
+        let x = oam_data[0].x as usize;
         let scanline = self.scanline;
 
         y == scanline && x <= self.cycles && self.registers.show_sprites()
