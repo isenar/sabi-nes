@@ -1,3 +1,4 @@
+use crate::apu::Apu;
 use crate::cartridge::Rom;
 use crate::cpu::Address;
 use crate::input::joypad::Joypad;
@@ -18,6 +19,7 @@ pub struct Bus<'call> {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
     ppu: Ppu,
+    apu: Apu,
     joypad: Joypad,
     cycles: usize,
 
@@ -39,13 +41,14 @@ impl<'a> Bus<'a> {
             cpu_vram: [0; VRAM_SIZE],
             rom,
             ppu,
+            apu: Apu::default(),
             joypad: Joypad::default(),
             cycles: 0,
             gameloop_callback: Box::from(gameloop_callback),
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) -> Result<()> {
+    pub fn tick(&mut self, cycles: Byte) -> Result<()> {
         self.cycles += cycles as usize;
 
         let nmi_before = self.ppu.nmi_interrupt;
@@ -85,6 +88,22 @@ impl Memory for Bus<'_> {
                 let mirror_base_addr = addr.mirror_cpu_vram_addr();
                 self.read(mirror_base_addr)?
             }
+            0x4000 => self.apu.square_channel1.volume,
+            0x4001 => self.apu.square_channel1.sweep,
+            0x4002 => self.apu.square_channel1.timer_low,
+            0x4003 => self.apu.square_channel1.length_and_timer_high,
+            0x4004 => self.apu.square_channel2.volume,
+            0x4005 => self.apu.square_channel2.sweep,
+            0x4006 => self.apu.square_channel2.timer_low,
+            0x4007 => self.apu.square_channel2.length_and_timer_high,
+            0x4008 => self.apu.triangle_channel.linear_counter,
+            // 0x4009 is unused
+            0x400a => self.apu.triangle_channel.timer_low,
+            0x400b => self.apu.triangle_channel.length_and_timer_high,
+            0x400c => self.apu.noise_channel.volume,
+            // 0x400d is unused
+            0x400e => self.apu.noise_channel.mode_and_period,
+            0x400f => self.apu.noise_channel.len_counter_and_env_restart,
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
             ROM_START..=ROM_END => {
                 let address = addr - ROM_START;
@@ -92,8 +111,13 @@ impl Memory for Bus<'_> {
 
                 self.rom.prg_rom[mapped_address as usize]
             }
+            0x4015 => self.apu.flags.bits(),
             0x4016 => self.joypad.read(),
-            _ => 0,
+            0x4017 => 0, // TODO: Frame Counter impl
+            _ => {
+                println!("Ignored attempt to read address ${addr:0X}");
+                0
+            }
         })
     }
 
@@ -116,6 +140,26 @@ impl Memory for Bus<'_> {
 
                 self.write(mirror_base_addr, value)?;
             }
+            0x4000 => self.apu.square_channel1.volume = value,
+            0x4001 => self.apu.square_channel1.sweep = value,
+            0x4002 => self.apu.square_channel1.timer_low = value,
+            0x4003 => self.apu.square_channel1.length_and_timer_high = value,
+            0x4004 => self.apu.square_channel2.volume = value,
+            0x4005 => self.apu.square_channel2.sweep = value,
+            0x4006 => self.apu.square_channel2.timer_low = value,
+            0x4007 => self.apu.square_channel2.length_and_timer_high = value,
+            0x4008 => self.apu.triangle_channel.linear_counter = value,
+            // 0x4009 is unused
+            0x400a => self.apu.triangle_channel.timer_low = value,
+            0x400b => self.apu.triangle_channel.length_and_timer_high = value,
+            0x400c => self.apu.noise_channel.volume = value,
+            // 0x400d is unused
+            0x400e => self.apu.noise_channel.mode_and_period = value,
+            0x400f => self.apu.noise_channel.len_counter_and_env_restart = value,
+            0x4010 => self.apu.dmc.flags_and_rate = value,
+            0x4011 => self.apu.dmc.direct_load = value,
+            0x4012 => self.apu.dmc.sample_address = value,
+            0x4013 => self.apu.dmc.sample_length = value,
             0x4014 => {
                 let mut buffer = [0; 256];
                 let hi = (value as Address) << 8;
@@ -125,11 +169,15 @@ impl Memory for Bus<'_> {
 
                 self.ppu.write_to_oam_dma(&buffer);
             }
+            0x4015 => self.apu.set_status_register(value),
             0x4016 => self.joypad.write(value),
+            0x4017 => {} // TODO: Frame Counter impl
             ROM_START..=ROM_END => {
                 bail!("Attempted to write into cartridge ROM (addr: {addr:#x})")
             }
-            _ => {}
+            _ => {
+                println!("Ignored attempt to write to address ${addr:0X}");
+            }
         }
 
         Ok(())

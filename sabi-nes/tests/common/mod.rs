@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
 use sabi_nes::{Address, Cpu, Memory, Result};
@@ -7,7 +7,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read(cpu.program_counter)?;
     let opcode = OPCODES_MAPPING
         .get(&code)
-        .ok_or_else(|| anyhow!("Opcode {:#x} not supported", code))?;
+        .ok_or_else(|| anyhow!("Opcode {code:#x} not supported"))?;
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
     let opcode_asm = opcode_asm_representation(opcode, cpu)?;
 
@@ -53,7 +53,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 )
             }
         },
-        _ => bail!("Unreachable - got opcode with more than 2 args"),
+        _ => unreachable!("Got opcode with more than 2 args"),
     })
 }
 
