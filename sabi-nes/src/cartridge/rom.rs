@@ -8,7 +8,7 @@ use bitflags::bitflags;
 const NES_TAG: [Byte; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 bitflags! {
-    struct ControlByte1: u8 {
+    struct ControlByte1: Byte {
         const MIRRORING               = 0b0000_0001; // 1 for vertical, 0 for horizontal
         const BATTERY_BACKED_RAM      = 0b0000_0010;
         const HAS_TRAINER             = 0b0000_0100;
@@ -27,7 +27,7 @@ impl ControlByte1 {
 }
 
 bitflags! {
-    struct ControlByte2: u8 {
+    struct ControlByte2: Byte {
         const INES_V1_FIRST   = 0b0000_0001; // 0 for iNES v1 format
         const INES_V1_SECOND  = 0b0000_0010; // 0 for iNES v1 format
         const INES_FMT_FIRST  = 0b0000_0100; // if INES_FMT bits are == 10, then it's NES2.0 format,

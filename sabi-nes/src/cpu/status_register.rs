@@ -42,9 +42,9 @@ impl Display for StatusRegister {
     }
 }
 
-impl From<u8> for StatusRegister {
-    fn from(value: u8) -> Self {
-        Self::from_bits_truncate(value)
+impl From<Byte> for StatusRegister {
+    fn from(byte: Byte) -> Self {
+        Self::from_bits_truncate(byte)
     }
 }
 

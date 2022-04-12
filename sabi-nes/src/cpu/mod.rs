@@ -17,7 +17,6 @@ use crate::utils::{shift_left, shift_right, NthBit};
 use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
 
-pub type Register = u8;
 pub type Address = u16;
 pub type ProgramCounter = Address;
 
@@ -25,9 +24,9 @@ const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
 pub struct Cpu<'a> {
-    pub accumulator: Register,
-    pub register_x: Register,
-    pub register_y: Register,
+    pub accumulator: Byte,
+    pub register_x: Byte,
+    pub register_y: Byte,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
@@ -223,7 +222,7 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn add_to_acc(&mut self, data: u8) {
+    fn add_to_acc(&mut self, data: Byte) {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as u16;
         let sum_wide = self.accumulator as u16 + data as u16 + input_carry;
         let result = sum_wide as Byte;
@@ -237,7 +236,7 @@ impl<'a> Cpu<'a> {
             .update_zero_and_negative_flags(self.accumulator);
     }
 
-    fn compare(&mut self, address: Address, register: Register) -> Result<()> {
+    fn compare(&mut self, address: Address, register: Byte) -> Result<()> {
         let value = self.read(address)?;
         let result = register.wrapping_sub(value);
 
@@ -313,7 +312,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let input_carry = self.status_register.contains(StatusRegister::CARRY) as u8;
+        let input_carry = self.status_register.contains(StatusRegister::CARRY) as Byte;
         let (previous, shifted) = self.shift(address, mode, input_carry, shift_left)?;
 
         self.status_register.set_carry_flag(previous.nth_bit(7));

@@ -1,23 +1,24 @@
 use crate::cpu::addressing_mode::AddressingMode;
+use crate::Byte;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Opcode {
-    pub code: u8,
+    pub code: Byte,
     pub name: &'static str,
-    pub bytes: u8,
-    pub cycles: u8,
+    pub bytes: Byte,
+    pub cycles: Byte,
     pub addressing_mode: AddressingMode,
     pub needs_page_cross_check: bool,
 }
 
 impl Opcode {
     pub const fn new(
-        code: u8,
+        code: Byte,
         name: &'static str,
-        bytes: u8,
-        cycles: u8,
+        bytes: Byte,
+        cycles: Byte,
         addressing_mode: AddressingMode,
         needs_page_cross_check: bool,
     ) -> Self {
@@ -31,7 +32,7 @@ impl Opcode {
         }
     }
 
-    pub const fn length(&self) -> u8 {
+    pub const fn length(&self) -> Byte {
         self.bytes - 1
     }
 }
@@ -312,6 +313,6 @@ const OPCODES: &[Opcode] = &[
 ];
 
 lazy_static! {
-    pub static ref OPCODES_MAPPING: HashMap<u8, &'static Opcode> =
+    pub static ref OPCODES_MAPPING: HashMap<Byte, &'static Opcode> =
         OPCODES.iter().map(|opcode| (opcode.code, opcode)).collect();
 }

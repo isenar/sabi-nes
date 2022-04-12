@@ -3,7 +3,7 @@ use crate::Byte;
 use std::fmt::{Debug, Display, Formatter};
 
 const STACK_BEGIN_ADDR: Address = 0x0100; // stack is located at page $01 (0x100 - 0x01ff)
-const STACK_RESET: u8 = 0xfd;
+const STACK_RESET: Byte = 0xfd;
 
 /// Stack Pointer (or S register) is a byte-wide pointer which stores the stack
 /// index into which the next stack element will be inserted

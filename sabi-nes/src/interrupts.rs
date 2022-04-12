@@ -4,7 +4,7 @@ use crate::{Address, Byte};
 pub struct Interrupt {
     pub vector_addr: Address,
     pub break_flag_mask: Byte,
-    pub cpu_cycles: u8,
+    pub cpu_cycles: Byte,
 }
 
 pub const NMI: Interrupt = Interrupt {

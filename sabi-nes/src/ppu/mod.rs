@@ -49,7 +49,7 @@ impl Ppu {
         }
     }
 
-    pub fn tick(&mut self, cycles: u8) -> NmiStatus {
+    pub fn tick(&mut self, cycles: Byte) -> NmiStatus {
         self.cycles += cycles as usize;
 
         if self.cycles >= 341 {

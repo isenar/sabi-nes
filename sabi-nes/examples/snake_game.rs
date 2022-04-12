@@ -1,5 +1,5 @@
 use sabi_nes::cartridge::Rom;
-use sabi_nes::{Bus, Cpu, Memory};
+use sabi_nes::{Bus, Byte, Cpu, Memory};
 
 use anyhow::Result;
 use rand::Rng;
@@ -39,7 +39,7 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Result<()> {
     Ok(())
 }
 
-fn color(byte: u8) -> Color {
+fn color(byte: Byte) -> Color {
     match byte {
         0 => Color::BLACK,
         1 => Color::WHITE,
@@ -53,7 +53,7 @@ fn color(byte: u8) -> Color {
     }
 }
 
-fn screen_update_needed(cpu: &mut Cpu, frame: &mut [u8; 32 * 3 * 32]) -> Result<bool> {
+fn screen_update_needed(cpu: &mut Cpu, frame: &mut [Byte; 32 * 3 * 32]) -> Result<bool> {
     let mut frame_idx = 0;
 
     for addr in 0x0200..0x0600 {
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
     let mut screen_state = [0; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
-    let rom_file = std::fs::read("snake.nes")?;
+    let rom_file = std::fs::read("roms/snake.nes")?;
     let rom = Rom::new(&rom_file)?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
