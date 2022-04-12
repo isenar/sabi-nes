@@ -745,25 +745,23 @@ mod tests {
     use super::*;
     use crate::cartridge::Rom;
     use assert_matches::assert_matches;
-    use lazy_static::lazy_static;
+    use once_cell::sync::Lazy;
 
-    lazy_static! {
-        static ref TEST_ROM: Vec<Byte> = {
-            let mut rom = vec![];
-            let header = vec![
-                0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00,
-            ];
-            let prg_rom = vec![0x00; 2 * 16384];
-            let chr_rom = vec![0x00; 8192];
+    pub static TEST_ROM: Lazy<Vec<Byte>> = Lazy::new(|| {
+        let mut rom = vec![];
+        let header = vec![
+            0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+        let prg_rom = vec![0x00; 2 * 16384];
+        let chr_rom = vec![0x00; 8192];
 
-            rom.extend(header);
-            rom.extend(prg_rom);
-            rom.extend(chr_rom);
+        rom.extend(header);
+        rom.extend(prg_rom);
+        rom.extend(chr_rom);
 
-            rom
-        };
-    }
+        rom
+    });
 
     #[derive(Debug)]
     enum Write {
