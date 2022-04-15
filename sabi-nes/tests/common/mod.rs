@@ -1,7 +1,25 @@
 use anyhow::anyhow;
+use once_cell::sync::Lazy;
+use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
 use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
-use sabi_nes::{Address, Cpu, Memory, Result};
+use sabi_nes::{Address, Byte, Cpu, Memory, Result};
+
+pub static TEST_ROM: Lazy<Vec<Byte>> = Lazy::new(|| {
+    let mut rom = vec![];
+    let header = vec![
+        0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00,
+    ];
+    let prg_rom = vec![0x00; 2 * PRG_ROM_BANK_SIZE];
+    let chr_rom = vec![0x00; CHR_ROM_BANK_SIZE];
+
+    rom.extend(header);
+    rom.extend(prg_rom);
+    rom.extend(chr_rom);
+
+    rom
+});
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read(cpu.program_counter)?;
@@ -145,28 +163,9 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lazy_static::lazy_static;
     use pretty_assertions::assert_eq;
-    use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
-    use sabi_nes::{Bus, Byte, Rom};
+    use sabi_nes::{Bus, Rom};
 
-    lazy_static! {
-        pub static ref TEST_ROM: Vec<Byte> = {
-            let mut rom = vec![];
-            let header = vec![
-                0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00,
-            ];
-            let prg_rom = vec![0x00; 2 * PRG_ROM_BANK_SIZE];
-            let chr_rom = vec![0x00; CHR_ROM_BANK_SIZE];
-
-            rom.extend(header);
-            rom.extend(prg_rom);
-            rom.extend(chr_rom);
-
-            rom
-        };
-    }
     #[test]
     fn trace_format() -> Result<()> {
         let rom = Rom::new(&TEST_ROM)?;

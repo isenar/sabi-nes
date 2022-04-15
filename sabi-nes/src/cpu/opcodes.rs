@@ -1,6 +1,6 @@
 use crate::cpu::addressing_mode::AddressingMode;
 use crate::Byte;
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -312,7 +312,5 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x73, "*RRA", 2, 8, AddressingMode::IndirectY, false),
 ];
 
-lazy_static! {
-    pub static ref OPCODES_MAPPING: HashMap<Byte, &'static Opcode> =
-        OPCODES.iter().map(|opcode| (opcode.code, opcode)).collect();
-}
+pub static OPCODES_MAPPING: Lazy<HashMap<Byte, &'static Opcode>> =
+    Lazy::new(|| OPCODES.iter().map(|opcode| (opcode.code, opcode)).collect());

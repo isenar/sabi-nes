@@ -1,7 +1,9 @@
 mod config;
 
-use lazy_static::lazy_static;
+use crate::config::Config;
+use clap::Parser;
 use maplit::hashmap;
+use once_cell::sync::Lazy;
 use sabi_nes::input::joypad::{Joypad, JoypadButton};
 use sabi_nes::ppu::Ppu;
 use sabi_nes::render::{render, Frame};
@@ -11,26 +13,20 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::WindowCanvas;
 use sdl2::EventPump;
-use structopt::StructOpt;
-
-use crate::config::Config;
-
 use std::collections::HashMap;
 
-lazy_static! {
-    static ref JOYPAD_BUTTON_MAP: HashMap<Keycode, JoypadButton> = {
-        hashmap! {
-            Keycode::S => JoypadButton::DOWN,
-            Keycode::W =>  JoypadButton::UP,
-            Keycode::D =>  JoypadButton::RIGHT,
-            Keycode::A => JoypadButton::LEFT,
-            Keycode::Space =>  JoypadButton::SELECT,
-            Keycode::Return => JoypadButton::START,
-            Keycode::O => JoypadButton::BUTTON_A,
-            Keycode::P => JoypadButton::BUTTON_B,
-        }
-    };
-}
+static JOYPAD_BUTTON_MAP: Lazy<HashMap<Keycode, JoypadButton>> = Lazy::new(|| {
+    hashmap! {
+        Keycode::S => JoypadButton::DOWN,
+        Keycode::W =>  JoypadButton::UP,
+        Keycode::D =>  JoypadButton::RIGHT,
+        Keycode::A => JoypadButton::LEFT,
+        Keycode::Space =>  JoypadButton::SELECT,
+        Keycode::Return => JoypadButton::START,
+        Keycode::O => JoypadButton::BUTTON_A,
+        Keycode::P => JoypadButton::BUTTON_B,
+    }
+});
 
 fn canvas_and_event_pump(config: &Config) -> Result<(WindowCanvas, EventPump)> {
     let sdl_context = sdl2::init().map_err(Error::msg)?;
@@ -76,7 +72,7 @@ fn handle_event(event: Event, joypad: &mut Joypad) {
 }
 
 fn main() -> Result<()> {
-    let emu_config = Config::from_args();
+    let emu_config = Config::parse();
     let (mut canvas, mut event_pump) = canvas_and_event_pump(&emu_config)?;
 
     let creator = canvas.texture_creator();
