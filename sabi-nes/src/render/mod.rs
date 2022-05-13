@@ -3,13 +3,13 @@ mod frame;
 pub mod palettes;
 mod viewport;
 
-use crate::ppu::Ppu;
+use crate::cartridge::MirroringType;
+use crate::ppu::{Ppu, SpriteData};
 use crate::render::bg_tile::BgTile;
 use crate::render::palettes::SYSTEM_PALETTE;
+use crate::render::viewport::Viewport;
 use crate::{Address, Byte, Result};
 
-use crate::cartridge::MirroringType;
-use crate::render::viewport::Viewport;
 pub use frame::Frame;
 
 const TRANSPARENT_PIXEL: usize = 0b00;
@@ -90,35 +90,27 @@ fn render_name_table(
     shift_x: isize,
     shift_y: isize,
 ) -> Result<()> {
-    let bank = ppu.registers.background_pattern_address();
+    let bank = ppu.registers.background_pattern_address() as usize;
     let attribute_table = &name_table[0x03c0..0x0400];
 
     for (addr, tile_index) in name_table.iter().enumerate().take(0x03c0) {
-        let tile_new = BgTile::new(addr as Address, ppu)?;
-        let tile_column = (addr % 32) as Byte;
-        let tile_row = (addr / 32) as Byte;
-        let tile_idx = *tile_index as Address;
-        let tile =
-            &ppu.chr_rom[(bank + tile_idx * 16) as usize..=(bank + tile_idx * 16 + 15) as usize];
-        let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
+        let bg_tile = BgTile::new(addr as Address, *tile_index);
+        let tile = &ppu.chr_rom[bg_tile.bank_tiles(bank)];
+        let bg_palette = bg_palette(ppu, attribute_table, &bg_tile);
 
-        for y in 0..=7 {
-            let mut upper = tile[y];
-            let mut lower = tile[y + 8];
+        for pixel_y in (0..=7).rev() {
+            let mut upper = tile[pixel_y];
+            let mut lower = tile[pixel_y + 8];
 
-            for x in (0..=7).rev() {
+            for pixel_x in (0..=7).rev() {
                 let value = ((1 & lower) << 1 | (1 & upper)) as usize;
                 upper >>= 1;
                 lower >>= 1;
                 let rgb = SYSTEM_PALETTE[bg_palette[value] as usize];
-                let pixel_x = tile_new.column() * 8 + x;
-                let pixel_y = tile_new.row() * 8 + y;
+                let pixel_x = bg_tile.column() * 8 + pixel_x;
+                let pixel_y = bg_tile.row() * 8 + pixel_y;
 
-                if pixel_x >= viewport.x1
-                    && pixel_x < viewport.x2
-                    && pixel_y >= viewport.y1
-                    && pixel_y < viewport.y2
-                {
+                if viewport.contains_pixel(pixel_x, pixel_y) {
                     frame.set_pixel(
                         (shift_x + pixel_x as isize) as usize,
                         (shift_y + pixel_y as isize) as usize,
@@ -135,47 +127,16 @@ fn render_name_table(
 fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     let oam_data = ppu.registers.read_oam_dma();
     for sprite in oam_data {
-        let tile_idx = sprite.index_number as usize;
-        let palette_idx = sprite.palette_index();
-        let sprite_palette = sprite_palette(ppu, palette_idx);
-
-        let bank = ppu.read_sprite_pattern_address() as usize;
-
-        let tile = &ppu.chr_rom[(bank + tile_idx * 16)..=(bank + tile_idx * 16 + 15)];
-
-        for y_offset in 0..=7 {
-            let mut upper = tile[y_offset];
-            let mut lower = tile[y_offset + 8];
-            for x_offset in (0..=7).rev() {
-                let value = ((1 & lower) << 1 | (1 & upper)) as usize;
-                upper >>= 1;
-                lower >>= 1;
-
-                if value == TRANSPARENT_PIXEL {
-                    continue;
-                }
-                let rgb = SYSTEM_PALETTE[sprite_palette[value] as usize];
-
-                frame.set_pixel(sprite.x_pos(x_offset), sprite.y_pos(y_offset), rgb)
-            }
-        }
+        render_sprite(sprite, ppu, frame)?;
     }
 
     Ok(())
 }
 
-fn bg_palette(ppu: &Ppu, attribute_table: &[Byte], tile_column: Byte, tile_row: Byte) -> [Byte; 4] {
-    let attr_table_idx = tile_row / 4 * 8 + tile_column / 4;
-    let attr_byte = attribute_table[attr_table_idx as usize];
-    let palette_idx = match (tile_column % 4 / 2, tile_row % 4 / 2) {
-        (0, 0) => attr_byte & 0b11,
-        (1, 0) => (attr_byte >> 2) & 0b11,
-        (0, 1) => (attr_byte >> 4) & 0b11,
-        (1, 1) => (attr_byte >> 6) & 0b11,
-        (_, _) => panic!("should not happen"),
-    };
-
-    let palette_start = 1 + (palette_idx as usize) * 4;
+fn bg_palette(ppu: &Ppu, attribute_table: &[Byte], bg_tile: &BgTile) -> MetaTile {
+    let attr_table_idx = bg_tile.attribute_table_idx();
+    let attr_byte = attribute_table[attr_table_idx];
+    let palette_start = bg_tile.palette_table_idx(attr_byte) as usize;
     [
         ppu.palette_table[0],
         ppu.palette_table[palette_start],
@@ -192,4 +153,34 @@ fn sprite_palette(ppu: &Ppu, palette_idx: Byte) -> MetaTile {
         ppu.palette_table[start + 1],
         ppu.palette_table[start + 2],
     ]
+}
+
+fn render_sprite(sprite: &SpriteData, ppu: &Ppu, frame: &mut Frame) -> Result<()> {
+    let tile_idx = sprite.index as usize;
+    let palette_idx = sprite.palette_index();
+    let sprite_palette = sprite_palette(ppu, palette_idx);
+
+    let bank = ppu.read_sprite_pattern_address() as usize;
+
+    let tile = &ppu.chr_rom[(bank + tile_idx * 16)..=(bank + tile_idx * 16 + 15)];
+
+    for y_offset in 0..=7 {
+        let mut upper = tile[y_offset];
+        let mut lower = tile[y_offset + 8];
+
+        for x_offset in (0..=7).rev() {
+            let pixel = ((1 & lower) << 1 | (1 & upper)) as usize;
+            upper >>= 1;
+            lower >>= 1;
+
+            if pixel == TRANSPARENT_PIXEL {
+                continue;
+            }
+            let rgb = SYSTEM_PALETTE[sprite_palette[pixel] as usize];
+
+            frame.set_pixel(sprite.x_pos(x_offset), sprite.y_pos(y_offset), rgb)
+        }
+    }
+
+    Ok(())
 }

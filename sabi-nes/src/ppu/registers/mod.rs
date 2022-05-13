@@ -8,11 +8,12 @@ mod status;
 pub use address::AddressRegister;
 pub use control::ControlRegister;
 pub use mask::MaskRegister;
+pub use oam::SpriteData;
 pub use scroll::ScrollRegister;
 pub use status::StatusRegister;
 
-use crate::ppu::registers::oam::{Oam, SpriteData};
 use crate::{Address, Byte};
+use oam::Oam;
 
 #[derive(Debug, Default)]
 pub struct PpuRegisters {

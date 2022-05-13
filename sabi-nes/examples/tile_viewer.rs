@@ -34,7 +34,7 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
                     1 => SYSTEM_PALETTE[0x23],
                     2 => SYSTEM_PALETTE[0x27],
                     3 => SYSTEM_PALETTE[0x30],
-                    _ => bail!("RGB color must fit within 2 bits! Got value: {}", value),
+                    _ => bail!("RGB color must fit within 2 bits! Got value: {value}"),
                 };
                 frame.set_pixel(tile_x + x, tile_y + y, rgb)
             }

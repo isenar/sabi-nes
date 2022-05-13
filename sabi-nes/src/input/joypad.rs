@@ -1,3 +1,4 @@
+use crate::utils::NthBit;
 use crate::Byte;
 use bitflags::bitflags;
 
@@ -37,8 +38,8 @@ impl Joypad {
         response
     }
 
-    pub fn write(&mut self, value: Byte) {
-        self.strobe_mode = value & 1 == 1;
+    pub fn write(&mut self, byte: Byte) {
+        self.strobe_mode = byte.nth_bit(0);
 
         if self.strobe_mode {
             self.button_index = 0;

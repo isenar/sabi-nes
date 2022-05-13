@@ -15,7 +15,7 @@ pub struct Oam {
 pub struct SpriteData {
     pub x: Byte,
     pub y: Byte,
-    pub index_number: Byte,
+    pub index: Byte,
     pub attributes: Byte,
 }
 
@@ -74,7 +74,7 @@ impl Oam {
 
         match sprite_data_index {
             0 => sprite_data.y,
-            1 => sprite_data.index_number,
+            1 => sprite_data.index,
             2 => sprite_data.attributes,
             3 => sprite_data.x,
             _ => unreachable!(),
@@ -91,7 +91,7 @@ impl Oam {
 
         match sprite_data_index {
             0 => sprite_data.y = value,
-            1 => sprite_data.index_number = value,
+            1 => sprite_data.index = value,
             2 => sprite_data.attributes = value,
             3 => sprite_data.x = value,
             _ => unreachable!(),

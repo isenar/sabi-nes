@@ -23,14 +23,14 @@ pub type ProgramCounter = Address;
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
-pub struct Cpu<'a> {
+pub struct Cpu<'bus> {
     pub accumulator: Byte,
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
-    bus: Bus<'a>,
+    bus: Bus<'bus>,
 }
 
 impl Memory for Cpu<'_> {
@@ -51,7 +51,7 @@ impl Memory for Cpu<'_> {
     }
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu<'_> {
     pub fn new(bus: Bus) -> Cpu {
         Cpu {
             accumulator: 0,
@@ -107,7 +107,7 @@ impl<'a> Cpu<'a> {
             let current_program_counter = self.program_counter;
             let opcode = OPCODES_MAPPING
                 .get(&code)
-                .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
+                .ok_or_else(|| anyhow!("Unknown opcode: {code}"))?;
             let address = self
                 .pc_operand_address(opcode)
                 .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
