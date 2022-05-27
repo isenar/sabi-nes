@@ -132,12 +132,12 @@ impl Ppu {
         let addr = self.registers.read_address();
 
         match addr {
-            0x0000..=0x1fff => println!("Attempted to write to CHR ROM space ({:#?})", addr),
+            0x0000..=0x1fff => println!("Attempted to write to CHR ROM space ({addr:#?})"),
             0x2000..=0x2fff => {
                 let mirrored_addr = self.mirror_vram_addr(addr) as usize;
                 self.vram[mirrored_addr] = value;
             }
-            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({:#x})", addr),
+            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({addr:#x})"),
             0x3f00..=0x3fff => {
                 let mut addr = addr as usize;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
@@ -148,10 +148,7 @@ impl Ppu {
                 let offset_addr = addr - 0x3f00;
                 self.palette_table[offset_addr] = value;
             }
-            0x4000.. => bail!(
-                "Unexpected access to mirrored space on PPU write ({:#x})",
-                addr
-            ),
+            0x4000.. => bail!("Unexpected access to mirrored space on PPU write ({addr:#x})"),
         }
 
         self.increment_vram_address();
@@ -177,7 +174,7 @@ impl Ppu {
 
                 Ok(result)
             }
-            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({:#x})", addr),
+            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({addr:#x})"),
             0x3f00..=0x3fff => {
                 let mut addr = addr as usize;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
@@ -188,10 +185,7 @@ impl Ppu {
                 let offset_addr = addr - 0x3f00;
                 Ok(self.palette_table[offset_addr])
             }
-            0x4000.. => bail!(
-                "Unexpected access to mirrored space on PPU read ({:#x})",
-                addr
-            ),
+            0x4000.. => bail!("Unexpected access to mirrored space on PPU read ({addr:#x})"),
         }
     }
 
