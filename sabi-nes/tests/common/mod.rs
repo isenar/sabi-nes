@@ -28,18 +28,15 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         .ok_or_else(|| anyhow!("Opcode {code:#x} not supported"))?;
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
     let opcode_asm = opcode_asm_representation(opcode, cpu)?;
+    let pc = cpu.program_counter;
+    let acc = cpu.accumulator;
+    let reg_x = cpu.register_x;
+    let reg_y = cpu.register_y;
+    let status = cpu.status_register;
+    let sp = cpu.stack_pointer;
 
     let mut fmt = format!(
-        "{:>04X}  {:<10}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
-        cpu.program_counter,
-        opcode_hex,
-        opcode_asm,
-        cpu.accumulator,
-        cpu.register_x,
-        cpu.register_y,
-        cpu.status_register,
-        cpu.stack_pointer,
-    );
+        "{pc:>04X}  {opcode_hex:<10}{opcode_asm:<32}A:{acc:02X} X:{reg_x:02X} Y:{reg_y:02X} P:{status} SP:{sp}");
 
     // TODO: there has to be a better way..
     if opcode.name.starts_with('*') {
@@ -51,21 +48,18 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
 }
 
 fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
+    let opc = opcode.code;
+
     Ok(match opcode.length() {
-        0 => format!("{:02X}", opcode.code),
-        1 => format!(
-            "{:02X} {:02X}",
-            opcode.code,
-            cpu.read(cpu.program_counter + 1)?
-        ),
+        0 => format!("{opc:02X}"),
+        1 => format!("{opc:02X} {:02X}", cpu.read(cpu.program_counter + 1)?),
         2 => match opcode.addressing_mode {
             AddressingMode::Implied => {
-                format!("{:02X}", opcode.code)
+                format!("{opc:02X}")
             }
             _ => {
                 format!(
-                    "{:02X} {:02X} {:02X}",
-                    opcode.code,
+                    "{opc:02X} {:02X} {:02X}",
                     cpu.read(cpu.program_counter + 1)?,
                     cpu.read(cpu.program_counter + 2)?,
                 )
@@ -82,62 +76,53 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 
     let opcode_asm_args = match opcode.addressing_mode {
         AddressingMode::Immediate => {
-            format!("#${:02X}", value)
+            format!("#${value:02X}")
         }
         AddressingMode::ZeroPage => {
             let stored_value = cpu.read(value.into())?;
-            format!("${:02X} = {:02X}", value, stored_value)
+            format!("${value:02X} = {stored_value:02X}")
         }
         AddressingMode::ZeroPageX => {
             let stored_value = cpu.read(target_address)?;
 
-            format!(
-                "${:02X},X @ {:02X} = {:02X}",
-                value, target_address, stored_value
-            )
+            format!("${value:02X},X @ {target_address:02X} = {stored_value:02X}",)
         }
         AddressingMode::ZeroPageY => {
             let stored_value = cpu.read(target_address)?;
-            format!(
-                "${:02X},Y @ {:02X} = {:02X}",
-                value, target_address, stored_value
-            )
+            format!("${value:02X},Y @ {target_address:02X} = {stored_value:02X}")
         }
         AddressingMode::Absolute => {
             let stored_value = cpu.read(target_address)?;
             match opcode.name {
-                "JMP" | "JSR" => format!("${:04X}", target_address),
-                _ => format!("${:04X} = {:02X}", target_address, stored_value),
+                "JMP" | "JSR" => format!("${target_address:04X}"),
+                _ => format!("${target_address:04X} = {stored_value:02X}"),
             }
         }
         AddressingMode::AbsoluteX => {
             let incremented = address.wrapping_add(cpu.register_x.into());
             let value = cpu.read(incremented)?;
 
-            format!("${:04X},X @ {:04X} = {:02X}", address, incremented, value)
+            format!("${address:04X},X @ {incremented:04X} = {value:02X}")
         }
         AddressingMode::AbsoluteY => {
             let incremented = address.wrapping_add(cpu.register_y.into());
             let value = cpu.read(incremented)?;
 
-            format!("${:04X},Y @ {:04X} = {:02X}", address, incremented, value)
+            format!("${address:04X},Y @ {incremented:04X} = {value:02X}")
         }
         AddressingMode::IndirectX => {
             let incremented = value.wrapping_add(cpu.register_x);
             let target_cell_value = cpu.read(target_address)?;
 
             format!(
-                "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
-                value, incremented, target_address, target_cell_value
-            )
+                "(${value:02X},X) @ {incremented:02X} = {target_address:04X} = {target_cell_value:02X}")
         }
         AddressingMode::IndirectY => {
             let address = target_address.wrapping_sub(cpu.register_y.into());
             let target_cell_value = cpu.read(target_address)?;
 
             format!(
-                "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
-                value, address, target_address, target_cell_value,
+                "(${value:02X}),Y = {address:04X} @ {target_address:04X} = {target_cell_value:02X}"
             )
         }
         AddressingMode::Implied => String::new(),
@@ -149,13 +134,13 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 .wrapping_add(2)
                 .wrapping_add(offset as Address);
 
-            format!("${:04X}", jmp_addr)
+            format!("${jmp_addr:04X}")
         }
         AddressingMode::Indirect => {
-            format!("(${:04X}) = {:04X}", address, target_address)
+            format!("(${address:04X}) = {target_address:04X}")
         }
     };
-    let opcode_asm = format!("{} {}", opcode.name, opcode_asm_args);
+    let opcode_asm = format!("{} {opcode_asm_args}", opcode.name);
 
     Ok(opcode_asm)
 }

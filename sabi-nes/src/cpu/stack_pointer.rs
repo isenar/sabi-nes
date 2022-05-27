@@ -7,6 +7,7 @@ const STACK_RESET: Byte = 0xfd;
 
 /// Stack Pointer (or S register) is a byte-wide pointer which stores the stack
 /// index into which the next stack element will be inserted
+#[derive(Clone, Copy)]
 pub struct StackPointer(Byte);
 
 impl Debug for StackPointer {
