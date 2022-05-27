@@ -1,7 +1,7 @@
 use crate::utils::MirroredAddress;
 use crate::{Address, Byte};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AddressRegister {
     high: Byte,
     low: Byte,
