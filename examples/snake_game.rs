@@ -92,7 +92,7 @@ fn main() -> Result<()> {
     let mut screen_state = [0; 32 * 3 * 32];
     let mut rng = rand::thread_rng();
 
-    let rom_file = std::fs::read("roms/snake.nes")?;
+    let rom_file = std::fs::read("examples/snake.nes")?;
     let rom = Rom::new(&rom_file)?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
