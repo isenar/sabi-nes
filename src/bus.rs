@@ -23,7 +23,7 @@ pub struct Bus<'call> {
     joypad: Joypad,
     cycles: usize,
 
-    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call>,
+    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call>,
 }
 
 impl<'a> Bus<'a> {
@@ -33,7 +33,7 @@ impl<'a> Bus<'a> {
 
     pub fn new_with_callback<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
     where
-        F: FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call,
+        F: FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call,
     {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 

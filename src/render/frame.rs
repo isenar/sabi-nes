@@ -3,13 +3,13 @@ use crate::Byte;
 
 #[derive(Debug)]
 pub struct Frame {
-    pub pixel_data: Vec<Byte>,
+    pub pixel_data: [Byte; Self::WIDTH * Self::HEIGHT * 3],
 }
 
 impl Default for Frame {
     fn default() -> Self {
         Self {
-            pixel_data: vec![0; Self::WIDTH * Self::HEIGHT * 3],
+            pixel_data: [0; Self::WIDTH * Self::HEIGHT * 3],
         }
     }
 }

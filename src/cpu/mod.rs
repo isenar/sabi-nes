@@ -23,14 +23,14 @@ pub type ProgramCounter = Address;
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
-pub struct Cpu<'a> {
+pub struct Cpu<'bus> {
     pub accumulator: Byte,
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
-    bus: Bus<'a>,
+    bus: Bus<'bus>,
 }
 
 impl Memory for Cpu<'_> {
