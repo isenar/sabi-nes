@@ -116,7 +116,7 @@ impl Emulator {
             &self.frame.pixel_data,
             self.config.window_width() as usize,
         )?;
-        self.canvas.copy(&texture, None, None).map_err(Error::msg)?;
+        self.canvas.copy(texture, None, None).map_err(Error::msg)?;
         self.canvas.present();
 
         for event in self.event_pump.poll_iter() {

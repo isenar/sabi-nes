@@ -15,6 +15,8 @@ const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
 
+pub type Callback<'call> = dyn FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call;
+
 pub struct Bus<'call> {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
@@ -23,7 +25,7 @@ pub struct Bus<'call> {
     joypad: Joypad,
     cycles: usize,
 
-    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call>,
+    gameloop_callback: Box<Callback<'call>>,
 }
 
 impl<'a> Bus<'a> {
@@ -164,7 +166,7 @@ impl Memory for Bus<'_> {
                 let mut buffer = [0; 256];
                 let hi = (value as Address) << 8;
                 for addr in 0..buffer.len() {
-                    buffer[addr as usize] = self.read(hi + addr as Address)?;
+                    buffer[addr] = self.read(hi + addr as Address)?;
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);

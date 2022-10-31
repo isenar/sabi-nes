@@ -23,6 +23,11 @@ pub type ProgramCounter = Address;
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
+struct ByteUpdate {
+    previous: Byte,
+    new: Byte,
+}
+
 pub struct Cpu<'bus> {
     pub accumulator: Byte,
     pub register_x: Byte,
@@ -78,8 +83,8 @@ impl<'a> Cpu<'a> {
     }
 
     pub fn load(&mut self, data: &[Byte]) -> Result<()> {
-        for (addr, &value) in data.iter().enumerate() {
-            let addr = addr as Address;
+        for (idx, &value) in data.iter().enumerate() {
+            let addr = idx as Address;
             self.write(addr + PROGRAM_ROM_BEGIN_ADDR, value)?;
         }
 
@@ -107,7 +112,7 @@ impl<'a> Cpu<'a> {
             let current_program_counter = self.program_counter;
             let opcode = OPCODES_MAPPING
                 .get(&code)
-                .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
+                .ok_or_else(|| anyhow!("Unknown opcode: {code}"))?;
             let address = self
                 .pc_operand_address(opcode)
                 .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
@@ -294,29 +299,30 @@ impl<'a> Cpu<'a> {
     }
 
     fn asl(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let (old_value, shifted) = self.shift(address, mode, 0, shift_left)?;
+        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_left)?;
 
-        self.status_register.set_carry_flag(old_value.nth_bit(7));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register.set_carry_flag(old.nth_bit(7));
+        self.status_register.update_zero_and_negative_flags(new);
 
         Ok(())
     }
 
     fn lsr(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let (old_value, shifted) = self.shift(address, mode, 0, shift_right)?;
+        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_right)?;
 
-        self.status_register.set_carry_flag(old_value.nth_bit(0));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register.set_carry_flag(old.nth_bit(0));
+        self.status_register.update_zero_and_negative_flags(new);
 
         Ok(())
     }
 
     fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as Byte;
-        let (previous, shifted) = self.shift(address, mode, input_carry, shift_left)?;
+        let ByteUpdate { previous: old, new } =
+            self.shift(address, mode, input_carry, shift_left)?;
 
-        self.status_register.set_carry_flag(previous.nth_bit(7));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register.set_carry_flag(old.nth_bit(7));
+        self.status_register.update_zero_and_negative_flags(new);
 
         Ok(())
     }
@@ -324,10 +330,11 @@ impl<'a> Cpu<'a> {
     fn ror(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry =
             self.status_register.contains(StatusRegister::CARRY) as Byte * 0b1000_0000;
-        let (previous, shifted) = self.shift(address, mode, input_carry, shift_right)?;
+        let ByteUpdate { previous: old, new } =
+            self.shift(address, mode, input_carry, shift_right)?;
 
-        self.status_register.set_carry_flag(previous.nth_bit(0));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register.set_carry_flag(old.nth_bit(0));
+        self.status_register.update_zero_and_negative_flags(new);
 
         Ok(())
     }
@@ -338,16 +345,19 @@ impl<'a> Cpu<'a> {
         mode: AddressingMode,
         input_carry: Byte,
         shift_op: Op,
-    ) -> Result<(Byte, Byte)>
+    ) -> Result<ByteUpdate>
     where
         Op: Fn(Byte) -> Byte,
     {
-        let (old_value, shifted) = match mode {
+        let byte_update = match mode {
             AddressingMode::Accumulator => {
                 let old_acc = self.accumulator;
                 self.accumulator = shift_op(self.accumulator) | input_carry;
 
-                (old_acc, self.accumulator)
+                ByteUpdate {
+                    previous: old_acc,
+                    new: self.accumulator,
+                }
             }
             _ => {
                 let value = self.read(address)?;
@@ -355,11 +365,14 @@ impl<'a> Cpu<'a> {
 
                 self.write(address, shifted)?;
 
-                (value, shifted)
+                ByteUpdate {
+                    previous: value,
+                    new: shifted,
+                }
             }
         };
 
-        Ok((old_value, shifted))
+        Ok(byte_update)
     }
 
     fn lda(&mut self, address: Address) -> Result<()> {
@@ -469,7 +482,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn jsr(&mut self) -> Result<()> {
-        self.push_stack_u16(self.program_counter + 1)?;
+        self.push_stack_wide(self.program_counter + 1)?;
         let target_address = self.read_u16(self.program_counter)?;
         self.program_counter = target_address;
 
@@ -637,7 +650,7 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn push_stack_u16(&mut self, value: u16) -> Result<()> {
+    fn push_stack_wide(&mut self, value: u16) -> Result<()> {
         let [lo, hi] = value.to_le_bytes();
 
         self.push_stack(hi)?;
@@ -659,7 +672,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {
-        self.push_stack_u16(self.program_counter)?;
+        self.push_stack_wide(self.program_counter)?;
         let mut status = self.status_register;
         status.remove(StatusRegister::BREAK);
         status.insert(StatusRegister::BREAK2);

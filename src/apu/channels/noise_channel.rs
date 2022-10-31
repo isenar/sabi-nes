@@ -33,7 +33,7 @@ impl NoiseChannel {
     }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum NoiseMode {
     Short,
     Long,
