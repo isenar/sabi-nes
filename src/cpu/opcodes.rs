@@ -39,7 +39,7 @@ impl Opcode {
 
 const OPCODES: &[Opcode] = &[
     Opcode::new(0xea, "NOP", 1, 2, AddressingMode::Implied, false),
-    // -- flag clear/set instructions, false
+    // -- flag clear/set instructions
     Opcode::new(0x18, "CLC", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0xd8, "CLD", 1, 2, AddressingMode::Implied, false),
     Opcode::new(0x58, "CLI", 1, 2, AddressingMode::Implied, false),
@@ -313,4 +313,4 @@ const OPCODES: &[Opcode] = &[
 ];
 
 pub static OPCODES_MAPPING: Lazy<HashMap<Byte, &'static Opcode>> =
-    Lazy::new(|| OPCODES.iter().map(|opcode| (opcode.code, opcode)).collect());
+    Lazy::new(|| HashMap::from_iter(OPCODES.iter().map(|opcode| (opcode.code, opcode))));
