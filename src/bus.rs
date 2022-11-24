@@ -165,8 +165,10 @@ impl Memory for Bus<'_> {
             0x4014 => {
                 let mut buffer = [0; 256];
                 let hi = (value as Address) << 8;
-                for addr in 0..buffer.len() {
-                    buffer[addr] = self.read(hi + addr as Address)?;
+                // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
+                // for now we'll use the good old for loop
+                for (offset, byte) in buffer.iter_mut().enumerate() {
+                    *byte = self.read(hi + offset as Address)?;
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);
