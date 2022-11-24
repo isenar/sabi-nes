@@ -18,7 +18,7 @@ use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
 
 pub type Address = u16;
-pub type ProgramCounter = Address;
+pub type ProgramCounter = u16;
 
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
@@ -131,10 +131,18 @@ impl<'a> Cpu<'a> {
                 "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
                 "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
                 "BRK" => return Ok(()),
-                "CLC" => self.status_register.set_carry_flag(false),
-                "CLD" => self.status_register.set_decimal_flag(false),
-                "CLI" => self.status_register.set_interrupt_flag(false),
-                "CLV" => self.status_register.set_overflow_flag(false),
+                "CLC" => {
+                    self.status_register.set_carry_flag(false);
+                }
+                "CLD" => {
+                    self.status_register.set_decimal_flag(false);
+                }
+                "CLI" => {
+                    self.status_register.set_interrupt_flag(false);
+                }
+                "CLV" => {
+                    self.status_register.set_overflow_flag(false);
+                }
                 "CMP" => self.compare(address, self.accumulator)?,
                 "CPX" => self.compare(address, self.register_x)?,
                 "CPY" => self.compare(address, self.register_y)?,
@@ -168,9 +176,15 @@ impl<'a> Cpu<'a> {
                     continue;
                 }
                 "SBC" | "*SBC" => self.sbc(address)?,
-                "SEC" => self.status_register.set_carry_flag(true),
-                "SED" => self.status_register.set_decimal_flag(true),
-                "SEI" => self.status_register.set_interrupt_flag(true),
+                "SEC" => {
+                    self.status_register.set_carry_flag(true);
+                }
+                "SED" => {
+                    self.status_register.set_decimal_flag(true);
+                }
+                "SEI" => {
+                    self.status_register.set_interrupt_flag(true);
+                }
                 "STA" => self.write(address, self.accumulator)?,
                 "STX" => self.write(address, self.register_x)?,
                 "STY" => self.write(address, self.register_y)?,
@@ -232,8 +246,8 @@ impl<'a> Cpu<'a> {
         let sum_wide = self.accumulator as u16 + data as u16 + input_carry;
         let result = sum_wide as Byte;
 
-        self.status_register.set_carry_flag(sum_wide > 0xff);
         self.status_register
+            .set_carry_flag(sum_wide > 0xff)
             .set_overflow_flag((data ^ result) & (result ^ self.accumulator) & 0x80 != 0);
 
         self.accumulator = result;
@@ -245,8 +259,9 @@ impl<'a> Cpu<'a> {
         let value = self.read(address)?;
         let result = register.wrapping_sub(value);
 
-        self.status_register.set_carry_flag(value <= register);
-        self.status_register.update_zero_and_negative_flags(result);
+        self.status_register
+            .set_carry_flag(value <= register)
+            .update_zero_and_negative_flags(result);
 
         Ok(())
     }
@@ -291,9 +306,9 @@ impl<'a> Cpu<'a> {
     fn bit(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
 
-        self.status_register.set_overflow_flag(value.nth_bit(6));
-        self.status_register.set_negative_flag(value.nth_bit(7));
         self.status_register
+            .set_overflow_flag(value.nth_bit(6))
+            .set_negative_flag(value.nth_bit(7))
             .set_zero_flag(value & self.accumulator == 0);
 
         Ok(())
@@ -302,8 +317,9 @@ impl<'a> Cpu<'a> {
     fn asl(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_left)?;
 
-        self.status_register.set_carry_flag(old.nth_bit(7));
-        self.status_register.update_zero_and_negative_flags(new);
+        self.status_register
+            .set_carry_flag(old.nth_bit(7))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
@@ -311,8 +327,9 @@ impl<'a> Cpu<'a> {
     fn lsr(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_right)?;
 
-        self.status_register.set_carry_flag(old.nth_bit(0));
-        self.status_register.update_zero_and_negative_flags(new);
+        self.status_register
+            .set_carry_flag(old.nth_bit(0))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
@@ -322,8 +339,9 @@ impl<'a> Cpu<'a> {
         let ByteUpdate { previous: old, new } =
             self.shift(address, mode, input_carry, shift_left)?;
 
-        self.status_register.set_carry_flag(old.nth_bit(7));
-        self.status_register.update_zero_and_negative_flags(new);
+        self.status_register
+            .set_carry_flag(old.nth_bit(7))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
@@ -334,8 +352,9 @@ impl<'a> Cpu<'a> {
         let ByteUpdate { previous: old, new } =
             self.shift(address, mode, input_carry, shift_right)?;
 
-        self.status_register.set_carry_flag(old.nth_bit(0));
-        self.status_register.update_zero_and_negative_flags(new);
+        self.status_register
+            .set_carry_flag(old.nth_bit(0))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
