@@ -45,7 +45,15 @@ impl Joypad {
         }
     }
 
-    pub fn set_button_pressed_status(&mut self, button: JoypadButton, pressed: bool) {
+    pub fn press_button(&mut self, button: JoypadButton) {
+        self.set_button_pressed_status(button, true)
+    }
+
+    pub fn release_button(&mut self, button: JoypadButton) {
+        self.set_button_pressed_status(button, false)
+    }
+
+    fn set_button_pressed_status(&mut self, button: JoypadButton, pressed: bool) {
         self.button_status.set(button, pressed);
     }
 }

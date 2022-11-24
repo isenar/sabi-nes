@@ -28,7 +28,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Color {
     Red,
     Green,

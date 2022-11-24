@@ -15,6 +15,8 @@ const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
 
+pub type Callback<'call> = dyn FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call;
+
 pub struct Bus<'call> {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
@@ -23,7 +25,7 @@ pub struct Bus<'call> {
     joypad: Joypad,
     cycles: usize,
 
-    gameloop_callback: Box<dyn FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call>,
+    gameloop_callback: Box<Callback<'call>>,
 }
 
 impl<'a> Bus<'a> {
@@ -33,7 +35,7 @@ impl<'a> Bus<'a> {
 
     pub fn new_with_callback<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
     where
-        F: FnMut(&Ppu, &mut Joypad) -> crate::Result<()> + 'call,
+        F: FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call,
     {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
@@ -163,8 +165,10 @@ impl Memory for Bus<'_> {
             0x4014 => {
                 let mut buffer = [0; 256];
                 let hi = (value as Address) << 8;
-                for addr in 0..buffer.len() {
-                    buffer[addr as usize] = self.read(hi + addr as Address)?;
+                // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
+                // for now we'll use the good old for loop
+                for (offset, byte) in buffer.iter_mut().enumerate() {
+                    *byte = self.read(hi + offset as Address)?;
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);

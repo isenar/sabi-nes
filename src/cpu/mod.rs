@@ -18,19 +18,24 @@ use crate::Byte;
 use anyhow::{anyhow, bail, Context, Result};
 
 pub type Address = u16;
-pub type ProgramCounter = Address;
+pub type ProgramCounter = u16;
 
 const PROGRAM_ROM_BEGIN_ADDR: Address = 0x0600;
 const RESET_VECTOR_BEGIN_ADDR: Address = 0xfffc;
 
-pub struct Cpu<'a> {
+struct ByteUpdate {
+    previous: Byte,
+    new: Byte,
+}
+
+pub struct Cpu<'bus> {
     pub accumulator: Byte,
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
-    bus: Bus<'a>,
+    bus: Bus<'bus>,
 }
 
 impl Memory for Cpu<'_> {
@@ -78,8 +83,8 @@ impl<'a> Cpu<'a> {
     }
 
     pub fn load(&mut self, data: &[Byte]) -> Result<()> {
-        for (addr, &value) in data.iter().enumerate() {
-            let addr = addr as Address;
+        for (idx, &value) in data.iter().enumerate() {
+            let addr = idx as Address;
             self.write(addr + PROGRAM_ROM_BEGIN_ADDR, value)?;
         }
 
@@ -107,7 +112,7 @@ impl<'a> Cpu<'a> {
             let current_program_counter = self.program_counter;
             let opcode = OPCODES_MAPPING
                 .get(&code)
-                .ok_or_else(|| anyhow!("Unknown opcode: {}", code))?;
+                .ok_or_else(|| anyhow!("Unknown opcode: {code}"))?;
             let address = self
                 .pc_operand_address(opcode)
                 .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
@@ -126,10 +131,18 @@ impl<'a> Cpu<'a> {
                 "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
                 "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
                 "BRK" => return Ok(()),
-                "CLC" => self.status_register.set_carry_flag(false),
-                "CLD" => self.status_register.set_decimal_flag(false),
-                "CLI" => self.status_register.set_interrupt_flag(false),
-                "CLV" => self.status_register.set_overflow_flag(false),
+                "CLC" => {
+                    self.status_register.set_carry_flag(false);
+                }
+                "CLD" => {
+                    self.status_register.set_decimal_flag(false);
+                }
+                "CLI" => {
+                    self.status_register.set_interrupt_flag(false);
+                }
+                "CLV" => {
+                    self.status_register.set_overflow_flag(false);
+                }
                 "CMP" => self.compare(address, self.accumulator)?,
                 "CPX" => self.compare(address, self.register_x)?,
                 "CPY" => self.compare(address, self.register_y)?,
@@ -163,9 +176,15 @@ impl<'a> Cpu<'a> {
                     continue;
                 }
                 "SBC" | "*SBC" => self.sbc(address)?,
-                "SEC" => self.status_register.set_carry_flag(true),
-                "SED" => self.status_register.set_decimal_flag(true),
-                "SEI" => self.status_register.set_interrupt_flag(true),
+                "SEC" => {
+                    self.status_register.set_carry_flag(true);
+                }
+                "SED" => {
+                    self.status_register.set_decimal_flag(true);
+                }
+                "SEI" => {
+                    self.status_register.set_interrupt_flag(true);
+                }
                 "STA" => self.write(address, self.accumulator)?,
                 "STX" => self.write(address, self.register_x)?,
                 "STY" => self.write(address, self.register_y)?,
@@ -227,8 +246,8 @@ impl<'a> Cpu<'a> {
         let sum_wide = self.accumulator as u16 + data as u16 + input_carry;
         let result = sum_wide as Byte;
 
-        self.status_register.set_carry_flag(sum_wide > 0xff);
         self.status_register
+            .set_carry_flag(sum_wide > 0xff)
             .set_overflow_flag((data ^ result) & (result ^ self.accumulator) & 0x80 != 0);
 
         self.accumulator = result;
@@ -240,8 +259,9 @@ impl<'a> Cpu<'a> {
         let value = self.read(address)?;
         let result = register.wrapping_sub(value);
 
-        self.status_register.set_carry_flag(value <= register);
-        self.status_register.update_zero_and_negative_flags(result);
+        self.status_register
+            .set_carry_flag(value <= register)
+            .update_zero_and_negative_flags(result);
 
         Ok(())
     }
@@ -269,10 +289,11 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn logical_op_with_acc<Op>(&mut self, address: Address, logical_op: Op) -> Result<()>
-    where
-        Op: Fn(Byte, Byte) -> Byte,
-    {
+    fn logical_op_with_acc(
+        &mut self,
+        address: Address,
+        logical_op: impl Fn(Byte, Byte) -> Byte,
+    ) -> Result<()> {
         let value = self.read(address)?;
 
         self.accumulator = logical_op(self.accumulator, value);
@@ -285,38 +306,42 @@ impl<'a> Cpu<'a> {
     fn bit(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
 
-        self.status_register.set_overflow_flag(value.nth_bit(6));
-        self.status_register.set_negative_flag(value.nth_bit(7));
         self.status_register
+            .set_overflow_flag(value.nth_bit(6))
+            .set_negative_flag(value.nth_bit(7))
             .set_zero_flag(value & self.accumulator == 0);
 
         Ok(())
     }
 
     fn asl(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let (old_value, shifted) = self.shift(address, mode, 0, shift_left)?;
+        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_left)?;
 
-        self.status_register.set_carry_flag(old_value.nth_bit(7));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register
+            .set_carry_flag(old.nth_bit(7))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
 
     fn lsr(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let (old_value, shifted) = self.shift(address, mode, 0, shift_right)?;
+        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_right)?;
 
-        self.status_register.set_carry_flag(old_value.nth_bit(0));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register
+            .set_carry_flag(old.nth_bit(0))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
 
     fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as Byte;
-        let (previous, shifted) = self.shift(address, mode, input_carry, shift_left)?;
+        let ByteUpdate { previous: old, new } =
+            self.shift(address, mode, input_carry, shift_left)?;
 
-        self.status_register.set_carry_flag(previous.nth_bit(7));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register
+            .set_carry_flag(old.nth_bit(7))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
@@ -324,30 +349,32 @@ impl<'a> Cpu<'a> {
     fn ror(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry =
             self.status_register.contains(StatusRegister::CARRY) as Byte * 0b1000_0000;
-        let (previous, shifted) = self.shift(address, mode, input_carry, shift_right)?;
+        let ByteUpdate { previous: old, new } =
+            self.shift(address, mode, input_carry, shift_right)?;
 
-        self.status_register.set_carry_flag(previous.nth_bit(0));
-        self.status_register.update_zero_and_negative_flags(shifted);
+        self.status_register
+            .set_carry_flag(old.nth_bit(0))
+            .update_zero_and_negative_flags(new);
 
         Ok(())
     }
 
-    fn shift<Op>(
+    fn shift(
         &mut self,
         address: Address,
         mode: AddressingMode,
         input_carry: Byte,
-        shift_op: Op,
-    ) -> Result<(Byte, Byte)>
-    where
-        Op: Fn(Byte) -> Byte,
-    {
-        let (old_value, shifted) = match mode {
+        shift_op: impl Fn(Byte) -> Byte,
+    ) -> Result<ByteUpdate> {
+        let byte_update = match mode {
             AddressingMode::Accumulator => {
                 let old_acc = self.accumulator;
                 self.accumulator = shift_op(self.accumulator) | input_carry;
 
-                (old_acc, self.accumulator)
+                ByteUpdate {
+                    previous: old_acc,
+                    new: self.accumulator,
+                }
             }
             _ => {
                 let value = self.read(address)?;
@@ -355,11 +382,14 @@ impl<'a> Cpu<'a> {
 
                 self.write(address, shifted)?;
 
-                (value, shifted)
+                ByteUpdate {
+                    previous: value,
+                    new: shifted,
+                }
             }
         };
 
-        Ok((old_value, shifted))
+        Ok(byte_update)
     }
 
     fn lda(&mut self, address: Address) -> Result<()> {
@@ -469,7 +499,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn jsr(&mut self) -> Result<()> {
-        self.push_stack_u16(self.program_counter + 1)?;
+        self.push_stack_wide(self.program_counter + 1)?;
         let target_address = self.read_u16(self.program_counter)?;
         self.program_counter = target_address;
 
@@ -637,7 +667,7 @@ impl<'a> Cpu<'a> {
         Ok(())
     }
 
-    fn push_stack_u16(&mut self, value: u16) -> Result<()> {
+    fn push_stack_wide(&mut self, value: u16) -> Result<()> {
         let [lo, hi] = value.to_le_bytes();
 
         self.push_stack(hi)?;
@@ -659,7 +689,7 @@ impl<'a> Cpu<'a> {
     }
 
     fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {
-        self.push_stack_u16(self.program_counter)?;
+        self.push_stack_wide(self.program_counter)?;
         let mut status = self.status_register;
         status.remove(StatusRegister::BREAK);
         status.insert(StatusRegister::BREAK2);

@@ -49,45 +49,54 @@ impl From<Byte> for StatusRegister {
 }
 
 impl StatusRegister {
-    pub fn update_zero_and_negative_flags(&mut self, value: impl Into<Self>) {
+    pub fn update_zero_and_negative_flags(&mut self, value: impl Into<Self>) -> &mut Self {
         let value_bits = value.into();
 
         self.set_zero_flag(value_bits.is_empty());
         self.set_negative_flag(value_bits.contains(StatusRegister::NEGATIVE));
+
+        self
     }
 
     #[inline]
-    pub fn set_carry_flag(&mut self, value: bool) {
+    pub fn set_carry_flag(&mut self, value: bool) -> &mut Self {
         self.set(StatusRegister::CARRY, value);
+        self
     }
 
     #[inline]
-    pub fn set_decimal_flag(&mut self, value: bool) {
+    pub fn set_decimal_flag(&mut self, value: bool) -> &mut Self {
         self.set(StatusRegister::DECIMAL, value);
+        self
     }
 
     #[inline]
-    pub fn set_interrupt_flag(&mut self, value: bool) {
+    pub fn set_interrupt_flag(&mut self, value: bool) -> &mut Self {
         self.set(StatusRegister::INTERRUPT_DISABLE, value);
+        self
     }
 
     #[inline]
-    pub fn set_overflow_flag(&mut self, value: bool) {
+    pub fn set_overflow_flag(&mut self, value: bool) -> &mut Self {
         self.set(StatusRegister::OVERFLOW, value);
+        self
     }
 
     #[inline]
-    pub fn set_negative_flag(&mut self, value: bool) {
+    pub fn set_negative_flag(&mut self, value: bool) -> &mut Self {
         self.set(StatusRegister::NEGATIVE, value);
+        self
     }
 
     #[inline]
-    pub fn set_zero_flag(&mut self, value: bool) {
+    pub fn set_zero_flag(&mut self, value: bool) -> &mut Self {
         self.set(StatusRegister::ZERO, value);
+        self
     }
 
     #[inline]
-    pub fn disable_interrupt(&mut self) {
+    pub fn disable_interrupt(&mut self) -> &mut Self {
         self.remove(Self::INTERRUPT_DISABLE);
+        self
     }
 }

@@ -11,10 +11,7 @@ use std::path::Path;
 // TODO: remove this once APU is implemented and whole test passes
 const VALID_LINES_SO_FAR: usize = 8980;
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
+fn read_lines(filename: impl AsRef<Path>) -> io::Result<io::Lines<io::BufReader<File>>> {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
@@ -36,12 +33,12 @@ fn cpu_validation_test() -> Result<()> {
         Ok(())
     })?;
 
-    let expected_traces = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?;
-    for (line_num, (expected_trace, actual_trace)) in expected_traces
+    let expected_traces = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?
         .zip(traces)
         .enumerate()
-        .take(VALID_LINES_SO_FAR)
-    {
+        .take(VALID_LINES_SO_FAR);
+
+    for (line_num, (expected_trace, actual_trace)) in expected_traces {
         let expected_trace = expected_trace?;
 
         assert_eq!(
