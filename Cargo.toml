@@ -9,7 +9,7 @@ authors = ["Dariusz Dajka <dariusz.dajka@gmail.com>"]
 
 [dependencies]
 anyhow = "1.0.66"
-bitflags = "1.3.2"
+bitflags = "2.2.1"
 clap = { version = "4.0.27", features = ["derive"] }
 maplit = "1.0.2"
 once_cell = "1.16.0"
