@@ -23,7 +23,7 @@ use crate::Byte;
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     pub struct StatusRegister: Byte {
         const UNUSED1         = 0b0000_0001;
         const UNUSED2         = 0b0000_0010;
