@@ -2,7 +2,7 @@ use crate::Byte;
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Debug)]
     pub struct ApuFlags: Byte {
         const SQUARE_CHANNEL_1_ENABLED = 0b0000_0001;
         const SQUARE_CHANNEL_2_ENABLED = 0b0000_0010;
