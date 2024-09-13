@@ -8,6 +8,7 @@ use bitflags::bitflags;
 const NES_TAG: [Byte; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 bitflags! {
+    #[derive(Debug, Copy, Clone)]
     struct ControlByte1: Byte {
         const MIRRORING               = 0b0000_0001; // 1 for vertical, 0 for horizontal
         const BATTERY_BACKED_RAM      = 0b0000_0010;
@@ -22,11 +23,12 @@ bitflags! {
 
 impl ControlByte1 {
     pub fn mapper_bits_lo(&self) -> Byte {
-        self.bits >> 4
+        self.bits() >> 4
     }
 }
 
 bitflags! {
+    #[derive(Debug, Copy, Clone)]
     struct ControlByte2: Byte {
         const INES_V1_FIRST   = 0b0000_0001; // 0 for iNES v1 format
         const INES_V1_SECOND  = 0b0000_0010; // 0 for iNES v1 format
@@ -43,7 +45,7 @@ bitflags! {
 
 impl ControlByte2 {
     pub fn mapper_bits_hi(&self) -> Byte {
-        (*self & Self::MAPPER_MASK).bits
+        (*self & Self::MAPPER_MASK).bits()
     }
 }
 

@@ -22,6 +22,7 @@ use bitflags::bitflags;
 use std::fmt::{Display, Formatter};
 
 bitflags! {
+    #[derive(Debug, Copy, Clone, PartialEq)]
     pub struct StatusRegister: Byte {
         const CARRY             = 0b0000_0001;
         const ZERO              = 0b0000_0010;
@@ -32,13 +33,13 @@ bitflags! {
         const OVERFLOW          = 0b0100_0000;
         const NEGATIVE          = 0b1000_0000;
 
-        const INIT = StatusRegister::INTERRUPT_DISABLE.bits | StatusRegister::BREAK2.bits;
+        const INIT = StatusRegister::INTERRUPT_DISABLE.bits() | StatusRegister::BREAK2.bits();
     }
 }
 
 impl Display for StatusRegister {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{:02X}", self.bits)
+        write!(f, "{:02X}", self.bits())
     }
 }
 

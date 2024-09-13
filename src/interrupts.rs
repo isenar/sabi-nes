@@ -3,6 +3,8 @@ use crate::{Address, Byte};
 #[derive(Debug)]
 pub struct Interrupt {
     pub vector_addr: Address,
+    // TODO: use the mask
+    #[allow(unused)]
     pub break_flag_mask: Byte,
     pub cpu_cycles: Byte,
 }
