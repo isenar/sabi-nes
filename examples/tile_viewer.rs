@@ -12,7 +12,7 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
     let mut frame = Frame::default();
     let mut tile_y = 0;
     let mut tile_x = 0;
-    let bank = (bank * 0x1000) as usize;
+    let bank = bank * 0x1000;
 
     for tile_n in 0..255 {
         if tile_n != 0 && tile_n % 20 == 0 {

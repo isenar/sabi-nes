@@ -2,7 +2,7 @@ use crate::Byte;
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Debug, Copy, Clone, Default)]
     pub struct JoypadButton: Byte {
         const RIGHT             = 0b1000_0000;
         const LEFT              = 0b0100_0000;
@@ -28,7 +28,7 @@ impl Joypad {
             return 1;
         }
 
-        let response = (self.button_status.bits & (1 << self.button_index)) >> self.button_index;
+        let response = (self.button_status.bits() & (1 << self.button_index)) >> self.button_index;
 
         if !self.strobe_mode && self.button_index <= 7 {
             self.button_index += 1;

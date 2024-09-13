@@ -21,7 +21,7 @@ use bitflags::bitflags;
 const NAMETABLE_BASE_ADDR: Address = 0x2000;
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Debug, Copy, Clone, Default)]
     pub struct ControlRegister: Byte {
         const NAMETABLE1              = 0b0000_0001;
         const NAMETABLE2              = 0b0000_0010;
@@ -36,7 +36,7 @@ bitflags! {
 
 impl ControlRegister {
     pub fn update(&mut self, value: Byte) {
-        self.bits = value;
+        *self = Self::from_bits_truncate(value);
     }
 
     pub fn vram_addr_increment(&self) -> Byte {
