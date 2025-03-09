@@ -42,7 +42,7 @@ impl AddressRegister {
     }
 
     pub fn get(&self) -> Address {
-        (self.high as Address) << 8 | self.low as Address
+        ((self.high as Address) << 8) | self.low as Address
     }
 
     pub fn reset_latch(&mut self) {

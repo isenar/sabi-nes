@@ -26,7 +26,7 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
             let mut lower = tile[y + 8];
 
             for x in (0..=7).rev() {
-                let value = (1 & upper) << 1 | (1 & lower);
+                let value = ((1 & upper) << 1) | (1 & lower);
                 upper >>= 1;
                 lower >>= 1;
                 let rgb = match value {

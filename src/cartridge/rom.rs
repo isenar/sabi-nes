@@ -84,7 +84,7 @@ impl RomHeader {
             bail!("File is not an iNES format - missing 'NES' tag");
         }
 
-        let is_ines1 = (data[7] >> 2 & 0b11) == 0;
+        let is_ines1 = ((data[7] >> 2) & 0b11) == 0;
 
         if !is_ines1 {
             bail!("Only iNes 1.0 format is currently supported");

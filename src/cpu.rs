@@ -56,7 +56,7 @@ impl Memory for Cpu<'_> {
     }
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu<'_> {
     pub fn new(bus: Bus) -> Cpu {
         Cpu {
             accumulator: 0,
@@ -643,7 +643,7 @@ impl<'a> Cpu<'a> {
                     let lo = self.read(target_address)? as Address;
                     let hi = self.read(target_address & 0xff00)? as Address;
 
-                    hi << 8 | lo
+                    (hi << 8) | lo
                 } else {
                     self.read_u16(target_address)?
                 }
@@ -685,7 +685,7 @@ impl<'a> Cpu<'a> {
         let lo = self.pop_stack()? as u16;
         let hi = self.pop_stack()? as u16;
 
-        Ok(hi << 8 | lo)
+        Ok((hi << 8) | lo)
     }
 
     fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {
