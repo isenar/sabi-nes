@@ -107,7 +107,7 @@ fn render_name_table(
             let mut lower = tile[y + 8];
 
             for x in (0..=7).rev() {
-                let value = ((1 & lower) << 1 | (1 & upper)) as usize;
+                let value = (((1 & lower) << 1) | (1 & upper)) as usize;
                 upper >>= 1;
                 lower >>= 1;
                 let rgb = SYSTEM_PALETTE[bg_palette[value] as usize];
@@ -147,7 +147,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             let mut upper = tile[y_offset];
             let mut lower = tile[y_offset + 8];
             for x_offset in (0..=7).rev() {
-                let value = ((1 & lower) << 1 | (1 & upper)) as usize;
+                let value = (((1 & lower) << 1) | (1 & upper)) as usize;
                 upper >>= 1;
                 lower >>= 1;
 

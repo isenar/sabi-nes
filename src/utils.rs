@@ -12,7 +12,7 @@ pub trait MirroredAddress {
 impl NthBit for Byte {
     #[inline]
     fn nth_bit(&self, bit_n: Self) -> bool {
-        self >> bit_n & 1 == 1
+        (self >> bit_n) & 1 == 1
     }
 }
 

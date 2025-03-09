@@ -3,10 +3,10 @@ use sabi_nes::{Bus, Byte, Cpu, Memory};
 
 use anyhow::Result;
 use rand::Rng;
+use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
-use sdl2::EventPump;
 
 fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Result<()> {
     for event in event_pump.poll_iter() {
@@ -90,7 +90,7 @@ fn main() -> Result<()> {
     let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 32, 32)?;
 
     let mut screen_state = [0; 32 * 3 * 32];
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let rom_file = std::fs::read("examples/snake.nes")?;
     let rom = Rom::new(&rom_file)?;
@@ -99,7 +99,7 @@ fn main() -> Result<()> {
     cpu.reset()?;
     cpu.run_with_callback(|cpu| {
         handle_user_input(cpu, &mut event_pump)?;
-        cpu.write(0xfe, rng.gen_range(1..16))?;
+        cpu.write(0xfe, rng.random_range(1..16))?;
 
         if screen_update_needed(cpu, &mut screen_state)? {
             texture.update(None, &screen_state, 32 * 3)?;

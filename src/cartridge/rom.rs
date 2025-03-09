@@ -1,7 +1,7 @@
-use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
-use crate::cartridge::{MirroringType, CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
 use crate::Byte;
-use anyhow::{anyhow, bail, Result};
+use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
+use crate::cartridge::{CHR_ROM_BANK_SIZE, MirroringType, PRG_ROM_BANK_SIZE};
+use anyhow::{Result, anyhow, bail};
 use bitflags::bitflags;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
@@ -84,10 +84,10 @@ impl RomHeader {
             bail!("File is not an iNES format - missing 'NES' tag");
         }
 
-        let is_ines1 = (data[7] >> 2 & 0b11) == 0;
+        let is_ines1 = ((data[7] >> 2) & 0b11) == 0;
 
         if !is_ines1 {
-            bail!("NES2.0 format not supported");
+            bail!("Only iNes 1.0 format is currently supported");
         }
 
         if !data[8..16].iter().all(|&byte| byte == 0) {
@@ -112,6 +112,7 @@ impl RomHeader {
         })
     }
 }
+
 pub struct Rom {
     pub prg_rom: Vec<Byte>,
     pub chr_rom: Vec<Byte>,

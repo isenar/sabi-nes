@@ -192,7 +192,7 @@ impl Memory for Bus<'_> {
 mod tests {
     use super::*;
     use crate::cartridge::mappers::Nrom128;
-    use crate::cartridge::{MirroringType, CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
+    use crate::cartridge::{CHR_ROM_BANK_SIZE, MirroringType, PRG_ROM_BANK_SIZE};
     use assert_matches::assert_matches;
 
     fn test_bus() -> Bus<'static> {

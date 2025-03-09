@@ -1,5 +1,5 @@
-use crate::cpu::addressing_mode::AddressingMode;
 use crate::Byte;
+use crate::cpu::addressing_mode::AddressingMode;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 

@@ -1,5 +1,5 @@
-use crate::utils::NthBit;
 use crate::Byte;
+use crate::utils::NthBit;
 
 /// The NES APU's delta modulation channel (DMC) can output 1-bit delta-encoded
 /// samples or can have its 7-bit counter directly loaded,

@@ -1,5 +1,5 @@
-use crate::utils::NthBit;
 use crate::Byte;
+use crate::utils::NthBit;
 
 /// The triangle channel produces a quantized triangle wave.
 /// It has no volume control, but it has a length counter
@@ -26,7 +26,7 @@ impl TriangleChannel {
         let timer_high = (self.length_and_timer_high & 0b0000_0111) as u16;
         let timer_low = self.timer_low as u16;
 
-        timer_high << 8 | timer_low
+        (timer_high << 8) | timer_low
     }
 
     pub fn length_counter_load(&self) -> Byte {
