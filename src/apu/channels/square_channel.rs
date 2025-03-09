@@ -1,5 +1,5 @@
-use crate::utils::NthBit;
 use crate::Byte;
+use crate::utils::NthBit;
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct SquareChannel {

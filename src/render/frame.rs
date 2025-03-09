@@ -1,5 +1,5 @@
-use crate::render::Rgb;
 use crate::Byte;
+use crate::render::Rgb;
 
 #[derive(Debug)]
 pub struct Frame {

@@ -1,10 +1,10 @@
+use crate::Byte;
 use crate::apu::apu_flags::ApuFlags;
 use crate::apu::channels::dmc::Dmc;
 use crate::apu::channels::noise_channel::NoiseChannel;
 use crate::apu::channels::square_channel::SquareChannel;
 use crate::apu::channels::triangle_channel::TriangleChannel;
 use crate::apu::frame_counter::FrameCounter;
-use crate::Byte;
 
 mod apu_flags;
 mod channels;

@@ -1,5 +1,5 @@
-use crate::utils::NthBit;
 use crate::Byte;
+use crate::utils::NthBit;
 
 const OAM_DATA_SIZE: usize = 64;
 const SPRITE_DATA_SIZE: Byte = std::mem::size_of::<SpriteData>() as Byte;

@@ -2,16 +2,16 @@ use crate::Config;
 use anyhow::Error;
 use maplit::hashmap;
 use once_cell::sync::Lazy;
+use sabi_nes::Result;
 use sabi_nes::input::joypad::{Joypad, JoypadButton};
 use sabi_nes::ppu::Ppu;
-use sabi_nes::render::{render, Frame};
-use sabi_nes::Result;
+use sabi_nes::render::{Frame, render};
 use sabi_nes::{Bus, Cpu, Rom};
+use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::{Texture, WindowCanvas};
-use sdl2::EventPump;
 use std::collections::HashMap;
 
 static JOYPAD_BUTTON_MAP: Lazy<HashMap<Keycode, JoypadButton>> = Lazy::new(|| {

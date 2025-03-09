@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use once_cell::sync::Lazy;
 use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
-use sabi_nes::cpu::opcodes::{Opcode, OPCODES_MAPPING};
 use sabi_nes::cpu::AddressingMode;
+use sabi_nes::cpu::opcodes::{OPCODES_MAPPING, Opcode};
 use sabi_nes::{Address, Byte, Cpu, Memory, Result};
 
 pub static TEST_ROM: Lazy<Vec<Byte>> = Lazy::new(|| {

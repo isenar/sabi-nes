@@ -1,6 +1,6 @@
 use anyhow::bail;
-use sabi_nes::render::palettes::SYSTEM_PALETTE;
 use sabi_nes::render::Frame;
+use sabi_nes::render::palettes::SYSTEM_PALETTE;
 use sabi_nes::{Byte, Result, Rom};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;

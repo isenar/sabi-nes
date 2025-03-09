@@ -1,7 +1,7 @@
-use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
-use crate::cartridge::{MirroringType, CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
 use crate::Byte;
-use anyhow::{anyhow, bail, Result};
+use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
+use crate::cartridge::{CHR_ROM_BANK_SIZE, MirroringType, PRG_ROM_BANK_SIZE};
+use anyhow::{Result, anyhow, bail};
 use bitflags::bitflags;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files

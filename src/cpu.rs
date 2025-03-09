@@ -7,15 +7,15 @@ mod status_register;
 pub use crate::cpu::addressing_mode::AddressingMode;
 pub use crate::cpu::memory::Memory;
 
+use crate::Byte;
 use crate::bus::Bus;
-use crate::cpu::opcodes::{Opcode, OPCODES_MAPPING};
+use crate::cpu::opcodes::{OPCODES_MAPPING, Opcode};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::interrupts::{Interrupt, NMI};
 use crate::ppu::NmiStatus;
-use crate::utils::{shift_left, shift_right, NthBit};
-use crate::Byte;
-use anyhow::{anyhow, bail, Context, Result};
+use crate::utils::{NthBit, shift_left, shift_right};
+use anyhow::{Context, Result, anyhow, bail};
 
 pub type Address = u16;
 pub type ProgramCounter = u16;

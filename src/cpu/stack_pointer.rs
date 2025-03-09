@@ -1,5 +1,5 @@
-use crate::cpu::Address;
 use crate::Byte;
+use crate::cpu::Address;
 use std::fmt::{Debug, Display, Formatter};
 
 const STACK_BEGIN_ADDR: Address = 0x0100; // stack is located at page $01 (0x100 - 0x01ff)

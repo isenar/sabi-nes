@@ -1,5 +1,5 @@
-use crate::utils::NthBit;
 use crate::Byte;
+use crate::utils::NthBit;
 
 /// The triangle channel produces a quantized triangle wave.
 /// It has no volume control, but it has a length counter
