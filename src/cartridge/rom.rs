@@ -87,7 +87,7 @@ impl RomHeader {
         let is_ines1 = (data[7] >> 2 & 0b11) == 0;
 
         if !is_ines1 {
-            bail!("NES2.0 format not supported");
+            bail!("Only iNes 1.0 format is currently supported");
         }
 
         if !data[8..16].iter().all(|&byte| byte == 0) {
@@ -112,6 +112,7 @@ impl RomHeader {
         })
     }
 }
+
 pub struct Rom {
     pub prg_rom: Vec<Byte>,
     pub chr_rom: Vec<Byte>,
