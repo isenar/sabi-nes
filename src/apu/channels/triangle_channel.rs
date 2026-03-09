@@ -15,7 +15,7 @@ pub struct TriangleChannel {
 
 impl TriangleChannel {
     pub fn is_linear_counter_enabled(self) -> bool {
-        self.linear_counter.nth_bit(7)
+        self.linear_counter.nth_bit::<7>()
     }
 
     pub fn counter_reload(&self) -> Byte {

@@ -29,8 +29,18 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
     let opcode_asm = opcode_asm_representation(opcode, cpu)?;
 
-    let mut fmt = format!(
-        "{:>04X}  {:<10}{:<32}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
+    // Unofficial opcodes (starting with '*') use a 9-char hex field and 33-char ASM field.
+    // This keeps the register columns aligned despite the extra '*' character.
+    //   Official:   "C5F7  86 00     STX $00 = 00                    A:00 X:00..."
+    //   Unofficial: "C6BD  04 A9    *NOP $A9 = 00                    A:AA X:97..."
+    let (hex_width, asm_width) = if opcode.name.starts_with('*') {
+        (9, 33)
+    } else {
+        (10, 32)
+    };
+
+    Ok(format!(
+        "{:>04X}  {:<hex_width$}{:<asm_width$}A:{:02X} X:{:02X} Y:{:02X} P:{} SP:{}",
         cpu.program_counter,
         opcode_hex,
         opcode_asm,
@@ -39,15 +49,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         cpu.register_y,
         cpu.status_register,
         cpu.stack_pointer,
-    );
-
-    // TODO: there has to be a better way..
-    if opcode.name.starts_with('*') {
-        fmt.remove(15);
-        fmt.insert(47, ' ');
-    }
-
-    Ok(fmt)
+    ))
 }
 
 fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
@@ -183,10 +185,12 @@ mod tests {
         cpu.register_y = 3;
 
         let mut traces = vec![];
-        cpu.run_with_callback(|cpu| {
-            traces.push(trace(cpu)?);
-            Ok(())
-        })?;
+        loop {
+            traces.push(trace(&mut cpu)?);
+            if cpu.step()? {
+                break; // BRK encountered
+            }
+        }
         let expected = vec![
             "0064  A2 01     LDX #$01                        A:01 X:02 Y:03 P:24 SP:FD",
             "0066  CA        DEX                             A:01 X:01 Y:03 P:24 SP:FD",
@@ -220,10 +224,12 @@ mod tests {
         cpu.register_y = 5;
 
         let mut traces = vec![];
-        cpu.run_with_callback(|cpu| {
-            traces.push(trace(cpu)?);
-            Ok(())
-        })?;
+        loop {
+            traces.push(trace(&mut cpu)?);
+            if cpu.step()? {
+                break;
+            }
+        }
 
         assert_eq!(
             "0064  11 33     ORA ($33),Y = 0400 @ 0405 = AA  A:00 X:00 Y:05 P:24 SP:FD",

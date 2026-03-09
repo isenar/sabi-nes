@@ -2,7 +2,7 @@ use sabi_nes::cartridge::Rom;
 use sabi_nes::{Bus, Byte, Cpu, Memory};
 
 use anyhow::Result;
-use rand::Rng;
+use rand::RngExt;
 use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -58,11 +58,12 @@ fn screen_update_needed(cpu: &mut Cpu, frame: &mut [Byte; 32 * 3 * 32]) -> Resul
 
     for addr in 0x0200..0x0600 {
         let color_idx = cpu.read(addr)?;
-        let (b1, b2, b3) = color(color_idx).rgb();
-        if frame[frame_idx] != b1 || frame[frame_idx + 1] != b2 || frame[frame_idx + 2] != b3 {
-            frame[frame_idx] = b1;
-            frame[frame_idx + 1] = b2;
-            frame[frame_idx + 2] = b3;
+        let (red, green, blue) = color(color_idx).rgb();
+        if frame[frame_idx] != red || frame[frame_idx + 1] != green || frame[frame_idx + 2] != blue
+        {
+            frame[frame_idx] = red;
+            frame[frame_idx + 1] = green;
+            frame[frame_idx + 2] = blue;
 
             return Ok(true);
         }
@@ -97,11 +98,17 @@ fn main() -> Result<()> {
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
     cpu.reset()?;
-    cpu.run_with_callback(|cpu| {
-        handle_user_input(cpu, &mut event_pump)?;
+
+    loop {
+        if cpu.step()? {
+            break;
+        }
+
+        handle_user_input(&mut cpu, &mut event_pump)?;
+
         cpu.write(0xfe, rng.random_range(1..16))?;
 
-        if screen_update_needed(cpu, &mut screen_state)? {
+        if screen_update_needed(&mut cpu, &mut screen_state)? {
             texture.update(None, &screen_state, 32 * 3)?;
             canvas
                 .copy(&texture, None, None)
@@ -110,9 +117,7 @@ fn main() -> Result<()> {
         }
 
         std::thread::sleep(std::time::Duration::from_micros(50));
-
-        Ok(())
-    })?;
+    }
 
     Ok(())
 }

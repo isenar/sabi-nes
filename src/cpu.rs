@@ -1,4 +1,5 @@
 mod addressing_mode;
+mod interrupts;
 mod memory;
 pub mod opcodes;
 mod stack_pointer;
@@ -9,10 +10,10 @@ pub use crate::cpu::memory::Memory;
 
 use crate::Byte;
 use crate::bus::Bus;
+use crate::cpu::interrupts::Interrupt;
 use crate::cpu::opcodes::{OPCODES_MAPPING, Opcode};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
-use crate::interrupts::{Interrupt, NMI};
 use crate::ppu::NmiStatus;
 use crate::utils::{NthBit, shift_left, shift_right};
 use anyhow::{Context, Result, anyhow, bail};
@@ -28,17 +29,17 @@ struct ByteUpdate {
     new: Byte,
 }
 
-pub struct Cpu<'bus> {
+pub struct Cpu {
     pub accumulator: Byte,
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
-    bus: Bus<'bus>,
+    bus: Bus,
 }
 
-impl Memory for Cpu<'_> {
+impl Memory for Cpu {
     fn read(&mut self, addr: Address) -> Result<Byte> {
         self.bus.read(addr)
     }
@@ -56,7 +57,7 @@ impl Memory for Cpu<'_> {
     }
 }
 
-impl Cpu<'_> {
+impl Cpu {
     pub fn new(bus: Bus) -> Cpu {
         Cpu {
             accumulator: 0,
@@ -71,6 +72,10 @@ impl Cpu<'_> {
 
     pub fn bus(&self) -> &Bus {
         &self.bus
+    }
+
+    pub fn bus_mut(&mut self) -> &mut Bus {
+        &mut self.bus
     }
 
     pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {
@@ -91,127 +96,131 @@ impl Cpu<'_> {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<()> {
-        self.run_with_callback(|_| Ok(()))
+    /// Execute a single CPU instruction and return true if BRK was encountered
+    pub fn step(&mut self) -> Result<bool> {
+        // Handle NMI interrupt if pending
+        if self.bus.poll_nmi_status() == NmiStatus::Active {
+            self.interrupt(interrupts::NMI)?;
+        }
+
+        let code = self.read(self.program_counter)?;
+        self.program_counter += 1;
+
+        let current_program_counter = self.program_counter;
+        let opcode = OPCODES_MAPPING
+            .get(&code)
+            .ok_or_else(|| anyhow!("Unknown opcode: {code}"))?;
+        let address = self
+            .pc_operand_address(opcode)
+            .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
+
+        match opcode.name {
+            "ADC" => self.adc(address)?,
+            "AND" => self.and(address)?,
+            "ASL" => self.asl(address, opcode.addressing_mode)?,
+            "BIT" => self.bit(address)?,
+            "BCC" => self.branch(!self.status_register.contains(StatusRegister::CARRY))?,
+            "BCS" => self.branch(self.status_register.contains(StatusRegister::CARRY))?,
+            "BEQ" => self.branch(self.status_register.contains(StatusRegister::ZERO))?,
+            "BMI" => self.branch(self.status_register.contains(StatusRegister::NEGATIVE))?,
+            "BNE" => self.branch(!self.status_register.contains(StatusRegister::ZERO))?,
+            "BPL" => self.branch(!self.status_register.contains(StatusRegister::NEGATIVE))?,
+            "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
+            "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
+            "BRK" => return Ok(true),
+            "CLC" => {
+                self.status_register.set_carry_flag(false);
+            }
+            "CLD" => {
+                self.status_register.set_decimal_flag(false);
+            }
+            "CLI" => {
+                self.status_register.set_interrupt_flag(false);
+            }
+            "CLV" => {
+                self.status_register.set_overflow_flag(false);
+            }
+            "CMP" => self.compare(address, self.accumulator)?,
+            "CPX" => self.compare(address, self.register_x)?,
+            "CPY" => self.compare(address, self.register_y)?,
+            "DEC" => self.dec(address)?,
+            "DEX" => self.dex(),
+            "DEY" => self.dey(),
+            "EOR" => self.eor(address)?,
+            "INC" => self.inc(address)?,
+            "INX" => self.inx(),
+            "INY" => self.iny(),
+            "JMP" => self.program_counter = address,
+            "JSR" => self.jsr()?,
+            "LDA" => self.lda(address)?,
+            "LDX" => self.ldx(address)?,
+            "LDY" => self.ldy(address)?,
+            "LSR" => self.lsr(address, opcode.addressing_mode)?,
+            "NOP" | "*NOP" => {} // noop - do nothing
+            "ORA" => self.ora(address)?,
+            "PHA" => self.push_stack(self.accumulator)?,
+            "PHP" => self.php()?,
+            "PLA" => self.pla()?,
+            "PLP" => self.plp()?,
+            "ROL" => self.rol(address, opcode.addressing_mode)?,
+            "ROR" => self.ror(address, opcode.addressing_mode)?,
+            "RTI" => {
+                self.rti()?;
+                self.bus.tick(opcode.cycles)?;
+                return Ok(false);
+            }
+            "RTS" => {
+                self.rts()?;
+                self.bus.tick(opcode.cycles)?;
+                return Ok(false);
+            }
+            "SBC" | "*SBC" => self.sbc(address)?,
+            "SEC" => {
+                self.status_register.set_carry_flag(true);
+            }
+            "SED" => {
+                self.status_register.set_decimal_flag(true);
+            }
+            "SEI" => {
+                self.status_register.set_interrupt_flag(true);
+            }
+            "STA" => self.write(address, self.accumulator)?,
+            "STX" => self.write(address, self.register_x)?,
+            "STY" => self.write(address, self.register_y)?,
+            "TAX" => self.tax(),
+            "TAY" => self.tay(),
+            "TSX" => self.tsx(),
+            "TXA" => self.txa(),
+            "TXS" => self.stack_pointer.set(self.register_x),
+            "TYA" => self.tya(),
+
+            "*LAX" => self.lax(address)?,
+            "*SAX" => self.sax(address)?,
+            "*DCP" => self.dcp(address)?,
+            "*ISB" => self.isb(address)?,
+            "*SLO" => self.slo(address)?,
+            "*RLA" => self.rla(address, opcode.addressing_mode)?,
+            "*SRE" => self.sre(address)?,
+            "*RRA" => self.rra(address, opcode.addressing_mode)?,
+            _ => bail!("Unsupported opcode name: {}", opcode.name),
+        }
+
+        self.bus.tick(opcode.cycles)?;
+
+        if current_program_counter == self.program_counter {
+            self.program_counter += opcode.length() as u16;
+        }
+
+        Ok(false)
     }
 
-    pub fn run_with_callback<F>(&mut self, mut callback: F) -> Result<()>
-    where
-        F: FnMut(&mut Cpu) -> Result<()>,
-    {
+    pub fn run(&mut self) -> Result<()> {
         loop {
-            if self.bus.poll_nmi_status() == NmiStatus::Active {
-                self.interrupt(NMI)?;
-            }
-
-            callback(self)?;
-
-            let code = self.read(self.program_counter)?;
-            self.program_counter += 1;
-
-            let current_program_counter = self.program_counter;
-            let opcode = OPCODES_MAPPING
-                .get(&code)
-                .ok_or_else(|| anyhow!("Unknown opcode: {code}"))?;
-            let address = self
-                .pc_operand_address(opcode)
-                .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
-
-            match opcode.name {
-                "ADC" => self.adc(address)?,
-                "AND" => self.and(address)?,
-                "ASL" => self.asl(address, opcode.addressing_mode)?,
-                "BIT" => self.bit(address)?,
-                "BCC" => self.branch(!self.status_register.contains(StatusRegister::CARRY))?,
-                "BCS" => self.branch(self.status_register.contains(StatusRegister::CARRY))?,
-                "BEQ" => self.branch(self.status_register.contains(StatusRegister::ZERO))?,
-                "BMI" => self.branch(self.status_register.contains(StatusRegister::NEGATIVE))?,
-                "BNE" => self.branch(!self.status_register.contains(StatusRegister::ZERO))?,
-                "BPL" => self.branch(!self.status_register.contains(StatusRegister::NEGATIVE))?,
-                "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
-                "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
-                "BRK" => return Ok(()),
-                "CLC" => {
-                    self.status_register.set_carry_flag(false);
-                }
-                "CLD" => {
-                    self.status_register.set_decimal_flag(false);
-                }
-                "CLI" => {
-                    self.status_register.set_interrupt_flag(false);
-                }
-                "CLV" => {
-                    self.status_register.set_overflow_flag(false);
-                }
-                "CMP" => self.compare(address, self.accumulator)?,
-                "CPX" => self.compare(address, self.register_x)?,
-                "CPY" => self.compare(address, self.register_y)?,
-                "DEC" => self.dec(address)?,
-                "DEX" => self.dex(),
-                "DEY" => self.dey(),
-                "EOR" => self.eor(address)?,
-                "INC" => self.inc(address)?,
-                "INX" => self.inx(),
-                "INY" => self.iny(),
-                "JMP" => self.program_counter = address,
-                "JSR" => self.jsr()?,
-                "LDA" => self.lda(address)?,
-                "LDX" => self.ldx(address)?,
-                "LDY" => self.ldy(address)?,
-                "LSR" => self.lsr(address, opcode.addressing_mode)?,
-                "NOP" | "*NOP" => {} // noop - do nothing
-                "ORA" => self.ora(address)?,
-                "PHA" => self.push_stack(self.accumulator)?,
-                "PHP" => self.php()?,
-                "PLA" => self.pla()?,
-                "PLP" => self.plp()?,
-                "ROL" => self.rol(address, opcode.addressing_mode)?,
-                "ROR" => self.ror(address, opcode.addressing_mode)?,
-                "RTI" => {
-                    self.rti()?;
-                    continue;
-                }
-                "RTS" => {
-                    self.rts()?;
-                    continue;
-                }
-                "SBC" | "*SBC" => self.sbc(address)?,
-                "SEC" => {
-                    self.status_register.set_carry_flag(true);
-                }
-                "SED" => {
-                    self.status_register.set_decimal_flag(true);
-                }
-                "SEI" => {
-                    self.status_register.set_interrupt_flag(true);
-                }
-                "STA" => self.write(address, self.accumulator)?,
-                "STX" => self.write(address, self.register_x)?,
-                "STY" => self.write(address, self.register_y)?,
-                "TAX" => self.tax(),
-                "TAY" => self.tay(),
-                "TSX" => self.tsx(),
-                "TXA" => self.txa(),
-                "TXS" => self.stack_pointer.set(self.register_x),
-                "TYA" => self.tya(),
-
-                "*LAX" => self.lax(address)?,
-                "*SAX" => self.sax(address)?,
-                "*DCP" => self.dcp(address)?,
-                "*ISB" => self.isb(address)?,
-                "*SLO" => self.slo(address)?,
-                "*RLA" => self.rla(address, opcode.addressing_mode)?,
-                "*SRE" => self.sre(address)?,
-                "*RRA" => self.rra(address, opcode.addressing_mode)?,
-                _ => bail!("Unsupported opcode name: {}", opcode.name),
-            }
-
-            self.bus.tick(opcode.cycles)?;
-
-            if current_program_counter == self.program_counter {
-                self.program_counter += opcode.length() as u16;
+            if self.step()? {
+                break; // BRK encountered
             }
         }
+        Ok(())
     }
 
     pub fn reset(&mut self) -> Result<()> {
@@ -307,8 +316,8 @@ impl Cpu<'_> {
         let value = self.read(address)?;
 
         self.status_register
-            .set_overflow_flag(value.nth_bit(6))
-            .set_negative_flag(value.nth_bit(7))
+            .set_overflow_flag(value.nth_bit::<6>())
+            .set_negative_flag(value.nth_bit::<7>())
             .set_zero_flag(value & self.accumulator == 0);
 
         Ok(())
@@ -318,7 +327,7 @@ impl Cpu<'_> {
         let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_left)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(7))
+            .set_carry_flag(old.nth_bit::<7>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -328,7 +337,7 @@ impl Cpu<'_> {
         let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_right)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(0))
+            .set_carry_flag(old.nth_bit::<0>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -340,7 +349,7 @@ impl Cpu<'_> {
             self.shift(address, mode, input_carry, shift_left)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(7))
+            .set_carry_flag(old.nth_bit::<7>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -353,7 +362,7 @@ impl Cpu<'_> {
             self.shift(address, mode, input_carry, shift_right)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(0))
+            .set_carry_flag(old.nth_bit::<0>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -726,7 +735,7 @@ impl Cpu<'_> {
     fn slo(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
         let shifted_left = value << 1;
-        self.status_register.set_carry_flag(value.nth_bit(7));
+        self.status_register.set_carry_flag(value.nth_bit::<7>());
 
         self.write(address, shifted_left)?;
         self.ora(address)?;
@@ -747,7 +756,7 @@ impl Cpu<'_> {
         let value = self.read(address)?;
         let shifted_right = value >> 1;
 
-        self.status_register.set_carry_flag(value.nth_bit(0));
+        self.status_register.set_carry_flag(value.nth_bit::<0>());
         self.write(address, shifted_right)?;
         self.eor(address)?;
 

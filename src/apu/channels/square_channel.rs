@@ -16,11 +16,11 @@ impl SquareChannel {
     }
 
     fn is_length_counter_halted(self) -> bool {
-        self.volume.nth_bit(5)
+        self.volume.nth_bit::<5>()
     }
 
     fn is_constant_volume(self) -> bool {
-        self.volume.nth_bit(4)
+        self.volume.nth_bit::<4>()
     }
 
     fn volume(self) -> Byte {
@@ -28,7 +28,7 @@ impl SquareChannel {
     }
 
     fn is_sweep_enabled(self) -> bool {
-        self.sweep.nth_bit(7)
+        self.sweep.nth_bit::<7>()
     }
 
     fn sweep_period(self) -> Byte {
@@ -36,7 +36,7 @@ impl SquareChannel {
     }
 
     fn is_sweep_negated(self) -> bool {
-        self.sweep.nth_bit(3)
+        self.sweep.nth_bit::<3>()
     }
 
     fn sweep_shift(self) -> Byte {

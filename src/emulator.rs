@@ -4,15 +4,15 @@ use maplit::hashmap;
 use once_cell::sync::Lazy;
 use sabi_nes::Result;
 use sabi_nes::input::joypad::{Joypad, JoypadButton};
-use sabi_nes::ppu::Ppu;
 use sabi_nes::render::{Frame, render};
 use sabi_nes::{Bus, Cpu, Rom};
 use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::{Texture, WindowCanvas};
+use sdl2::render::WindowCanvas;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 static JOYPAD_BUTTON_MAP: Lazy<HashMap<Keycode, JoypadButton>> = Lazy::new(|| {
     hashmap! {
@@ -59,7 +59,11 @@ pub struct Emulator {
     canvas: WindowCanvas,
     event_pump: EventPump,
     frame: Frame,
+    last_frame_time: Instant,
 }
+
+const TARGET_FPS: u32 = 60;
+const FRAME_DURATION: Duration = Duration::from_micros(1_000_000 / TARGET_FPS as u64);
 
 impl Emulator {
     pub fn create(config: Config) -> Result<Self> {
@@ -79,6 +83,7 @@ impl Emulator {
             canvas,
             event_pump,
             frame,
+            last_frame_time: Instant::now(),
         })
     }
 
@@ -97,30 +102,43 @@ impl Emulator {
         let game_bytes = std::fs::read(&self.config.rom_path)?;
         let rom = Rom::new(&game_bytes)?;
 
-        let bus =
-            Bus::new_with_callback(rom, move |ppu: &Ppu, joypad: &mut Joypad| -> Result<()> {
-                self.callback(ppu, &mut texture, joypad)
-            });
-
+        let bus = Bus::new(rom);
         let mut cpu = Cpu::new(bus);
         cpu.reset()?;
 
-        cpu.run()
-    }
+        // Main emulator loop
+        loop {
+            // Execute one CPU instruction
+            if cpu.step()? {
+                break; // BRK encountered - exit emulator
+            }
 
-    fn callback(&mut self, ppu: &Ppu, texture: &mut Texture, joypad: &mut Joypad) -> Result<()> {
-        render(ppu, &mut self.frame)?;
+            // Check if frame is ready to render
+            if cpu.bus().is_frame_ready() {
+                render(cpu.bus().ppu(), &mut self.frame)?;
 
-        texture.update(
-            None,
-            &self.frame.pixel_data,
-            self.config.window_width() as usize,
-        )?;
-        self.canvas.copy(texture, None, None).map_err(Error::msg)?;
-        self.canvas.present();
+                texture.update(
+                    None,
+                    &self.frame.pixel_data,
+                    self.config.window_width() as usize,
+                )?;
+                self.canvas.copy(&texture, None, None).map_err(Error::msg)?;
+                self.canvas.present();
 
-        for event in self.event_pump.poll_iter() {
-            handle_event(event, joypad);
+                // Handle input events (check once per frame)
+                for event in self.event_pump.poll_iter() {
+                    handle_event(event, cpu.bus_mut().joypad_mut());
+                }
+
+                // Frame rate limiting
+                let elapsed = self.last_frame_time.elapsed();
+                if elapsed < FRAME_DURATION {
+                    std::thread::sleep(FRAME_DURATION - elapsed);
+                }
+                self.last_frame_time = Instant::now();
+
+                cpu.bus_mut().clear_frame_ready();
+            }
         }
 
         Ok(())
