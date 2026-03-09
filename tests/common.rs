@@ -183,10 +183,12 @@ mod tests {
         cpu.register_y = 3;
 
         let mut traces = vec![];
-        cpu.run_with_callback(|cpu| {
-            traces.push(trace(cpu)?);
-            Ok(())
-        })?;
+        loop {
+            traces.push(trace(&mut cpu)?);
+            if cpu.step()? {
+                break; // BRK encountered
+            }
+        }
         let expected = vec![
             "0064  A2 01     LDX #$01                        A:01 X:02 Y:03 P:24 SP:FD",
             "0066  CA        DEX                             A:01 X:01 Y:03 P:24 SP:FD",
@@ -220,10 +222,12 @@ mod tests {
         cpu.register_y = 5;
 
         let mut traces = vec![];
-        cpu.run_with_callback(|cpu| {
-            traces.push(trace(cpu)?);
-            Ok(())
-        })?;
+        loop {
+            traces.push(trace(&mut cpu)?);
+            if cpu.step()? {
+                break; // BRK encountered
+            }
+        }
 
         assert_eq!(
             "0064  11 33     ORA ($33),Y = 0400 @ 0405 = AA  A:00 X:00 Y:05 P:24 SP:FD",

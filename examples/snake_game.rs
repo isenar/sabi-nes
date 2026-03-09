@@ -98,11 +98,17 @@ fn main() -> Result<()> {
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
     cpu.reset()?;
-    cpu.run_with_callback(|cpu| {
-        handle_user_input(cpu, &mut event_pump)?;
+
+    loop {
+        if cpu.step()? {
+            break;
+        }
+
+        handle_user_input(&mut cpu, &mut event_pump)?;
+
         cpu.write(0xfe, rng.random_range(1..16))?;
 
-        if screen_update_needed(cpu, &mut screen_state)? {
+        if screen_update_needed(&mut cpu, &mut screen_state)? {
             texture.update(None, &screen_state, 32 * 3)?;
             canvas
                 .copy(&texture, None, None)
@@ -111,9 +117,7 @@ fn main() -> Result<()> {
         }
 
         std::thread::sleep(std::time::Duration::from_micros(50));
-
-        Ok(())
-    })?;
+    }
 
     Ok(())
 }

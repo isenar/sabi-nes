@@ -1,7 +1,5 @@
-mod bg_tile;
 mod frame;
 mod palettes;
-mod viewport;
 
 use crate::cartridge::MirroringType;
 use crate::ppu::Ppu;
@@ -80,7 +78,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     Ok(())
 }
 
-/// Render a portion of a scanline
+#[allow(clippy::too_many_arguments)]
 fn render_scanline(
     ppu: &Ppu,
     frame: &mut Frame,
@@ -121,7 +119,8 @@ fn render_scanline(
         // Get pixel from tile
         let upper = tile[pixel_y_in_tile];
         let lower = tile[pixel_y_in_tile + 8];
-        let value = (((1 & (lower >> pixel_x_in_tile)) << 1) | (1 & (upper >> pixel_x_in_tile))) as usize;
+        let value =
+            (((1 & (lower >> pixel_x_in_tile)) << 1) | (1 & (upper >> pixel_x_in_tile))) as usize;
         let colour = SYSTEM_PALETTE[bg_palette[value] as usize];
 
         frame.set_pixel_colour(screen_x, screen_y, colour);

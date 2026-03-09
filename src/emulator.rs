@@ -106,7 +106,14 @@ impl Emulator {
         let mut cpu = Cpu::new(bus);
         cpu.reset()?;
 
-        cpu.run_with_callback(|cpu| {
+        // Main emulator loop
+        loop {
+            // Execute one CPU instruction
+            if cpu.step()? {
+                break; // BRK encountered - exit emulator
+            }
+
+            // Check if frame is ready to render
             if cpu.bus().is_frame_ready() {
                 render(cpu.bus().ppu(), &mut self.frame)?;
 
@@ -132,8 +139,8 @@ impl Emulator {
 
                 cpu.bus_mut().clear_frame_ready();
             }
+        }
 
-            Ok(())
-        })
+        Ok(())
     }
 }

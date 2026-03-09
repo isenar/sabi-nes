@@ -28,10 +28,17 @@ fn cpu_validation_test() -> Result<()> {
     cpu.program_counter = 0xc000;
 
     let mut traces = Vec::with_capacity(VALID_LINES_SO_FAR);
-    cpu.run_with_callback(|cpu| {
-        traces.push(trace(cpu)?);
-        Ok(())
-    })?;
+    loop {
+        traces.push(trace(&mut cpu)?);
+        if cpu.step()? {
+            break; // BRK encountered
+        }
+
+        // Stop after collecting enough traces for comparison
+        if traces.len() >= VALID_LINES_SO_FAR {
+            break;
+        }
+    }
 
     let expected_traces = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?
         .zip(traces)
