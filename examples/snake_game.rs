@@ -2,7 +2,7 @@ use sabi_nes::cartridge::Rom;
 use sabi_nes::{Bus, Byte, Cpu, Memory};
 
 use anyhow::Result;
-use rand::Rng;
+use rand::RngExt;
 use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;

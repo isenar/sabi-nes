@@ -40,10 +40,8 @@ fn cpu_validation_test() -> Result<()> {
         }
     }
 
-    let expected_traces = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?
-        .zip(traces)
-        .enumerate()
-        .take(VALID_LINES_SO_FAR);
+    let lines = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?;
+    let expected_traces = lines.zip(traces).enumerate().take(VALID_LINES_SO_FAR);
 
     for (line_num, (expected_trace, actual_trace)) in expected_traces {
         let expected_trace = expected_trace?;

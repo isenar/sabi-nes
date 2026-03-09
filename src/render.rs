@@ -16,6 +16,9 @@ type MetaTile = [Byte; 4];
 pub struct Colour(Byte, Byte, Byte);
 
 pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
+    // Clear background mask from previous frame
+    frame.clear_bg_mask();
+
     if ppu.registers.show_background() {
         render_background(ppu, frame)?;
     }
@@ -123,7 +126,12 @@ fn render_scanline(
             (((1 & (lower >> pixel_x_in_tile)) << 1) | (1 & (upper >> pixel_x_in_tile))) as usize;
         let colour = SYSTEM_PALETTE[bg_palette[value] as usize];
 
-        frame.set_pixel_colour(screen_x, screen_y, colour);
+        // Mark as background pixel if non-transparent (value != 0)
+        if value != TRANSPARENT_PIXEL {
+            frame.set_bg_pixel(screen_x, screen_y, colour);
+        } else {
+            frame.set_pixel_colour(screen_x, screen_y, colour);
+        }
     }
 
     Ok(())
@@ -135,6 +143,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         let tile_idx = sprite.index_number as usize;
         let palette_idx = sprite.palette_index();
         let sprite_palette = sprite_palette(ppu, palette_idx);
+        let priority_behind = sprite.priority(); // true = behind background
 
         let bank = ppu.read_sprite_pattern_address() as usize;
 
@@ -151,9 +160,19 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 if value == TRANSPARENT_PIXEL {
                     continue;
                 }
-                let colour = SYSTEM_PALETTE[sprite_palette[value] as usize];
 
-                frame.set_pixel_colour(sprite.x_pos(x_offset), sprite.y_pos(y_offset), colour)
+                let x = sprite.x_pos(x_offset);
+                let y = sprite.y_pos(y_offset);
+
+                // Check sprite priority:
+                // - If priority_behind is true (1), only draw if no background pixel exists
+                // - If priority_behind is false (0), always draw (sprite in front)
+                if priority_behind && frame.has_bg(x, y) {
+                    continue; // Skip this pixel, background takes priority
+                }
+
+                let colour = SYSTEM_PALETTE[sprite_palette[value] as usize];
+                frame.set_pixel_colour(x, y, colour);
             }
         }
     }
