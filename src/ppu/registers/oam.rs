@@ -45,16 +45,16 @@ impl SpriteData {
     /// 0 - in front of background
     /// 1 - behind background
     pub fn priority(&self) -> bool {
-        self.attributes.nth_bit(5)
+        self.attributes.nth_bit::<5>()
     }
     #[inline]
     pub fn flip_horizontally(&self) -> bool {
-        self.attributes.nth_bit(6)
+        self.attributes.nth_bit::<6>()
     }
 
     #[inline]
     pub fn flip_vertically(&self) -> bool {
-        self.attributes.nth_bit(7)
+        self.attributes.nth_bit::<7>()
     }
 }
 

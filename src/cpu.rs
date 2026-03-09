@@ -1,4 +1,5 @@
 mod addressing_mode;
+mod interrupts;
 mod memory;
 pub mod opcodes;
 mod stack_pointer;
@@ -9,10 +10,10 @@ pub use crate::cpu::memory::Memory;
 
 use crate::Byte;
 use crate::bus::Bus;
+use crate::cpu::interrupts::Interrupt;
 use crate::cpu::opcodes::{OPCODES_MAPPING, Opcode};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
-use crate::interrupts::{Interrupt, NMI};
 use crate::ppu::NmiStatus;
 use crate::utils::{NthBit, shift_left, shift_right};
 use anyhow::{Context, Result, anyhow, bail};
@@ -28,17 +29,17 @@ struct ByteUpdate {
     new: Byte,
 }
 
-pub struct Cpu<'bus> {
+pub struct Cpu {
     pub accumulator: Byte,
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
     pub program_counter: ProgramCounter,
     pub stack_pointer: StackPointer,
-    bus: Bus<'bus>,
+    bus: Bus,
 }
 
-impl Memory for Cpu<'_> {
+impl Memory for Cpu {
     fn read(&mut self, addr: Address) -> Result<Byte> {
         self.bus.read(addr)
     }
@@ -56,7 +57,7 @@ impl Memory for Cpu<'_> {
     }
 }
 
-impl Cpu<'_> {
+impl Cpu {
     pub fn new(bus: Bus) -> Cpu {
         Cpu {
             accumulator: 0,
@@ -71,6 +72,10 @@ impl Cpu<'_> {
 
     pub fn bus(&self) -> &Bus {
         &self.bus
+    }
+
+    pub fn bus_mut(&mut self) -> &mut Bus {
+        &mut self.bus
     }
 
     pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {
@@ -101,7 +106,7 @@ impl Cpu<'_> {
     {
         loop {
             if self.bus.poll_nmi_status() == NmiStatus::Active {
-                self.interrupt(NMI)?;
+                self.interrupt(interrupts::NMI)?;
             }
 
             callback(self)?;
@@ -307,8 +312,8 @@ impl Cpu<'_> {
         let value = self.read(address)?;
 
         self.status_register
-            .set_overflow_flag(value.nth_bit(6))
-            .set_negative_flag(value.nth_bit(7))
+            .set_overflow_flag(value.nth_bit::<6>())
+            .set_negative_flag(value.nth_bit::<7>())
             .set_zero_flag(value & self.accumulator == 0);
 
         Ok(())
@@ -318,7 +323,7 @@ impl Cpu<'_> {
         let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_left)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(7))
+            .set_carry_flag(old.nth_bit::<7>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -328,7 +333,7 @@ impl Cpu<'_> {
         let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_right)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(0))
+            .set_carry_flag(old.nth_bit::<0>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -340,7 +345,7 @@ impl Cpu<'_> {
             self.shift(address, mode, input_carry, shift_left)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(7))
+            .set_carry_flag(old.nth_bit::<7>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -353,7 +358,7 @@ impl Cpu<'_> {
             self.shift(address, mode, input_carry, shift_right)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit(0))
+            .set_carry_flag(old.nth_bit::<0>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -726,7 +731,7 @@ impl Cpu<'_> {
     fn slo(&mut self, address: Address) -> Result<()> {
         let value = self.read(address)?;
         let shifted_left = value << 1;
-        self.status_register.set_carry_flag(value.nth_bit(7));
+        self.status_register.set_carry_flag(value.nth_bit::<7>());
 
         self.write(address, shifted_left)?;
         self.ora(address)?;
@@ -747,7 +752,7 @@ impl Cpu<'_> {
         let value = self.read(address)?;
         let shifted_right = value >> 1;
 
-        self.status_register.set_carry_flag(value.nth_bit(0));
+        self.status_register.set_carry_flag(value.nth_bit::<0>());
         self.write(address, shifted_right)?;
         self.eor(address)?;
 

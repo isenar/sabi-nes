@@ -58,11 +58,12 @@ fn screen_update_needed(cpu: &mut Cpu, frame: &mut [Byte; 32 * 3 * 32]) -> Resul
 
     for addr in 0x0200..0x0600 {
         let color_idx = cpu.read(addr)?;
-        let (b1, b2, b3) = color(color_idx).rgb();
-        if frame[frame_idx] != b1 || frame[frame_idx + 1] != b2 || frame[frame_idx + 2] != b3 {
-            frame[frame_idx] = b1;
-            frame[frame_idx + 1] = b2;
-            frame[frame_idx + 2] = b3;
+        let (red, green, blue) = color(color_idx).rgb();
+        if frame[frame_idx] != red || frame[frame_idx + 1] != green || frame[frame_idx + 2] != blue
+        {
+            frame[frame_idx] = red;
+            frame[frame_idx + 1] = green;
+            frame[frame_idx + 2] = blue;
 
             return Ok(true);
         }

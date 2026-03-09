@@ -10,11 +10,11 @@ pub struct NoiseChannel {
 
 impl NoiseChannel {
     pub fn is_length_counter_halted(&self) -> bool {
-        self.volume.nth_bit(5)
+        self.volume.nth_bit::<5>()
     }
 
     pub fn is_constant_volume(&self) -> bool {
-        self.volume.nth_bit(4)
+        self.volume.nth_bit::<4>()
     }
 
     pub fn volume_divider_period(&self) -> Byte {
@@ -22,7 +22,7 @@ impl NoiseChannel {
     }
 
     pub fn mode(&self) -> NoiseMode {
-        match self.mode_and_period.nth_bit(7) {
+        match self.mode_and_period.nth_bit::<7>() {
             true => NoiseMode::Short,
             false => NoiseMode::Long,
         }

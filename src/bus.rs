@@ -15,28 +15,18 @@ const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
 
-pub type Callback<'call> = dyn FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call;
-
-pub struct Bus<'call> {
+pub struct Bus {
     cpu_vram: [Byte; VRAM_SIZE],
     rom: Rom,
     ppu: Ppu,
     apu: Apu,
     joypad: Joypad,
     cycles: usize,
-
-    gameloop_callback: Box<Callback<'call>>,
+    frame_ready: bool,
 }
 
-impl<'a> Bus<'a> {
-    pub fn new(rom: Rom) -> Bus<'a> {
-        Self::new_with_callback(rom, |_, _| Ok(()))
-    }
-
-    pub fn new_with_callback<'call, F>(rom: Rom, gameloop_callback: F) -> Bus<'call>
-    where
-        F: FnMut(&Ppu, &mut Joypad) -> Result<()> + 'call,
-    {
+impl Bus {
+    pub fn new(rom: Rom) -> Bus {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
         Bus {
@@ -46,7 +36,7 @@ impl<'a> Bus<'a> {
             apu: Apu::default(),
             joypad: Joypad::default(),
             cycles: 0,
-            gameloop_callback: Box::from(gameloop_callback),
+            frame_ready: false,
         }
     }
 
@@ -57,7 +47,7 @@ impl<'a> Bus<'a> {
         let nmi_after = self.ppu.tick(cycles * 3);
 
         if NmiStatus::activated(nmi_before, nmi_after) {
-            (self.gameloop_callback)(&mut self.ppu, &mut self.joypad)?;
+            self.frame_ready = true;
         }
 
         Ok(())
@@ -69,9 +59,25 @@ impl<'a> Bus<'a> {
 
         current
     }
+
+    pub fn is_frame_ready(&self) -> bool {
+        self.frame_ready
+    }
+
+    pub fn clear_frame_ready(&mut self) {
+        self.frame_ready = false;
+    }
+
+    pub fn ppu(&self) -> &Ppu {
+        &self.ppu
+    }
+
+    pub fn joypad_mut(&mut self) -> &mut Joypad {
+        &mut self.joypad
+    }
 }
 
-impl Memory for Bus<'_> {
+impl Memory for Bus {
     fn read(&mut self, addr: Address) -> Result<Byte> {
         Ok(match addr {
             RAM..=RAM_MIRRORS_END => {
@@ -195,7 +201,7 @@ mod tests {
     use crate::cartridge::{CHR_ROM_BANK_SIZE, MirroringType, PRG_ROM_BANK_SIZE};
     use assert_matches::assert_matches;
 
-    fn test_bus() -> Bus<'static> {
+    fn test_bus() -> Bus {
         Bus::new(test_rom())
     }
 

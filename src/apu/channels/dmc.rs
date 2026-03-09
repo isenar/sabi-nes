@@ -14,11 +14,11 @@ pub struct Dmc {
 
 impl Dmc {
     pub fn is_irq_enabled(self) -> bool {
-        self.flags_and_rate.nth_bit(7)
+        self.flags_and_rate.nth_bit::<7>()
     }
 
     pub fn is_looping(self) -> bool {
-        self.flags_and_rate.nth_bit(6)
+        self.flags_and_rate.nth_bit::<6>()
     }
 
     pub fn rate_index(self) -> Byte {

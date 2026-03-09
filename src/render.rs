@@ -1,23 +1,21 @@
 mod bg_tile;
 mod frame;
-pub mod palettes;
+mod palettes;
 mod viewport;
 
+use crate::cartridge::MirroringType;
 use crate::ppu::Ppu;
-use crate::render::bg_tile::BgTile;
-use crate::render::palettes::SYSTEM_PALETTE;
 use crate::{Address, Byte, Result};
 
-use crate::cartridge::MirroringType;
-use crate::render::viewport::Viewport;
 pub use frame::Frame;
+pub use palettes::SYSTEM_PALETTE;
 
 const TRANSPARENT_PIXEL: usize = 0b00;
 
 type MetaTile = [Byte; 4];
 
 #[derive(Debug, Clone, Copy)]
-pub struct Rgb(Byte, Byte, Byte);
+pub struct Colour(Byte, Byte, Byte);
 
 pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     if ppu.registers.show_background() {
@@ -48,85 +46,85 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         _ => todo!(),
     };
 
-    let viewport = Viewport::new(scroll_x, Frame::WIDTH, scroll_y, Frame::HEIGHT);
-    render_name_table(
-        ppu,
-        frame,
-        main_table,
-        viewport,
-        -(scroll_x as isize),
-        -(scroll_y as isize),
-    )?;
+    // Render scanline by scanline for better organization
+    for screen_y in 0..Frame::HEIGHT {
+        let y_in_nametable = (screen_y + scroll_y) % 240;
 
-    if scroll_x > 0 {
-        let viewport = Viewport::new(0, scroll_x, 0, Frame::HEIGHT);
-        render_name_table(
+        // Render main portion
+        render_scanline(
             ppu,
             frame,
-            secondary_table,
-            viewport,
-            (Frame::WIDTH - scroll_x) as isize,
+            main_table,
+            screen_y,
+            y_in_nametable,
+            scroll_x,
             0,
+            Frame::WIDTH.saturating_sub(scroll_x),
         )?;
-    } else if scroll_y > 0 {
-        render_name_table(
-            ppu,
-            frame,
-            secondary_table,
-            Viewport::new(0, Frame::WIDTH, 0, scroll_y),
-            0,
-            (Frame::HEIGHT - scroll_y) as isize,
-        )?;
+
+        // Render wrapped portion if scrolling
+        if scroll_x > 0 {
+            render_scanline(
+                ppu,
+                frame,
+                secondary_table,
+                screen_y,
+                y_in_nametable,
+                0,
+                Frame::WIDTH - scroll_x,
+                scroll_x,
+            )?;
+        }
     }
 
     Ok(())
 }
 
-fn render_name_table(
+/// Render a portion of a scanline
+fn render_scanline(
     ppu: &Ppu,
     frame: &mut Frame,
     name_table: &[Byte],
-    viewport: Viewport,
-    shift_x: isize,
-    shift_y: isize,
+    screen_y: usize,
+    nametable_y: usize,
+    scroll_x_offset: usize,
+    screen_x_start: usize,
+    width: usize,
 ) -> Result<()> {
+    if width == 0 {
+        return Ok(());
+    }
+
     let bank = ppu.registers.background_pattern_address();
     let attribute_table = &name_table[0x03c0..0x0400];
 
-    for (addr, tile_index) in name_table.iter().enumerate().take(0x03c0) {
-        let tile_new = BgTile::new(addr as Address, ppu)?;
-        let tile_column = (addr % 32) as Byte;
-        let tile_row = (addr / 32) as Byte;
-        let tile_idx = *tile_index as Address;
-        let tile =
-            &ppu.chr_rom[(bank + tile_idx * 16) as usize..=(bank + tile_idx * 16 + 15) as usize];
+    // Calculate which tile row we're in
+    let tile_row = (nametable_y / 8) as Byte;
+    let pixel_y_in_tile = nametable_y % 8;
+
+    // Render tiles across this scanline
+    for screen_x in screen_x_start..(screen_x_start + width) {
+        let x_in_nametable = (screen_x.saturating_sub(screen_x_start) + scroll_x_offset) % 256;
+        let tile_column = (x_in_nametable / 8) as Byte;
+        let pixel_x_in_tile = 7 - (x_in_nametable % 8);
+
+        let tile_addr = tile_row as usize * 32 + tile_column as usize;
+        if tile_addr >= 0x03c0 {
+            continue; // Skip attribute table area
+        }
+
+        let tile_index = name_table[tile_addr] as Address;
+        let tile = &ppu.chr_rom
+            [(bank + tile_index * 16) as usize..=(bank + tile_index * 16 + 15) as usize];
         let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
 
-        for y in 0..=7 {
-            let mut upper = tile[y];
-            let mut lower = tile[y + 8];
+        // Get pixel from tile
+        let upper = tile[pixel_y_in_tile];
+        let lower = tile[pixel_y_in_tile + 8];
+        let value = (((1 & (lower >> pixel_x_in_tile)) << 1) | (1 & (upper >> pixel_x_in_tile))) as usize;
+        let colour = SYSTEM_PALETTE[bg_palette[value] as usize];
 
-            for x in (0..=7).rev() {
-                let value = (((1 & lower) << 1) | (1 & upper)) as usize;
-                upper >>= 1;
-                lower >>= 1;
-                let rgb = SYSTEM_PALETTE[bg_palette[value] as usize];
-                let pixel_x = tile_new.column() * 8 + x;
-                let pixel_y = tile_new.row() * 8 + y;
-
-                if pixel_x >= viewport.x1
-                    && pixel_x < viewport.x2
-                    && pixel_y >= viewport.y1
-                    && pixel_y < viewport.y2
-                {
-                    frame.set_pixel(
-                        (shift_x + pixel_x as isize) as usize,
-                        (shift_y + pixel_y as isize) as usize,
-                        rgb,
-                    );
-                }
-            }
-        }
+        frame.set_pixel_colour(screen_x, screen_y, colour);
     }
 
     Ok(())
@@ -154,9 +152,9 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 if value == TRANSPARENT_PIXEL {
                     continue;
                 }
-                let rgb = SYSTEM_PALETTE[sprite_palette[value] as usize];
+                let colour = SYSTEM_PALETTE[sprite_palette[value] as usize];
 
-                frame.set_pixel(sprite.x_pos(x_offset), sprite.y_pos(y_offset), rgb)
+                frame.set_pixel_colour(sprite.x_pos(x_offset), sprite.y_pos(y_offset), colour)
             }
         }
     }
@@ -168,12 +166,13 @@ fn bg_palette(ppu: &Ppu, attribute_table: &[Byte], tile_column: Byte, tile_row: 
     let attr_table_idx = tile_row / 4 * 8 + tile_column / 4;
     let attr_byte = attribute_table[attr_table_idx as usize];
     let palette_idx = match (tile_column % 4 / 2, tile_row % 4 / 2) {
-        (0, 0) => attr_byte & 0b11,
-        (1, 0) => (attr_byte >> 2) & 0b11,
-        (0, 1) => (attr_byte >> 4) & 0b11,
-        (1, 1) => (attr_byte >> 6) & 0b11,
-        (_, _) => panic!("should not happen"),
+        (0, 0) => attr_byte,
+        (1, 0) => attr_byte >> 2,
+        (0, 1) => attr_byte >> 4,
+        (1, 1) => attr_byte >> 6,
+        (_, _) => unreachable!("should not happen, we've already covered all cases"),
     };
+    let palette_idx = palette_idx & 0b11;
 
     let palette_start = 1 + (palette_idx as usize) * 4;
     [

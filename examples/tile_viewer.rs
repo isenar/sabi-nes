@@ -1,6 +1,5 @@
 use anyhow::bail;
-use sabi_nes::render::Frame;
-use sabi_nes::render::palettes::SYSTEM_PALETTE;
+use sabi_nes::render::{Frame, SYSTEM_PALETTE};
 use sabi_nes::{Byte, Result, Rom};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -29,14 +28,14 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
                 let value = ((1 & upper) << 1) | (1 & lower);
                 upper >>= 1;
                 lower >>= 1;
-                let rgb = match value {
+                let colour = match value {
                     0 => SYSTEM_PALETTE[0x02],
                     1 => SYSTEM_PALETTE[0x23],
                     2 => SYSTEM_PALETTE[0x27],
                     3 => SYSTEM_PALETTE[0x30],
-                    _ => bail!("RGB color must fit within 2 bits! Got value: {}", value),
+                    _ => bail!("RGB color must fit within 2 bits! Got value: {value}"),
                 };
-                frame.set_pixel(tile_x + x, tile_y + y, rgb)
+                frame.set_pixel_colour(tile_x + x, tile_y + y, colour)
             }
         }
 
@@ -46,27 +45,38 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
 }
 
 fn main() -> Result<()> {
+    let scale = 3;
     // init sdl2
     let sdl_context = sdl2::init().map_err(anyhow::Error::msg)?;
     let video_subsystem = sdl_context.video().map_err(anyhow::Error::msg)?;
     let window = video_subsystem
-        .window("Tile viewer", (256.0 * 3.0) as u32, (240.0 * 3.0) as u32)
+        .window(
+            "Tile viewer",
+            (Frame::WIDTH * scale) as _,
+            (Frame::HEIGHT * scale) as _,
+        )
         .position_centered()
         .build()?;
 
     let mut canvas = window.into_canvas().present_vsync().build()?;
     let mut event_pump = sdl_context.event_pump().map_err(anyhow::Error::msg)?;
-    canvas.set_scale(3.0, 3.0).map_err(anyhow::Error::msg)?;
+    canvas
+        .set_scale(scale as _, scale as _)
+        .map_err(anyhow::Error::msg)?;
 
     let creator = canvas.texture_creator();
-    let mut texture = creator.create_texture_target(PixelFormatEnum::RGB24, 256, 240)?;
+    let mut texture = creator.create_texture_target(
+        PixelFormatEnum::RGB24,
+        Frame::WIDTH as _,
+        Frame::HEIGHT as _,
+    )?;
 
     let bytes = std::fs::read("pacman.nes")?;
     let rom = Rom::new(&bytes)?;
 
     let right_bank = show_tiles(&rom.chr_rom, 0)?;
 
-    texture.update(None, &right_bank.pixel_data, 256 * 3)?;
+    texture.update(None, &right_bank.pixel_data, Frame::WIDTH * scale)?;
     canvas
         .copy(&texture, None, None)
         .map_err(anyhow::Error::msg)?;

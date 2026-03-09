@@ -7,8 +7,8 @@ use clap::Parser;
 use sabi_nes::Result;
 
 fn main() -> Result<()> {
-    let emu_config = Config::parse();
-    let mut emulator = Emulator::create(emu_config)?;
+    let config = Config::parse();
+    let mut emulator = Emulator::create(config)?;
 
     emulator.run()?;
 

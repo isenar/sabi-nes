@@ -1,7 +1,9 @@
 use crate::{Address, Byte};
 
 pub trait NthBit {
-    fn nth_bit(&self, bit_n: Self) -> bool;
+    fn nth_bit<const N: usize>(self) -> bool
+    where
+        ConstBit<N>: AllowedBit;
 }
 
 pub trait MirroredAddress {
@@ -9,10 +11,23 @@ pub trait MirroredAddress {
     fn mirror_ppu_addr(&self) -> Self;
 }
 
+pub trait AllowedBit {}
+
+pub struct ConstBit<const N: usize>;
+
+impl AllowedBit for ConstBit<0> {}
+impl AllowedBit for ConstBit<1> {}
+impl AllowedBit for ConstBit<2> {}
+impl AllowedBit for ConstBit<3> {}
+impl AllowedBit for ConstBit<4> {}
+impl AllowedBit for ConstBit<5> {}
+impl AllowedBit for ConstBit<6> {}
+impl AllowedBit for ConstBit<7> {}
+
 impl NthBit for Byte {
     #[inline]
-    fn nth_bit(&self, bit_n: Self) -> bool {
-        (self >> bit_n) & 1 == 1
+    fn nth_bit<const N: usize>(self) -> bool {
+        (self >> N) & 1 == 1
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::Byte;
-use crate::render::Rgb;
+use crate::render::Colour;
 
 #[derive(Debug)]
 pub struct Frame {
@@ -18,7 +18,7 @@ impl Frame {
     pub const WIDTH: usize = 256;
     pub const HEIGHT: usize = 240;
 
-    pub fn set_pixel(&mut self, x: usize, y: usize, rgb: Rgb) {
+    pub fn set_pixel_colour(&mut self, x: usize, y: usize, rgb: Colour) {
         let base = y * 3 * Self::WIDTH + x * 3;
 
         if base + 2 < self.pixel_data.len() {
