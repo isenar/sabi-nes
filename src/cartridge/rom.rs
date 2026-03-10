@@ -3,6 +3,7 @@ use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
 use crate::cartridge::{CHR_ROM_BANK_SIZE, MirroringType, PRG_ROM_BANK_SIZE};
 use anyhow::{Result, anyhow, bail};
 use bitflags::bitflags;
+use std::path::Path;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
 const NES_TAG: [Byte; 4] = [0x4e, 0x45, 0x53, 0x1a];
@@ -121,7 +122,13 @@ pub struct Rom {
 }
 
 impl Rom {
-    pub fn new(data: &[Byte]) -> Result<Self> {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
+        let game_bytes = std::fs::read(path)?;
+
+        Self::from_bytes(&game_bytes)
+    }
+
+    pub fn from_bytes(data: &[Byte]) -> Result<Self> {
         let header: RomHeader = data
             .get(0..16)
             .ok_or_else(|| anyhow!("Failed to parse first 16 bytes for header"))?

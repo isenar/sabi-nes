@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn trace_format() -> Result<()> {
-        let rom = Rom::new(&TEST_ROM)?;
+        let rom = Rom::from_bytes(&TEST_ROM)?;
         let mut bus = Bus::new(rom);
         bus.write(0x64, 0xa2)?;
         bus.write(0x65, 0x01)?;
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn trace_format_mem_access() -> Result<()> {
-        let rom = Rom::new(&TEST_ROM)?;
+        let rom = Rom::from_bytes(&TEST_ROM)?;
         let mut bus = Bus::new(rom);
 
         // ORA ($33),Y

@@ -93,8 +93,7 @@ fn main() -> Result<()> {
     let mut screen_state = [0; 32 * 3 * 32];
     let mut rng = rand::rng();
 
-    let rom_file = std::fs::read("examples/snake.nes")?;
-    let rom = Rom::new(&rom_file)?;
+    let rom = Rom::from_file("examples/snake.nes")?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
     cpu.reset()?;

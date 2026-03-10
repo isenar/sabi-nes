@@ -71,8 +71,7 @@ fn main() -> Result<()> {
         Frame::HEIGHT as _,
     )?;
 
-    let bytes = std::fs::read("pacman.nes")?;
-    let rom = Rom::new(&bytes)?;
+    let rom = Rom::from_file("pacman.nes")?;
 
     let right_bank = show_tiles(&rom.chr_rom, 0)?;
 

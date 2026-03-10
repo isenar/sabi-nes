@@ -4,22 +4,20 @@ use crate::common::trace;
 use pretty_assertions::assert_eq;
 use sabi_nes::{Bus, Cpu, Result, Rom};
 use std::fs::File;
-use std::io;
-use std::io::BufRead;
+use std::io::{self, BufRead, BufReader, Lines};
 use std::path::Path;
 
 // TODO: remove this once APU is implemented and whole test passes
 const VALID_LINES_SO_FAR: usize = 8980;
 
-fn read_lines(filename: impl AsRef<Path>) -> io::Result<io::Lines<io::BufReader<File>>> {
+fn read_lines(filename: impl AsRef<Path>) -> io::Result<Lines<BufReader<File>>> {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
 
 #[test]
 fn cpu_validation_test() -> Result<()> {
-    let test_rom_data = std::fs::read("../sabi-nes/tests/test_roms/nestest.nes")?;
-    let rom = Rom::new(&test_rom_data)?;
+    let rom = Rom::from_file("../sabi-nes/tests/test_roms/nestest.nes")?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
 
@@ -31,11 +29,6 @@ fn cpu_validation_test() -> Result<()> {
     loop {
         traces.push(trace(&mut cpu)?);
         if cpu.step()? {
-            break; // BRK encountered
-        }
-
-        // Stop after collecting enough traces for comparison
-        if traces.len() >= VALID_LINES_SO_FAR {
             break;
         }
     }

@@ -830,7 +830,7 @@ mod tests {
         }
 
         fn build_and_run(self, data: &[Byte]) -> Cpu {
-            let rom = Rom::new(&TEST_ROM).expect("Failed to parse test ROM");
+            let rom = Rom::from_bytes(&TEST_ROM).expect("Failed to parse test ROM");
             let bus = Bus::new(rom);
             let mut cpu = Cpu::new(bus);
             cpu.status_register = StatusRegister::empty();
