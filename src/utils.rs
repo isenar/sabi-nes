@@ -47,11 +47,3 @@ impl MirroredAddress for Address {
         0x2000 + (self & 0b0000_0000_0000_0111)
     }
 }
-
-pub const fn shift_right(value: Byte) -> Byte {
-    value >> 1
-}
-
-pub const fn shift_left(value: Byte) -> Byte {
-    value << 1
-}

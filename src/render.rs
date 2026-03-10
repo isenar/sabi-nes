@@ -16,8 +16,7 @@ type MetaTile = [Byte; 4];
 pub struct Colour(Byte, Byte, Byte);
 
 pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
-    // Clear background mask from previous frame
-    frame.clear_bg_mask();
+    frame.clear_background_mask();
 
     if ppu.registers.show_background() {
         render_background(ppu, frame)?;
@@ -47,7 +46,6 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         _ => todo!(),
     };
 
-    // Render scanline by scanline for better organization
     for screen_y in 0..Frame::HEIGHT {
         let y_in_nametable = (screen_y + scroll_y) % 240;
 
@@ -144,7 +142,6 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     for sprite in oam_data {
         let palette_idx = sprite.palette_index();
         let sprite_palette = sprite_palette(ppu, palette_idx);
-        let priority_behind = sprite.priority(); // true = behind background
 
         if is_8x16 {
             // 8x16 mode: render two 8x8 tiles vertically
@@ -155,17 +152,29 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             let tile_idx_bottom = tile_idx_top + 1;
 
             // In 8x16 mode, bit 0 of tile index selects pattern table
-            let bank = if sprite.index_number & 1 == 0 { 0 } else { 0x1000 };
+            let bank = if sprite.index_number & 1 == 0 {
+                0
+            } else {
+                0x1000
+            };
 
             // Render top half
-            render_sprite_tile(ppu, frame, &sprite, tile_idx_top, bank, &sprite_palette, priority_behind, 0)?;
+            render_sprite_tile(ppu, frame, sprite, tile_idx_top, bank, &sprite_palette, 0)?;
             // Render bottom half
-            render_sprite_tile(ppu, frame, &sprite, tile_idx_bottom, bank, &sprite_palette, priority_behind, 8)?;
+            render_sprite_tile(
+                ppu,
+                frame,
+                sprite,
+                tile_idx_bottom,
+                bank,
+                &sprite_palette,
+                8,
+            )?;
         } else {
             // 8x8 mode: render single tile
             let tile_idx = sprite.index_number as usize;
             let bank = ppu.read_sprite_pattern_address() as usize;
-            render_sprite_tile(ppu, frame, &sprite, tile_idx, bank, &sprite_palette, priority_behind, 0)?;
+            render_sprite_tile(ppu, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
         }
     }
 
@@ -179,10 +188,10 @@ fn render_sprite_tile(
     tile_idx: usize,
     bank: usize,
     sprite_palette: &MetaTile,
-    priority_behind: bool,
     y_base_offset: usize,
 ) -> Result<()> {
     let tile = &ppu.chr_rom[(bank + tile_idx * 16)..=(bank + tile_idx * 16 + 15)];
+    let priority_behind = sprite.priority();
 
     for y_offset in 0..=7 {
         let mut upper = tile[y_offset];
@@ -200,8 +209,8 @@ fn render_sprite_tile(
             let y = sprite.y_pos(y_offset + y_base_offset);
 
             // Check sprite priority:
-            // - If priority_behind is true (1), only draw if no background pixel exists
-            // - If priority_behind is false (0), always draw (sprite in front)
+            // - If priority is behind, only draw if no background pixel exists
+            // - If priority_behind is not behind, always draw (sprite in front)
             if priority_behind && frame.has_bg(x, y) {
                 continue; // Skip this pixel, background takes priority
             }

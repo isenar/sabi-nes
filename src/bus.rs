@@ -129,14 +129,7 @@ impl Memory for Bus {
             ROM_START..=ROM_END => {
                 let address = addr - ROM_START;
                 let mapped_address = self.rom.mapper.map_address(address)?;
-                let value = self.rom.prg_rom[mapped_address];
-
-                // Debug reads around problematic address
-                if addr >= 0x8D7F && addr <= 0x8D82 {
-                    debug!("ROM read ${addr:04X}: mapped to {mapped_address:05X} = ${value:02X}");
-                }
-
-                value
+                self.rom.prg_rom[mapped_address]
             }
             _ => {
                 debug!("Ignored attempt to read address ${addr:0X}");

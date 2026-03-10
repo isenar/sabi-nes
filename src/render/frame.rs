@@ -5,14 +5,14 @@ use crate::render::Colour;
 pub struct Frame {
     pub pixel_data: [Byte; Self::WIDTH * Self::HEIGHT * 3],
     /// Track which pixels have non-transparent background (for sprite priority)
-    bg_mask: [bool; Self::WIDTH * Self::HEIGHT],
+    background_mask: [bool; Self::WIDTH * Self::HEIGHT],
 }
 
 impl Default for Frame {
     fn default() -> Self {
         Self {
             pixel_data: [0; Self::WIDTH * Self::HEIGHT * 3],
-            bg_mask: [false; Self::WIDTH * Self::HEIGHT],
+            background_mask: [false; Self::WIDTH * Self::HEIGHT],
         }
     }
 }
@@ -35,19 +35,19 @@ impl Frame {
     pub fn set_bg_pixel(&mut self, x: usize, y: usize, rgb: Colour) {
         self.set_pixel_colour(x, y, rgb);
         let idx = y * Self::WIDTH + x;
-        if idx < self.bg_mask.len() {
-            self.bg_mask[idx] = true;
+        if idx < self.background_mask.len() {
+            self.background_mask[idx] = true;
         }
     }
 
     /// Check if a pixel has background
     pub fn has_bg(&self, x: usize, y: usize) -> bool {
         let idx = y * Self::WIDTH + x;
-        idx < self.bg_mask.len() && self.bg_mask[idx]
+        idx < self.background_mask.len() && self.background_mask[idx]
     }
 
     /// Clear the background mask for a new frame
-    pub fn clear_bg_mask(&mut self) {
-        self.bg_mask.fill(false);
+    pub fn clear_background_mask(&mut self) {
+        self.background_mask.fill(false);
     }
 }

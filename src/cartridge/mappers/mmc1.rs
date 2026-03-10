@@ -7,8 +7,8 @@
 //!
 //! Memory Map:
 //! - CPU $6000-$7FFF: 8KB PRG RAM (optional, battery-backed)
-//! - CPU $8000-$BFFF: 16KB PRG ROM bank (switchable or fixed to first bank)
-//! - CPU $C000-$FFFF: 16KB PRG ROM bank (switchable or fixed to last bank)
+//! - CPU $8000-$BFFF: 16KB PRG ROM bank (switchable or fixed to the first bank)
+//! - CPU $C000-$FFFF: 16KB PRG ROM bank (switchable or fixed to the last bank)
 //! - PPU $0000-$0FFF: 4KB CHR bank (switchable)
 //! - PPU $1000-$1FFF: 4KB CHR bank (switchable)
 
@@ -45,6 +45,7 @@ pub struct Mmc1 {
     prg_rom_banks: usize,
 
     /// Number of CHR ROM banks (4KB each for MMC1, since it switches 4KB at a time)
+    #[allow(dead_code)]
     chr_rom_banks: usize,
 }
 
@@ -64,8 +65,7 @@ impl Mmc1 {
 
     /// Write to the MMC1 registers via shift register
     /// Called when CPU writes to $8000-$FFFF
-    pub fn write_register(&mut self, address: Address, value: Byte) {
-        debug!("Writing to MMC1 register: {address:04X} = {value:02X}");
+    fn write_register(&mut self, address: Address, value: Byte) {
         // Reset if bit 7 is set
         if value & 0x80 != 0 {
             self.shift_register = 0x10;
@@ -87,14 +87,11 @@ impl Mmc1 {
             match address {
                 0x8000..=0x9FFF => {
                     self.control = register_value;
-                    debug!("MMC1: Control={:02X} (mode={}, chr_mode={})",
-                           register_value, (register_value >> 2) & 0b11, (register_value >> 4) & 1);
                 }
                 0xA000..=0xBFFF => self.chr_bank_0 = register_value,
                 0xC000..=0xDFFF => self.chr_bank_1 = register_value,
                 0xE000..=0xFFFF => {
                     self.prg_bank = register_value;
-                    debug!("MMC1: PRG bank={}", register_value & 0x0F);
                 }
                 _ => {}
             }
@@ -110,13 +107,7 @@ impl Mmc1 {
         let bank_mode = (self.control >> 2) & 0b11;
         let prg_bank_num = (self.prg_bank & 0x0F) as usize;
 
-        // Debug problematic address
-        if address == 0x0D7F {
-            debug!("map_prg: addr={:04X} mode={} bank_num={} control={:02X} prg_bank={:02X}",
-                   address, bank_mode, prg_bank_num, self.control, self.prg_bank);
-        }
-
-        let mapped = match bank_mode {
+        match bank_mode {
             0 | 1 => {
                 // 32KB mode: ignore low bit of bank number
                 let bank = (prg_bank_num >> 1) % (self.prg_rom_banks / 2);
@@ -142,12 +133,11 @@ impl Mmc1 {
                 }
             }
             _ => unreachable!(),
-        };
-
-        mapped
+        }
     }
 
     /// Map CHR ROM/RAM address (PPU $0000-$1FFF)
+    #[allow(dead_code)]
     fn map_chr_address(&self, address: Address) -> usize {
         // If no CHR banks (CHR-RAM), just pass through the address
         if self.chr_rom_banks == 0 {

@@ -15,7 +15,7 @@ use crate::cpu::opcodes::{OPCODES_MAPPING, Opcode};
 use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::ppu::NmiStatus;
-use crate::utils::{NthBit, shift_left, shift_right};
+use crate::utils::NthBit;
 use anyhow::{Context, Result, anyhow, bail};
 use log::debug;
 
@@ -130,22 +130,7 @@ impl Cpu {
             "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BRK" => {
-                // BRK - software interrupt
-                // Push PC+2 (return address) to stack
-                let return_addr = self.program_counter.wrapping_add(2);
-                self.push_stack_wide(return_addr)?;
-
-                // Push status register with break flag set
-                let mut flags = self.status_register;
-                flags.insert(StatusRegister::BREAK);
-                flags.insert(StatusRegister::BREAK2); // Bit 5 is always set when pushed
-                self.push_stack(flags.bits())?;
-
-                // Set interrupt disable flag
-                self.status_register.set_interrupt_flag(true);
-
-                // Jump to IRQ vector at $FFFE
-                self.program_counter = self.read_u16(0xFFFE)?;
+                return Ok(true);
             }
             "CLC" => {
                 self.status_register.set_carry_flag(false);
@@ -344,17 +329,17 @@ impl Cpu {
     }
 
     fn asl(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_left)?;
+        let ByteUpdate { previous, new } = self.shift(address, mode, 0, |byte| byte << 1)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit::<7>())
+            .set_carry_flag(previous.nth_bit::<7>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
     }
 
     fn lsr(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, shift_right)?;
+        let ByteUpdate { previous: old, new } = self.shift(address, mode, 0, |byte| byte >> 1)?;
 
         self.status_register
             .set_carry_flag(old.nth_bit::<0>())
@@ -366,7 +351,7 @@ impl Cpu {
     fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as Byte;
         let ByteUpdate { previous: old, new } =
-            self.shift(address, mode, input_carry, shift_left)?;
+            self.shift(address, mode, input_carry, |byte| byte << 1)?;
 
         self.status_register
             .set_carry_flag(old.nth_bit::<7>())
@@ -378,11 +363,11 @@ impl Cpu {
     fn ror(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry =
             self.status_register.contains(StatusRegister::CARRY) as Byte * 0b1000_0000;
-        let ByteUpdate { previous: old, new } =
-            self.shift(address, mode, input_carry, shift_right)?;
+        let ByteUpdate { previous, new } =
+            self.shift(address, mode, input_carry, |byte| byte >> 1)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit::<0>())
+            .set_carry_flag(previous.nth_bit::<0>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -397,11 +382,11 @@ impl Cpu {
     ) -> Result<ByteUpdate> {
         let byte_update = match mode {
             AddressingMode::Accumulator => {
-                let old_acc = self.accumulator;
+                let previous_accumulator = self.accumulator;
                 self.accumulator = shift_op(self.accumulator) | input_carry;
 
                 ByteUpdate {
-                    previous: old_acc,
+                    previous: previous_accumulator,
                     new: self.accumulator,
                 }
             }
@@ -939,21 +924,19 @@ mod tests {
         }
 
         #[test]
-        fn stx_zero_page() -> Result<()> {
+        fn stx_zero_page() {
             // 1. Store 0x12 in memory location 0xee (setup)
             // 2. Store register X value (0) in memory location 0xee
             let data = [0x86, 0xee, 0x00];
             let mut cpu = CpuBuilder::new().write(0xee, 0x12).build_and_run(&data);
 
-            assert_eq!(cpu.read(0xee)?, 0x00);
+            assert_eq!(cpu.read(0xee).unwrap(), 0x00);
             // STX does not modify any flags
             assert_eq!(cpu.status_register, StatusRegister::empty());
-
-            Ok(())
         }
 
         #[test]
-        fn sty_zero_page_x() -> Result<()> {
+        fn sty_zero_page_x() {
             // 1. store 0x01 in memory location 0x01
             // 2. store 0x02 in memory location 0x03
             // 3. load register X with value from address 0x01
@@ -967,10 +950,8 @@ mod tests {
 
             assert_eq!(cpu.register_x, 0x02);
             assert_eq!(cpu.register_y, 0x04);
-            assert_eq!(cpu.read(0x02)?, 0x04);
+            assert_eq!(cpu.read(0x02).unwrap(), 0x04);
             assert_eq!(cpu.status_register, StatusRegister::empty());
-
-            Ok(())
         }
     }
 

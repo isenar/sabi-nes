@@ -10,7 +10,7 @@ use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::WindowCanvas;
+use sdl2::render::{Texture, WindowCanvas};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -34,9 +34,6 @@ pub struct SdlFrontend {
     canvas: WindowCanvas,
     event_pump: EventPump,
     last_frame_time: Instant,
-    window_width: u32,
-    window_height: u32,
-    scale: u32,
 }
 
 impl SdlFrontend {
@@ -57,9 +54,6 @@ impl SdlFrontend {
             canvas,
             event_pump,
             last_frame_time: Instant::now(),
-            window_width: config.window_width,
-            window_height: config.window_height,
-            scale: config.scale,
         })
     }
 }
@@ -67,17 +61,13 @@ impl SdlFrontend {
 impl Frontend for SdlFrontend {
     fn render_frame(&mut self, frame: &Frame) -> Result<()> {
         let texture_creator = self.canvas.texture_creator();
-        let mut texture = texture_creator.create_texture_target(
+        let mut texture = texture_creator.create_texture_streaming(
             PixelFormatEnum::RGB24,
-            self.window_width,
-            self.window_height,
+            Frame::WIDTH as u32,
+            Frame::HEIGHT as u32,
         )?;
 
-        texture.update(
-            None,
-            &frame.pixel_data,
-            (self.window_width * self.scale) as usize,
-        )?;
+        texture.update(None, &frame.pixel_data, Frame::WIDTH * 3)?;
         self.canvas.copy(&texture, None, None).map_err(Error::msg)?;
         self.canvas.present();
         Ok(())
