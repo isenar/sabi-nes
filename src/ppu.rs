@@ -2,6 +2,7 @@ mod nmi_status;
 mod registers;
 
 pub use nmi_status::NmiStatus;
+pub use registers::SpriteData;
 
 use crate::cartridge::MirroringType;
 use crate::ppu::registers::PpuRegisters;
@@ -11,10 +12,11 @@ use anyhow::bail;
 
 const VRAM_SIZE: usize = 2048;
 const PALETTE_TABLE_SIZE: usize = 64;
+const CHR_RAM_SIZE: usize = 8192;
 
 #[derive(Debug)]
 pub struct Ppu {
-    /// Visuals of game stored on cartridge
+    /// Visuals of game stored on cartridge (CHR-ROM) or CHR-RAM
     pub chr_rom: Vec<Byte>,
     /// Internal memory to keep palette tables used by the screen
     pub palette_table: [Byte; PALETTE_TABLE_SIZE],
@@ -36,8 +38,15 @@ pub struct Ppu {
 
 impl Ppu {
     pub fn new(chr_rom: &[Byte], mirroring: MirroringType) -> Self {
+        // If no CHR-ROM, allocate CHR-RAM
+        let chr_rom = if chr_rom.is_empty() {
+            vec![0; CHR_RAM_SIZE]
+        } else {
+            chr_rom.into()
+        };
+
         Self {
-            chr_rom: chr_rom.into(),
+            chr_rom,
             palette_table: [0; PALETTE_TABLE_SIZE],
             vram: [0; VRAM_SIZE],
             mirroring,
@@ -131,7 +140,13 @@ impl Ppu {
         let addr = self.registers.read_address();
 
         match addr {
-            0x0000..=0x1fff => println!("Attempted to write to CHR ROM space ({:#?})", addr),
+            0x0000..=0x1fff => {
+                // Write to CHR-RAM (writable), ignore if CHR-ROM (read-only)
+                // We detect CHR-RAM by checking if size matches CHR_RAM_SIZE
+                if self.chr_rom.len() == CHR_RAM_SIZE {
+                    self.chr_rom[addr as usize] = value;
+                }
+            }
             0x2000..=0x2fff => {
                 let mirrored_addr = self.mirror_vram_addr(addr) as usize;
                 self.vram[mirrored_addr] = value;

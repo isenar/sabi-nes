@@ -1,8 +1,9 @@
 use crate::Byte;
-use crate::cartridge::mappers::{Mapper, Nrom128, Nrom256};
+use crate::cartridge::mappers::{Mapper, Mmc1, Nrom128, Nrom256};
 use crate::cartridge::{CHR_ROM_BANK_SIZE, MirroringType, PRG_ROM_BANK_SIZE};
 use anyhow::{Result, anyhow, bail};
 use bitflags::bitflags;
+use log::debug;
 use std::path::Path;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
@@ -103,11 +104,18 @@ impl RomHeader {
             self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi();
         Ok(match ines_mapper_id {
             0 => {
+                debug!("NROM (id=000) mapper detected");
                 if self.prg_rom_banks == 1 {
                     Box::new(Nrom128 {})
                 } else {
                     Box::new(Nrom256 {})
                 }
+            }
+            1 => {
+                debug!("MMC1 (id=001) mapper detected");
+                // MMC1: CHR banks are 4KB each for switching purposes
+                let chr_banks = self.chr_rom_banks * 2; // Convert 8KB banks to 4KB banks
+                Box::new(Mmc1::new(self.prg_rom_banks, chr_banks))
             }
             _ => bail!("Unsupported mapper type (ID: {ines_mapper_id})"),
         })

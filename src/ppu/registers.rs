@@ -11,7 +11,8 @@ pub use mask::MaskRegister;
 pub use scroll::ScrollRegister;
 pub use status::StatusRegister;
 
-use crate::ppu::registers::oam::{Oam, SpriteData};
+use crate::ppu::registers::oam::Oam;
+pub use crate::ppu::registers::oam::SpriteData;
 use crate::{Address, Byte};
 
 #[derive(Debug, Default)]
@@ -61,6 +62,10 @@ impl PpuRegisters {
 
     pub fn write_control(&mut self, value: Byte) {
         self.control.update(value);
+    }
+
+    pub fn is_sprite_8x16(&self) -> bool {
+        self.control.is_sprite_8x16()
     }
 
     pub fn write_mask(&mut self, value: Byte) {

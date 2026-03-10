@@ -6,17 +6,22 @@ use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
 use crate::{Byte, Memory, Result};
 use anyhow::bail;
+use log::debug;
 
 const VRAM_SIZE: usize = 2048;
+const PRG_RAM_SIZE: usize = 8192;
 const RAM: Address = 0x0000;
 const RAM_MIRRORS_END: Address = 0x1fff;
 const PPU_REGISTERS_MIRRORS_START: Address = 0x2008;
 const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
+const PRG_RAM_START: Address = 0x6000;
+const PRG_RAM_END: Address = 0x7fff;
 const ROM_START: Address = 0x8000;
 const ROM_END: Address = 0xffff;
 
 pub struct Bus {
     cpu_vram: [Byte; VRAM_SIZE],
+    prg_ram: [Byte; PRG_RAM_SIZE],
     rom: Rom,
     ppu: Ppu,
     apu: Apu,
@@ -31,6 +36,7 @@ impl Bus {
 
         Bus {
             cpu_vram: [0; VRAM_SIZE],
+            prg_ram: [0; PRG_RAM_SIZE],
             rom,
             ppu,
             apu: Apu::default(),
@@ -93,7 +99,7 @@ impl Memory for Bus {
             0x2006 => bail!("Attempted to read from write-only PPU address register"),
             0x2007 => self.ppu.read()?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr.mirror_cpu_vram_addr();
+                let mirror_base_addr = addr.mirror_ppu_registers_addr();
                 self.read(mirror_base_addr)?
             }
             0x4000 => self.apu.square_channel1.volume,
@@ -113,17 +119,27 @@ impl Memory for Bus {
             0x400e => self.apu.noise_channel.mode_and_period,
             0x400f => self.apu.noise_channel.len_counter_and_env_restart,
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
-            ROM_START..=ROM_END => {
-                let address = addr - ROM_START;
-                let mapped_address = self.rom.mapper.map_address(address)?;
-
-                self.rom.prg_rom[mapped_address as usize]
-            }
             0x4015 => self.apu.flags.bits(),
             0x4016 => self.joypad.read(),
             0x4017 => 0, // TODO: Frame Counter impl
+            PRG_RAM_START..=PRG_RAM_END => {
+                let index = (addr - PRG_RAM_START) as usize;
+                self.prg_ram[index]
+            }
+            ROM_START..=ROM_END => {
+                let address = addr - ROM_START;
+                let mapped_address = self.rom.mapper.map_address(address)?;
+                let value = self.rom.prg_rom[mapped_address];
+
+                // Debug reads around problematic address
+                if addr >= 0x8D7F && addr <= 0x8D82 {
+                    debug!("ROM read ${addr:04X}: mapped to {mapped_address:05X} = ${value:02X}");
+                }
+
+                value
+            }
             _ => {
-                println!("Ignored attempt to read address ${addr:0X}");
+                debug!("Ignored attempt to read address ${addr:0X}");
                 0
             }
         })
@@ -144,7 +160,7 @@ impl Memory for Bus {
             0x2006 => self.ppu.write_to_addr_register(value),
             0x2007 => self.ppu.write(value)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr.mirror_ppu_addr();
+                let mirror_base_addr = addr.mirror_ppu_registers_addr();
 
                 self.write(mirror_base_addr, value)?;
             }
@@ -182,11 +198,16 @@ impl Memory for Bus {
             0x4015 => self.apu.set_status_register(value),
             0x4016 => self.joypad.write(value),
             0x4017 => {} // TODO: Frame Counter impl
+            PRG_RAM_START..=PRG_RAM_END => {
+                let index = (addr - PRG_RAM_START) as usize;
+                self.prg_ram[index] = value;
+            }
             ROM_START..=ROM_END => {
-                bail!("Attempted to write into cartridge ROM (addr: {addr:#x})")
+                // Allow mapper to handle writes (for mappers with registers like MMC1)
+                self.rom.mapper.write(addr, value);
             }
             _ => {
-                println!("Ignored attempt to write to address ${addr:0X}");
+                debug!("Ignored attempt to write to address ${addr:0X}");
             }
         }
 
@@ -240,9 +261,11 @@ mod tests {
     }
 
     #[test]
-    fn write_to_cartridge_rom_fails() {
+    fn write_to_cartridge_rom_passes_to_mapper() {
         let mut bus = test_bus();
 
-        assert_matches!(bus.write(0x9000, 0xef), Err(_));
+        // NROM doesn't have writable registers, but the write should succeed
+        // (mapper's default write implementation does nothing)
+        assert_matches!(bus.write(0x9000, 0xef), Ok(()));
     }
 }

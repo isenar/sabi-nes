@@ -57,6 +57,10 @@ impl ControlRegister {
 
         NAMETABLE_BASE_ADDR + address_lower + address_higher
     }
+
+    pub fn is_sprite_8x16(&self) -> bool {
+        self.contains(Self::SPRITE_SIZE)
+    }
 }
 
 #[cfg(test)]

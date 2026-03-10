@@ -17,6 +17,7 @@ use crate::cpu::status_register::StatusRegister;
 use crate::ppu::NmiStatus;
 use crate::utils::{NthBit, shift_left, shift_right};
 use anyhow::{Context, Result, anyhow, bail};
+use log::debug;
 
 pub type Address = u16;
 pub type ProgramCounter = u16;
@@ -104,12 +105,13 @@ impl Cpu {
         }
 
         let code = self.read(self.program_counter)?;
+        let instruction_pc = self.program_counter;
         self.program_counter += 1;
 
         let current_program_counter = self.program_counter;
         let opcode = OPCODES_MAPPING
             .get(&code)
-            .ok_or_else(|| anyhow!("Unknown opcode: {code}"))?;
+            .ok_or_else(|| anyhow!("Unknown opcode: {code} at PC ${instruction_pc:04X}"))?;
         let address = self
             .pc_operand_address(opcode)
             .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
@@ -127,7 +129,24 @@ impl Cpu {
             "BPL" => self.branch(!self.status_register.contains(StatusRegister::NEGATIVE))?,
             "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
-            "BRK" => return Ok(true),
+            "BRK" => {
+                // BRK - software interrupt
+                // Push PC+2 (return address) to stack
+                let return_addr = self.program_counter.wrapping_add(2);
+                self.push_stack_wide(return_addr)?;
+
+                // Push status register with break flag set
+                let mut flags = self.status_register;
+                flags.insert(StatusRegister::BREAK);
+                flags.insert(StatusRegister::BREAK2); // Bit 5 is always set when pushed
+                self.push_stack(flags.bits())?;
+
+                // Set interrupt disable flag
+                self.status_register.set_interrupt_flag(true);
+
+                // Jump to IRQ vector at $FFFE
+                self.program_counter = self.read_u16(0xFFFE)?;
+            }
             "CLC" => {
                 self.status_register.set_carry_flag(false);
             }
@@ -229,6 +248,7 @@ impl Cpu {
         self.register_y = 0;
         self.status_register = StatusRegister::empty();
         self.program_counter = self.read_u16(RESET_VECTOR_BEGIN_ADDR)?;
+        debug!("CPU reset: PC set to ${:04X}", self.program_counter);
         self.stack_pointer.reset();
 
         Ok(())
@@ -691,10 +711,10 @@ impl Cpu {
     }
 
     fn pop_stack_u16(&mut self) -> Result<u16> {
-        let lo = self.pop_stack()? as u16;
-        let hi = self.pop_stack()? as u16;
+        let low_byte = self.pop_stack()? as u16;
+        let high_byte = self.pop_stack()? as u16;
 
-        Ok((hi << 8) | lo)
+        Ok((high_byte << 8) | low_byte)
     }
 
     fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {

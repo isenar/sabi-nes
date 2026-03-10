@@ -2,7 +2,7 @@ mod frame;
 mod palettes;
 
 use crate::cartridge::MirroringType;
-use crate::ppu::Ppu;
+use crate::ppu::{Ppu, SpriteData};
 use crate::{Address, Byte, Result};
 
 pub use frame::Frame;
@@ -139,41 +139,75 @@ fn render_scanline(
 
 fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     let oam_data = ppu.registers.read_oam_dma();
+    let is_8x16 = ppu.registers.is_sprite_8x16();
+
     for sprite in oam_data {
-        let tile_idx = sprite.index_number as usize;
         let palette_idx = sprite.palette_index();
         let sprite_palette = sprite_palette(ppu, palette_idx);
         let priority_behind = sprite.priority(); // true = behind background
 
-        let bank = ppu.read_sprite_pattern_address() as usize;
+        if is_8x16 {
+            // 8x16 mode: render two 8x8 tiles vertically
+            // Bit 0 of tile index determines which pattern table (ignored)
+            // Top tile: tile_idx & 0xFE
+            // Bottom tile: (tile_idx & 0xFE) + 1
+            let tile_idx_top = (sprite.index_number & 0xFE) as usize;
+            let tile_idx_bottom = tile_idx_top + 1;
 
-        let tile = &ppu.chr_rom[(bank + tile_idx * 16)..=(bank + tile_idx * 16 + 15)];
+            // In 8x16 mode, bit 0 of tile index selects pattern table
+            let bank = if sprite.index_number & 1 == 0 { 0 } else { 0x1000 };
 
-        for y_offset in 0..=7 {
-            let mut upper = tile[y_offset];
-            let mut lower = tile[y_offset + 8];
-            for x_offset in (0..=7).rev() {
-                let value = (((1 & lower) << 1) | (1 & upper)) as usize;
-                upper >>= 1;
-                lower >>= 1;
+            // Render top half
+            render_sprite_tile(ppu, frame, &sprite, tile_idx_top, bank, &sprite_palette, priority_behind, 0)?;
+            // Render bottom half
+            render_sprite_tile(ppu, frame, &sprite, tile_idx_bottom, bank, &sprite_palette, priority_behind, 8)?;
+        } else {
+            // 8x8 mode: render single tile
+            let tile_idx = sprite.index_number as usize;
+            let bank = ppu.read_sprite_pattern_address() as usize;
+            render_sprite_tile(ppu, frame, &sprite, tile_idx, bank, &sprite_palette, priority_behind, 0)?;
+        }
+    }
 
-                if value == TRANSPARENT_PIXEL {
-                    continue;
-                }
+    Ok(())
+}
 
-                let x = sprite.x_pos(x_offset);
-                let y = sprite.y_pos(y_offset);
+fn render_sprite_tile(
+    ppu: &Ppu,
+    frame: &mut Frame,
+    sprite: &SpriteData,
+    tile_idx: usize,
+    bank: usize,
+    sprite_palette: &MetaTile,
+    priority_behind: bool,
+    y_base_offset: usize,
+) -> Result<()> {
+    let tile = &ppu.chr_rom[(bank + tile_idx * 16)..=(bank + tile_idx * 16 + 15)];
 
-                // Check sprite priority:
-                // - If priority_behind is true (1), only draw if no background pixel exists
-                // - If priority_behind is false (0), always draw (sprite in front)
-                if priority_behind && frame.has_bg(x, y) {
-                    continue; // Skip this pixel, background takes priority
-                }
+    for y_offset in 0..=7 {
+        let mut upper = tile[y_offset];
+        let mut lower = tile[y_offset + 8];
+        for x_offset in (0..=7).rev() {
+            let value = (((1 & lower) << 1) | (1 & upper)) as usize;
+            upper >>= 1;
+            lower >>= 1;
 
-                let colour = SYSTEM_PALETTE[sprite_palette[value] as usize];
-                frame.set_pixel_colour(x, y, colour);
+            if value == TRANSPARENT_PIXEL {
+                continue;
             }
+
+            let x = sprite.x_pos(x_offset);
+            let y = sprite.y_pos(y_offset + y_base_offset);
+
+            // Check sprite priority:
+            // - If priority_behind is true (1), only draw if no background pixel exists
+            // - If priority_behind is false (0), always draw (sprite in front)
+            if priority_behind && frame.has_bg(x, y) {
+                continue; // Skip this pixel, background takes priority
+            }
+
+            let colour = SYSTEM_PALETTE[sprite_palette[value] as usize];
+            frame.set_pixel_colour(x, y, colour);
         }
     }
 

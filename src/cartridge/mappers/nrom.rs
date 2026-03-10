@@ -3,7 +3,7 @@
 //! The suffixes 128 and 256 refer to kilobits by Nintendo's own designation;
 
 use crate::cartridge::mappers::{Mapper, MapperId};
-use crate::{Address, Result};
+use crate::{Address, Byte, Result};
 
 #[derive(Debug)]
 pub struct Nrom<const PRG_ROM_BANKS: usize>;
@@ -12,19 +12,25 @@ pub type Nrom128 = Nrom<1>;
 pub type Nrom256 = Nrom<2>;
 
 impl Mapper for Nrom128 {
-    fn map_address(&self, address: Address) -> Result<Address> {
+    fn map_address(&self, address: Address) -> Result<usize> {
         Ok(if address >= 0x4000 {
-            address % 0x4000
+            (address % 0x4000) as usize
         } else {
-            address
+            address as usize
         })
     }
+
+    /// NROM-128 doesn't have any registers, so we can just return the address as-is
+    fn write(&mut self, _: Address, _: Byte) {}
 }
 
 impl Mapper for Nrom256 {
-    fn map_address(&self, address: Address) -> Result<Address> {
-        Ok(address)
+    fn map_address(&self, address: Address) -> Result<usize> {
+        Ok(address as usize)
     }
+
+    /// NROM-256 doesn't have any registers, so we can just return the address as-is
+    fn write(&mut self, _: Address, _: Byte) {}
 }
 
 impl<const PRG_ROM_BANKS: usize> MapperId for Nrom<PRG_ROM_BANKS> {
