@@ -2,23 +2,25 @@ use crate::render::Colour;
 
 #[derive(Debug)]
 pub struct Frame {
-    pub pixel_data: [u8; Self::WIDTH * Self::HEIGHT * 3],
+    pixel_data: [u8; Self::WIDTH * Self::HEIGHT * 3],
     /// Track which pixels have non-transparent background (for sprite priority)
     background_mask: [bool; Self::WIDTH * Self::HEIGHT],
-}
-
-impl Default for Frame {
-    fn default() -> Self {
-        Self {
-            pixel_data: [0; Self::WIDTH * Self::HEIGHT * 3],
-            background_mask: [false; Self::WIDTH * Self::HEIGHT],
-        }
-    }
 }
 
 impl Frame {
     pub const WIDTH: usize = 256;
     pub const HEIGHT: usize = 240;
+
+    pub const fn new() -> Self {
+        Self {
+            pixel_data: [0; Self::WIDTH * Self::HEIGHT * 3],
+            background_mask: [false; Self::WIDTH * Self::HEIGHT],
+        }
+    }
+
+    pub const fn pixel_data(&self) -> &[u8] {
+        &self.pixel_data
+    }
 
     pub fn set_pixel_colour(&mut self, x: usize, y: usize, rgb: Colour) {
         let base = y * 3 * Self::WIDTH + x * 3;
@@ -40,7 +42,7 @@ impl Frame {
     }
 
     /// Check if a pixel has background
-    pub fn has_bg(&self, x: usize, y: usize) -> bool {
+    pub fn has_background(&self, x: usize, y: usize) -> bool {
         let idx = y * Self::WIDTH + x;
         idx < self.background_mask.len() && self.background_mask[idx]
     }

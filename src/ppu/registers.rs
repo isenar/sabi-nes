@@ -129,11 +129,12 @@ impl PpuRegisters {
     }
 
     pub fn background_pattern_address(&self) -> Address {
-        (self
-            .control
-            .contains(ControlRegister::BACKROUND_PATTERN_ADDR) as u16
-            * 0x1000)
-            .into()
+        let address = u16::from(
+            self.control
+                .contains(ControlRegister::BACKROUND_PATTERN_ADDR),
+        ) * 0x1000;
+
+        address.into()
     }
 
     pub fn increment_vram_address(&mut self) {

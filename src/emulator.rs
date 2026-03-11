@@ -14,7 +14,7 @@ where
     pub fn new(frontend: F) -> Self {
         Self {
             frontend,
-            frame: Frame::default(),
+            frame: Frame::new(),
         }
     }
 
@@ -29,7 +29,7 @@ where
             }
 
             if cpu.bus().is_frame_ready() {
-                render(cpu.bus().ppu(), &mut self.frame)?;
+                render(cpu.bus().ppu(), cpu.bus().mapper(), &mut self.frame)?;
 
                 // Render frame via frontend
                 self.frontend.render_frame(&self.frame)?;

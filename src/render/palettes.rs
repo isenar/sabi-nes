@@ -1,4 +1,5 @@
-use crate::render::Colour;
+use crate::Byte;
+use crate::render::{Colour, MetaTile};
 
 pub const SYSTEM_PALETTE: [Colour; 64] = [
     Colour::new(0x80, 0x80, 0x80),
@@ -66,3 +67,7 @@ pub const SYSTEM_PALETTE: [Colour; 64] = [
     Colour::new(0x11, 0x11, 0x11),
     Colour::new(0x11, 0x11, 0x11),
 ];
+
+pub fn system_palette_thingy(value: Byte, sprite_palette: &MetaTile) -> Colour {
+    SYSTEM_PALETTE[sprite_palette[value.as_usize()].as_usize()]
+}

@@ -78,7 +78,7 @@ impl Cpu {
 
     pub fn load(&mut self, data: &[Byte]) -> Result<()> {
         for (idx, &value) in data.iter().enumerate() {
-            let addr = Address::from(idx as u16); // TODO
+            let addr = Address::from(u16::try_from(idx)?); // TODO
             self.write_byte(addr + PROGRAM_ROM_BEGIN_ADDR, value)?;
         }
 
@@ -89,7 +89,7 @@ impl Cpu {
     pub fn step(&mut self) -> Result<bool> {
         // Handle NMI interrupt if pending
         if self.bus.poll_nmi_status() == NmiStatus::Active {
-            self.interrupt(interrupts::NMI)?;
+            self.interrupt(&interrupts::NMI)?;
         }
 
         let code = self.read_byte(self.program_counter.as_address())?;
@@ -201,7 +201,7 @@ impl Cpu {
         self.bus.tick(opcode.cycles)?;
 
         if current_program_counter == self.program_counter {
-            self.program_counter += opcode.length() as u16;
+            self.program_counter += opcode.length().try_into()?;
         }
 
         Ok(false)
@@ -236,16 +236,21 @@ impl Cpu {
     }
 
     fn sbc(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?.value();
-        let neg = (value as i8).wrapping_neg().wrapping_sub(1) as u8;
+        let negated = self
+            .read_byte(address)?
+            .value()
+            .cast_signed()
+            .wrapping_neg()
+            .wrapping_sub(1)
+            .cast_unsigned();
 
-        self.add_to_acc(neg.into());
+        self.add_to_acc(negated.into());
 
         Ok(())
     }
 
     fn add_to_acc(&mut self, data: Byte) {
-        let input_carry = self.status_register.contains(StatusRegister::CARRY) as u16;
+        let input_carry = u16::from(self.status_register.contains(StatusRegister::CARRY));
         let sum_wide = self.accumulator.as_word() + data.as_word() + input_carry;
         let result = Byte::from_word_lossy(sum_wide);
 
@@ -339,8 +344,7 @@ impl Cpu {
     }
 
     fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let input_carry = self.status_register.contains(StatusRegister::CARRY);
-        let input_carry = Byte::new(input_carry as u8);
+        let input_carry = u8::from(self.status_register.contains(StatusRegister::CARRY)).into();
         let ByteUpdate { previous: old, new } =
             self.shift(address, mode, input_carry, |byte| byte << 1)?;
 
@@ -353,7 +357,7 @@ impl Cpu {
 
     fn ror(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY);
-        let input_carry = Byte::new(input_carry as u8 * 0b1000_0000);
+        let input_carry = Byte::new(u8::from(input_carry) * 0b1000_0000);
         let ByteUpdate { previous, new } =
             self.shift(address, mode, input_carry, |byte| byte >> 1)?;
 
@@ -559,6 +563,8 @@ impl Cpu {
             self.bus.tick(1)?;
 
             let jump = self.read_byte(self.program_counter.as_address())?.value() as i8;
+            // NOTE: This is intended!
+            #[allow(clippy::cast_sign_loss)]
             let jump_addr = self
                 .program_counter
                 .wrapping_add(1u16)
@@ -695,7 +701,7 @@ impl Cpu {
         Ok(Word::from_le_bytes(low_byte, high_byte))
     }
 
-    fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {
+    fn interrupt(&mut self, interrupt: &Interrupt) -> Result<()> {
         self.push_word_to_stack(self.program_counter)?;
         let mut status = self.status_register;
         status.remove(StatusRegister::BREAK);

@@ -67,7 +67,7 @@ impl Frontend for SdlFrontend {
             Frame::HEIGHT as u32,
         )?;
 
-        texture.update(None, &frame.pixel_data, Frame::WIDTH * 3)?;
+        texture.update(None, frame.pixel_data(), Frame::WIDTH * 3)?;
         self.canvas.copy(&texture, None, None).map_err(Error::msg)?;
         self.canvas.present();
         Ok(())

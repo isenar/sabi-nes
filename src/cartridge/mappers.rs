@@ -11,9 +11,18 @@ pub trait MapperId {
 }
 
 pub trait Mapper {
-    /// Maps a CPU/PPU address to a ROM offset (usize for large ROMs)
+    /// Maps a CPU address to a PRG ROM offset
     fn map_address(&self, address: Address) -> Result<usize>;
 
-    /// Write to mapper registers (for mappers that support writes)
+    /// Write to mapper registers (for mappers with registers like MMC1)
     fn write(&mut self, address: Address, value: Byte);
+
+    /// Load CHR ROM/RAM data into the mapper
+    fn load_chr(&mut self, data: Vec<Byte>);
+
+    /// Read a byte from CHR ROM/RAM at the given PPU address ($0000-$1FFF)
+    fn read_chr(&self, address: Address) -> Byte;
+
+    /// Write a byte to CHR RAM (no-op for CHR ROM)
+    fn write_chr(&mut self, address: Address, value: Byte);
 }

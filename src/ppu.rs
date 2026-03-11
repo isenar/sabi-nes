@@ -5,6 +5,7 @@ pub use nmi_status::NmiStatus;
 pub use registers::{SpriteData, SpriteSize};
 
 use crate::cartridge::MirroringType;
+use crate::cartridge::mappers::Mapper;
 use crate::ppu::registers::PpuRegisters;
 use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Result};
@@ -12,7 +13,6 @@ use anyhow::bail;
 
 const VRAM_SIZE: usize = 2048;
 const PALETTE_TABLE_SIZE: usize = 64;
-const CHR_RAM_SIZE: usize = 8192;
 const MIRRORS: [Address; 4] = [
     Address::new(0x3f10),
     Address::new(0x3f14),
@@ -22,8 +22,6 @@ const MIRRORS: [Address; 4] = [
 
 #[derive(Debug)]
 pub struct Ppu {
-    /// Visuals of game stored on cartridge (CHR-ROM) or CHR-RAM
-    pub chr_rom: Vec<Byte>,
     /// Internal memory to keep palette tables used by the screen
     pub palette_table: [Byte; PALETTE_TABLE_SIZE],
     /// 2KiB of space to hold background information
@@ -40,22 +38,11 @@ pub struct Ppu {
     pub nmi_interrupt: NmiStatus,
 
     internal_data_buffer: Byte,
-
-    /// Track scroll values per scanline for mid-frame scroll changes
-    pub scanline_scroll: [(u8, u8); 262], // (scroll_x, scroll_y) for each scanline
 }
 
 impl Ppu {
-    pub fn new(chr_rom: &[Byte], mirroring: MirroringType) -> Self {
-        // If no CHR-ROM, allocate CHR-RAM
-        let chr_rom = if chr_rom.is_empty() {
-            vec![Byte::default(); CHR_RAM_SIZE]
-        } else {
-            chr_rom.to_vec()
-        };
-
+    pub fn new(mirroring: MirroringType) -> Self {
         Self {
-            chr_rom,
             palette_table: [Byte::default(); PALETTE_TABLE_SIZE],
             vram: [Byte::default(); VRAM_SIZE],
             mirroring,
@@ -64,7 +51,6 @@ impl Ppu {
             scanline: 0,
             nmi_interrupt: NmiStatus::Inactive,
             internal_data_buffer: Byte::default(),
-            scanline_scroll: [(0, 0); 262],
         }
     }
 
@@ -78,14 +64,6 @@ impl Ppu {
 
             self.cycles -= 341;
             self.scanline += 1;
-
-            // Capture scroll at the START of each visible scanline
-            // This is when the PPU actually latches the scroll values for rendering
-            if self.scanline < 240 {
-                let scroll_x = self.registers.read_scroll_x();
-                let scroll_y = self.registers.read_scroll_y();
-                self.scanline_scroll[self.scanline] = (scroll_x.value(), scroll_y.value());
-            }
 
             if self.scanline == 241 {
                 self.registers.set_vblank().reset_sprite_zero_hit();
@@ -154,16 +132,12 @@ impl Ppu {
         self.registers.write_scroll(value);
     }
 
-    pub fn write(&mut self, value: Byte) -> Result<()> {
+    pub fn write(&mut self, value: Byte, mapper: &mut dyn Mapper) -> Result<()> {
         let addr = self.registers.read_address();
 
         match addr.value() {
             0x0000..=0x1fff => {
-                // Write to CHR-RAM (writable), ignore if CHR-ROM (read-only)
-                // We detect CHR-RAM by checking if size matches CHR_RAM_SIZE
-                if self.chr_rom.len() == CHR_RAM_SIZE {
-                    self.chr_rom[addr.as_usize()] = value;
-                }
+                mapper.write_chr(addr, value);
             }
             0x2000..=0x2fff => {
                 let mirrorred = self.mirror_vram_addr(addr);
@@ -191,14 +165,14 @@ impl Ppu {
         Ok(())
     }
 
-    pub fn read(&mut self) -> Result<Byte> {
+    pub fn read(&mut self, mapper: &dyn Mapper) -> Result<Byte> {
         let addr = self.registers.read_address();
         self.increment_vram_address();
 
         match addr.value() {
             0x0000..=0x1fff => {
                 let result = self.internal_data_buffer;
-                self.internal_data_buffer = self.chr_rom[addr.as_usize()];
+                self.internal_data_buffer = mapper.read_chr(addr);
 
                 Ok(result)
             }
@@ -251,10 +225,25 @@ impl Ppu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cartridge::mappers::Mapper;
+
+    struct NullMapper;
+
+    impl Mapper for NullMapper {
+        fn map_address(&self, _: Address) -> Result<usize> {
+            Ok(0)
+        }
+        fn write(&mut self, _: Address, _: Byte) {}
+        fn load_chr(&mut self, _: Vec<Byte>) {}
+        fn read_chr(&self, _: Address) -> Byte {
+            Byte::default()
+        }
+        fn write_chr(&mut self, _: Address, _: Byte) {}
+    }
 
     impl Ppu {
         fn test_ppu() -> Self {
-            Self::new(&[Byte::default(); 2048], MirroringType::Horizontal)
+            Self::new(MirroringType::Horizontal)
         }
     }
 
@@ -263,7 +252,8 @@ mod tests {
         let mut ppu = Ppu::test_ppu();
         ppu.write_to_addr_register(0x23.into());
         ppu.write_to_addr_register(0x05.into());
-        ppu.write(0x66.into()).expect("Failed to write");
+        ppu.write(0x66.into(), &mut NullMapper)
+            .expect("Failed to write");
 
         assert_eq!(ppu.vram[0x0305], 0x66);
     }
@@ -277,10 +267,10 @@ mod tests {
         ppu.write_to_addr_register(0x23.into());
         ppu.write_to_addr_register(0x05.into());
 
-        ppu.read().expect("Failed to perform dummy read");
+        ppu.read(&NullMapper).expect("Failed to perform dummy read");
 
         assert_eq!(ppu.registers.read_address(), 0x2306);
-        assert_eq!(ppu.read().unwrap(), 0x66);
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
     }
 
     #[test]
@@ -295,11 +285,11 @@ mod tests {
         ppu.registers.write_address(0x21.into());
         ppu.registers.write_address(0xff.into());
 
-        ppu.read().expect("Failed to perform dummy read");
+        ppu.read(&NullMapper).expect("Failed to perform dummy read");
 
-        assert_eq!(ppu.read().unwrap(), 0x66);
-        assert_eq!(ppu.read().unwrap(), 0x77);
-        assert_eq!(ppu.read().unwrap(), 0x88);
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x77);
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x88);
     }
 
     #[test]
@@ -309,24 +299,24 @@ mod tests {
         ppu.registers.write_address(0x24.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x66.into()).unwrap();
+        ppu.write(0x66.into(), &mut NullMapper).unwrap();
 
         ppu.registers.write_address(0x28.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x77.into()).unwrap();
+        ppu.write(0x77.into(), &mut NullMapper).unwrap();
 
         ppu.registers.write_address(0x20.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x66);
+        ppu.read(&NullMapper).unwrap();
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
 
         ppu.registers.write_address(0x2c.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x77);
+        ppu.read(&NullMapper).unwrap();
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x77);
     }
 
     #[test]
@@ -337,24 +327,24 @@ mod tests {
         ppu.registers.write_address(0x20.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x66.into()).unwrap();
+        ppu.write(0x66.into(), &mut NullMapper).unwrap();
 
         ppu.registers.write_address(0x2c.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x77.into()).unwrap();
+        ppu.write(0x77.into(), &mut NullMapper).unwrap();
 
         ppu.registers.write_address(0x28.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x66);
+        ppu.read(&NullMapper).unwrap();
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
 
         ppu.registers.write_address(0x24.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x77);
+        ppu.read(&NullMapper).unwrap();
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x77);
     }
 
     #[test]
@@ -366,16 +356,16 @@ mod tests {
         ppu.registers.write_address(0x23.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_ne!(ppu.read().unwrap(), 0x66);
+        ppu.read(&NullMapper).unwrap();
+        assert_ne!(ppu.read(&NullMapper).unwrap(), 0x66);
 
         ppu.read_status_register();
 
         ppu.registers.write_address(0x23.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x66);
+        ppu.read(&NullMapper).unwrap();
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
     }
 
     #[test]
@@ -387,8 +377,8 @@ mod tests {
         ppu.registers.write_address(0x63.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read().unwrap();
-        assert_eq!(ppu.read().unwrap(), 0x66);
+        ppu.read(&NullMapper).unwrap();
+        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
     }
 
     #[test]

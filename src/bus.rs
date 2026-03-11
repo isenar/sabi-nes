@@ -1,5 +1,6 @@
 use crate::apu::Apu;
 use crate::cartridge::Rom;
+use crate::cartridge::mappers::Mapper;
 use crate::input::joypad::Joypad;
 use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
@@ -31,7 +32,7 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(rom: Rom) -> Bus {
-        let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
+        let ppu = Ppu::new(rom.screen_mirroring);
 
         Bus {
             cpu_vram: [Byte::default(); VRAM_SIZE],
@@ -77,6 +78,10 @@ impl Bus {
         &self.ppu
     }
 
+    pub fn mapper(&self) -> &dyn Mapper {
+        &*self.rom.mapper
+    }
+
     pub fn joypad_mut(&mut self) -> &mut Joypad {
         &mut self.joypad
     }
@@ -96,7 +101,7 @@ impl Memory for Bus {
             0x2004 => self.ppu.read_oam_data(),
             0x2005 => bail!("Attempted to read from write-only PPU scroll register"),
             0x2006 => bail!("Attempted to read from write-only PPU address register"),
-            0x2007 => self.ppu.read()?,
+            0x2007 => self.ppu.read(&*self.rom.mapper)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
                 self.read_byte(mirror_base_addr)?
@@ -150,7 +155,7 @@ impl Memory for Bus {
             0x2004 => self.ppu.write_to_oam_data(value),
             0x2005 => self.ppu.write_to_scroll_register(value),
             0x2006 => self.ppu.write_to_addr_register(value),
-            0x2007 => self.ppu.write(value)?,
+            0x2007 => self.ppu.write(value, &mut *self.rom.mapper)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
 
@@ -178,11 +183,11 @@ impl Memory for Bus {
             0x4013 => self.apu.dmc.sample_length = value,
             0x4014 => {
                 let mut buffer = [Byte::default(); 256];
-                let high = value.as_word() << 8;
+                let high = Address::new((u16::from(value.value())) << 8);
                 // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
                 // for now we'll use the good old for loop
                 for (offset, byte) in buffer.iter_mut().enumerate() {
-                    let address = (high + offset as u16).as_address();
+                    let address = high + u16::try_from(offset)?;
                     *byte = self.read_byte(address)?;
                 }
 
@@ -220,12 +225,12 @@ mod tests {
     }
 
     fn test_rom() -> Rom {
-        Rom {
-            prg_rom: vec![0x10.into(); PRG_ROM_BANK_SIZE],
-            chr_rom: vec![0x20.into(); CHR_ROM_BANK_SIZE],
-            mapper: Box::new(Nrom128 {}),
-            screen_mirroring: MirroringType::Horizontal,
-        }
+        Rom::new(
+            vec![0x10.into(); PRG_ROM_BANK_SIZE],
+            vec![0x20.into(); CHR_ROM_BANK_SIZE],
+            Box::new(Nrom128::default()),
+            MirroringType::Horizontal,
+        )
     }
 
     #[test]

@@ -2,9 +2,11 @@ mod frame;
 mod palettes;
 
 use crate::cartridge::MirroringType;
+use crate::cartridge::mappers::Mapper;
 use crate::ppu::{Ppu, SpriteData, SpriteSize};
 use crate::{Address, Byte, Result};
 
+use crate::render::palettes::system_palette_thingy;
 pub use frame::Frame;
 pub use palettes::SYSTEM_PALETTE;
 
@@ -21,21 +23,21 @@ impl Colour {
     }
 }
 
-pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
+pub fn render(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Result<()> {
     frame.clear_background_mask();
 
     if ppu.registers.show_background() {
-        render_background(ppu, frame)?;
+        render_background(ppu, mapper, frame)?;
     }
 
     if ppu.registers.show_sprites() {
-        render_sprites(ppu, frame)?;
+        render_sprites(ppu, mapper, frame)?;
     }
 
     Ok(())
 }
 
-fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
+fn render_background(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Result<()> {
     let name_table_address = ppu.registers.read_name_table_address();
 
     let (main_table, secondary_table) = match (ppu.mirroring, name_table_address.value()) {
@@ -50,17 +52,17 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         _ => todo!(),
     };
 
+    let scroll_x = ppu.registers.read_scroll_x().as_usize();
+    let scroll_y = ppu.registers.read_scroll_y().as_usize();
+
     for screen_y in 0..Frame::HEIGHT {
-        // Use scroll values captured for this specific scanline
-        let (scroll_x, scroll_y) = ppu.scanline_scroll[screen_y];
-        let scroll_x = scroll_x as usize;
-        let scroll_y = scroll_y as usize;
 
         let y_in_nametable = (screen_y + scroll_y) % 240;
 
         // Render main portion
         render_scanline(
             ppu,
+            mapper,
             frame,
             main_table,
             screen_y,
@@ -74,6 +76,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         if scroll_x > 0 {
             render_scanline(
                 ppu,
+                mapper,
                 frame,
                 secondary_table,
                 screen_y,
@@ -91,6 +94,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
 #[allow(clippy::too_many_arguments)]
 fn render_scanline(
     ppu: &Ppu,
+    mapper: &dyn Mapper,
     frame: &mut Frame,
     name_table: &[Byte],
     screen_y: usize,
@@ -122,16 +126,16 @@ fn render_scanline(
         }
 
         let tile_index = name_table[tile_addr].as_usize();
-        let begin = bank_address.as_usize() + tile_index * 16; // TODO
-        let end = bank_address.as_usize() + tile_index * 16 + 15; // TODO
-        let tile = &ppu.chr_rom[begin..=end];
+        let begin = bank_address.as_usize() + tile_index * 16;
+        let tile: [Byte; 16] =
+            std::array::from_fn(|i| mapper.read_chr(Address::new((begin + i) as u16)));
         let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
 
         // Get pixel from tile
         let upper = tile[pixel_y_in_tile];
         let lower = tile[pixel_y_in_tile + 8];
         let value = (((lower >> pixel_x_in_tile) & 1) << 1) | (upper >> pixel_x_in_tile) & 1;
-        let colour = SYSTEM_PALETTE[bg_palette[value.as_usize()].as_usize()]; // TODO: helper fn?
+        let colour = system_palette_thingy(value, &bg_palette);
 
         // Mark as background pixel if non-transparent (value != 0)
         if value != TRANSPARENT_PIXEL {
@@ -144,7 +148,7 @@ fn render_scanline(
     Ok(())
 }
 
-fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
+fn render_sprites(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Result<()> {
     let oam_data = ppu.registers.read_oam_dma();
     let sprite_size = ppu.registers.sprite_size();
 
@@ -169,10 +173,18 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 };
 
                 // Render top half
-                render_sprite_tile(ppu, frame, sprite, tile_idx_top, bank, &sprite_palette, 0)?;
+                render_sprite_tile(
+                    mapper,
+                    frame,
+                    sprite,
+                    tile_idx_top,
+                    bank,
+                    &sprite_palette,
+                    0,
+                )?;
                 // Render bottom half
                 render_sprite_tile(
-                    ppu,
+                    mapper,
                     frame,
                     sprite,
                     tile_idx_bottom,
@@ -185,7 +197,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 // 8x8 mode: render single tile
                 let tile_idx = sprite.index_number.as_usize();
                 let bank = ppu.read_sprite_pattern_address();
-                render_sprite_tile(ppu, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
+                render_sprite_tile(mapper, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
             }
         }
     }
@@ -194,7 +206,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
 }
 
 fn render_sprite_tile(
-    ppu: &Ppu,
+    mapper: &dyn Mapper,
     frame: &mut Frame,
     sprite: &SpriteData,
     tile_idx: usize,
@@ -202,9 +214,10 @@ fn render_sprite_tile(
     sprite_palette: &MetaTile,
     y_base_offset: usize,
 ) -> Result<()> {
-    let bank_address = bank_address.as_usize();
-    let tile = &ppu.chr_rom[(bank_address + tile_idx * 16)..=(bank_address + tile_idx * 16 + 15)];
-    let priority_behind = sprite.priority();
+    let begin = bank_address.as_usize() + tile_idx * 16;
+    let tile: [Byte; 16] =
+        std::array::from_fn(|i| mapper.read_chr(Address::new((begin + i) as u16)));
+    let is_sprite_in_background = sprite.priority();
 
     for y_offset in 0..=7 {
         let mut upper = tile[y_offset];
@@ -224,7 +237,7 @@ fn render_sprite_tile(
             // Check sprite priority:
             // - If priority is behind, only draw if no background pixel exists
             // - If priority_behind is not behind, always draw (sprite in front)
-            if priority_behind && frame.has_bg(x, y) {
+            if is_sprite_in_background && frame.has_background(x, y) {
                 continue; // Skip this pixel, background takes priority
             }
 

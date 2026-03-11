@@ -106,16 +106,14 @@ impl RomHeader {
             0 => {
                 debug!("NROM (id=000) mapper detected");
                 if self.prg_rom_banks == 1 {
-                    Box::new(Nrom128 {})
+                    Box::new(Nrom128::default())
                 } else {
-                    Box::new(Nrom256 {})
+                    Box::new(Nrom256::default())
                 }
             }
             1 => {
                 debug!("MMC1 (id=001) mapper detected");
-                // MMC1: CHR banks are 4KB each for switching purposes
-                let chr_banks = self.chr_rom_banks * 2; // Convert 8KB banks to 4KB banks
-                Box::new(Mmc1::new(self.prg_rom_banks, chr_banks))
+                Box::new(Mmc1::new(self.prg_rom_banks))
             }
             _ => bail!("Unsupported mapper type (ID: {ines_mapper_id})"),
         })
@@ -124,9 +122,24 @@ impl RomHeader {
 
 pub struct Rom {
     pub prg_rom: Vec<Byte>,
-    pub chr_rom: Vec<Byte>,
     pub mapper: Box<dyn Mapper>,
     pub screen_mirroring: MirroringType,
+}
+
+impl Rom {
+    pub fn new(
+        prg_rom: Vec<Byte>,
+        chr_rom: Vec<Byte>,
+        mut mapper: Box<dyn Mapper>,
+        screen_mirroring: MirroringType,
+    ) -> Self {
+        mapper.load_chr(chr_rom);
+        Self {
+            prg_rom,
+            mapper,
+            screen_mirroring,
+        }
+    }
 }
 
 impl Rom {
@@ -147,12 +160,12 @@ impl Rom {
             .contains(ControlByte1::FOUR_SCREEN_VRAM_LAYOUT);
         let vertical_mirroring = header.control_byte1.contains(ControlByte1::MIRRORING);
         let screen_mirroring = MirroringType::new(four_screen, vertical_mirroring);
-        let mapper = header.mapper()?;
+        let mut mapper = header.mapper()?;
 
         let skip_trainer = header.control_byte1.contains(ControlByte1::HAS_TRAINER);
         let prg_rom_size = header.prg_rom_banks * PRG_ROM_BANK_SIZE;
         let chr_rom_size = header.chr_rom_banks * CHR_ROM_BANK_SIZE;
-        let prg_rom_start = 16 + skip_trainer as usize * 512;
+        let prg_rom_start = 16 + usize::from(skip_trainer) * 512;
         let chr_rom_start = prg_rom_start + prg_rom_size;
 
         let prg_rom = data
@@ -168,9 +181,10 @@ impl Rom {
             .map(|&byte| Byte::new(byte))
             .collect();
 
+        mapper.load_chr(chr_rom);
+
         Ok(Self {
             prg_rom,
-            chr_rom,
             mapper,
             screen_mirroring,
         })

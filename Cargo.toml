@@ -22,3 +22,13 @@ sdl2 = "~0.38.0"
 assert_matches = "~1.5.0"
 pretty_assertions = "~1.4.1"
 rand = "~0.10.0"
+
+[lints.clippy]
+cast_sign_loss = "warn"
+match_bool = "warn"
+redundant_closure_for_method_calls = "warn"
+enum_glob_use = "warn"
+needless_pass_by_value = "warn"
+semicolon_if_nothing_returned = "warn"
+wildcard_imports = "warn"
+new_without_default = "allow"

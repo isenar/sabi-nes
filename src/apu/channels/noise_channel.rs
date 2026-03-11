@@ -22,9 +22,10 @@ impl NoiseChannel {
     }
 
     pub fn mode(&self) -> NoiseMode {
-        match self.mode_and_period.nth_bit::<7>() {
-            true => NoiseMode::Short,
-            false => NoiseMode::Long,
+        if self.mode_and_period.nth_bit::<7>() {
+            NoiseMode::Short
+        } else {
+            NoiseMode::Long
         }
     }
 

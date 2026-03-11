@@ -28,6 +28,17 @@ pub enum SpriteSize {
     Large,
 }
 
+impl SpriteSize {
+    // TODO: revise if we need it
+    #[allow(dead_code)]
+    const fn pattern_table_address(self) -> Address {
+        match self {
+            SpriteSize::Small => Address::new(0x0000),
+            SpriteSize::Large => Address::new(0x1000),
+        }
+    }
+}
+
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
     pub struct ControlRegister: u8 {

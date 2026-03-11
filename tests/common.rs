@@ -25,7 +25,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
     let code = cpu.read_byte(cpu.program_counter.as_address())?;
     let opcode = OPCODES_MAPPING
         .get(&code)
-        .ok_or_else(|| anyhow!("Opcode {code:#x} not supported"))?;
+        .ok_or_else(|| anyhow!("Opcode `{code:#x}` not supported"))?;
     let opcode_hex = opcode_hex_representation(opcode, cpu)?;
     let opcode_asm = opcode_asm_representation(opcode, cpu)?;
 
@@ -147,10 +147,12 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
         AddressingMode::Implied => String::new(),
         AddressingMode::Accumulator => "A".into(),
         AddressingMode::Relative => {
-            let offset = value.value() as i8; // TODO: lol
+            let offset = value.value().cast_signed();
             let jump_address = cpu
                 .program_counter
                 .wrapping_add(2u16)
+                // NOTE: This is a quirky behaviour of what the NES CPU does
+                //       for branching instructions, and it's intended here.
                 .wrapping_add(offset as u16);
 
             format!("${jump_address:04X}")
@@ -222,7 +224,7 @@ mod tests {
 
         let mut cpu = Cpu::new(bus);
         cpu.program_counter = 0x64.into();
-        cpu.register_y = 5.into();
+        cpu.register_y = 0x05.into();
 
         let mut traces = vec![];
         loop {

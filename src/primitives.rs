@@ -53,16 +53,20 @@ impl Byte {
         Word::new(self.0 as u16)
     }
 
+    pub const fn as_address(self) -> Address {
+        Address::new(self.0 as u16)
+    }
+
     pub const fn as_usize(self) -> usize {
         self.0 as usize
     }
 
-    pub fn wrapping_add(&self, value: impl Into<u8>) -> Self {
-        Self::new(self.0.wrapping_add(value.into()))
+    pub const fn wrapping_add(&self, value: u8) -> Self {
+        Self::new(self.0.wrapping_add(value))
     }
 
-    pub fn wrapping_sub(&self, value: impl Into<u8>) -> Self {
-        Self::new(self.0.wrapping_sub(value.into()))
+    pub const fn wrapping_sub(&self, value: u8) -> Self {
+        Self::new(self.0.wrapping_sub(value))
     }
 }
 

@@ -15,6 +15,8 @@
 use crate::cartridge::mappers::{Mapper, MapperId};
 use crate::{Address, Byte, Result};
 
+const CHR_RAM_SIZE: usize = 8192;
+
 #[derive(Debug)]
 pub struct Mmc1 {
     /// 5-bit shift register, bit 0 = next empty slot
@@ -43,13 +45,16 @@ pub struct Mmc1 {
     /// Number of PRG ROM banks (16KB each)
     prg_rom_banks: usize,
 
-    /// Number of CHR ROM banks (4KB each for MMC1, since it switches 4KB at a time)
-    #[allow(dead_code)]
-    chr_rom_banks: usize,
+    /// Number of CHR ROM/RAM banks (4KB each for MMC1, since it switches 4KB at a time)
+    chr_banks: usize,
+
+    /// CHR ROM or RAM data
+    chr: Vec<Byte>,
+    is_chr_ram: bool,
 }
 
 impl Mmc1 {
-    pub fn new(prg_rom_banks: usize, chr_rom_banks: usize) -> Self {
+    pub fn new(prg_rom_banks: usize) -> Self {
         Self {
             shift_register: Byte::new(0x10), // Bit 5 set indicates empty
             shift_count: 0,
@@ -58,7 +63,9 @@ impl Mmc1 {
             chr_bank_1: Byte::default(),
             prg_bank: Byte::default(),
             prg_rom_banks,
-            chr_rom_banks,
+            chr_banks: 0,
+            chr: Vec::new(),
+            is_chr_ram: false,
         }
     }
 
@@ -135,11 +142,9 @@ impl Mmc1 {
         }
     }
 
-    /// Map CHR ROM/RAM address (PPU $0000-$1FFF)
-    #[allow(dead_code)]
     fn map_chr_address(&self, address: Address) -> usize {
-        // If no CHR banks (CHR-RAM), just pass through the address
-        if self.chr_rom_banks == 0 {
+        // CHR-RAM: pass through directly
+        if self.is_chr_ram {
             return address.as_usize();
         }
 
@@ -148,17 +153,17 @@ impl Mmc1 {
         match chr_mode.value() {
             0 => {
                 // 8KB mode: use CHR bank 0, ignore low bit
-                let bank = ((self.chr_bank_0 >> 1).as_usize()) % (self.chr_rom_banks / 2);
-                bank * 0x2000 + address.as_usize() // TODO
+                let bank = ((self.chr_bank_0 >> 1).as_usize()) % (self.chr_banks / 2).max(1);
+                bank * 0x2000 + address.as_usize()
             }
             1 => {
                 // 4KB mode: two separate 4KB banks
                 if address < 0x1000 {
-                    let bank = self.chr_bank_0.as_usize() % self.chr_rom_banks;
-                    bank * 0x1000 + (address.as_usize() & 0x0FFF) // TODO
+                    let bank = self.chr_bank_0.as_usize() % self.chr_banks.max(1);
+                    bank * 0x1000 + (address.as_usize() & 0x0FFF)
                 } else {
-                    let bank = self.chr_bank_1.as_usize() % self.chr_rom_banks;
-                    bank * 0x1000 + (address.as_usize() & 0x0FFF) // TODO
+                    let bank = self.chr_bank_1.as_usize() % self.chr_banks.max(1);
+                    bank * 0x1000 + (address.as_usize() & 0x0FFF)
                 }
             }
             _ => unreachable!(),
@@ -168,14 +173,38 @@ impl Mmc1 {
 
 impl Mapper for Mmc1 {
     fn map_address(&self, address: Address) -> Result<usize> {
-        // Only PRG ROM addresses come through here (CPU reads from $8000-$FFFF)
-        // PPU reads CHR ROM directly without going through the mapper
         Ok(self.map_prg_address(address))
     }
 
     fn write(&mut self, address: Address, value: Byte) {
         if address >= 0x8000 {
             self.write_register(address, value);
+        }
+    }
+
+    fn load_chr(&mut self, data: Vec<Byte>) {
+        if data.is_empty() {
+            self.chr = vec![Byte::default(); CHR_RAM_SIZE];
+            self.is_chr_ram = true;
+            self.chr_banks = 2; // 2 × 4KB banks for CHR-RAM
+        } else {
+            self.chr_banks = data.len() / 0x1000; // count 4KB banks
+            self.chr = data;
+            self.is_chr_ram = false;
+        }
+    }
+
+    fn read_chr(&self, address: Address) -> Byte {
+        let mapped = self.map_chr_address(address);
+        self.chr.get(mapped).copied().unwrap_or_default()
+    }
+
+    fn write_chr(&mut self, address: Address, value: Byte) {
+        if self.is_chr_ram {
+            let mapped = self.map_chr_address(address);
+            if let Some(b) = self.chr.get_mut(mapped) {
+                *b = value;
+            }
         }
     }
 }

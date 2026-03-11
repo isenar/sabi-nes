@@ -1,14 +1,16 @@
 use anyhow::bail;
+use sabi_nes::cartridge::mappers::Mapper;
 use sabi_nes::render::{Frame, SYSTEM_PALETTE};
-use sabi_nes::{Byte, Result, Rom};
+use sabi_nes::{Address, Result, Rom};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
+use std::ops::Deref;
 
-fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
+fn show_tiles(mapper: &dyn Mapper, bank: usize) -> Result<Frame> {
     assert!(bank <= 1);
 
-    let mut frame = Frame::default();
+    let mut frame = Frame::new();
     let mut tile_y = 0;
     let mut tile_x = 0;
     let bank = bank * 0x1000;
@@ -18,7 +20,9 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
             tile_y += 10;
             tile_x = 0;
         }
-        let tile = &chr_rom[(bank + tile_n * 16)..=(bank + tile_n * 16 + 15)];
+        let begin = bank + tile_n * 16;
+        let tile: [_; 16] =
+            std::array::from_fn(|i| mapper.read_chr(Address::new((begin + i) as u16)));
 
         for y in 0..=7 {
             let mut upper = tile[y];
@@ -35,7 +39,7 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
                     3 => SYSTEM_PALETTE[0x30],
                     _ => bail!("RGB color must fit within 2 bits! Got value: {value}"),
                 };
-                frame.set_pixel_colour(tile_x + x, tile_y + y, colour)
+                frame.set_pixel_colour(tile_x + x, tile_y + y, colour);
             }
         }
 
@@ -73,9 +77,9 @@ fn main() -> Result<()> {
 
     let rom = Rom::from_file("pacman.nes")?;
 
-    let right_bank = show_tiles(&rom.chr_rom, 0)?;
+    let right_bank = show_tiles(rom.mapper.deref(), 0)?;
 
-    texture.update(None, &right_bank.pixel_data, Frame::WIDTH * scale)?;
+    texture.update(None, right_bank.pixel_data(), Frame::WIDTH * scale)?;
     canvas
         .copy(&texture, None, None)
         .map_err(anyhow::Error::msg)?;
