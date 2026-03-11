@@ -43,9 +43,10 @@ impl SquareChannel {
         self.sweep & 0b0000_0111
     }
 
+    // TODO: WORD
     fn timer(self) -> u16 {
-        let timer_high = (self.length_and_timer_high & 0b0000_0111) as u16;
-        let timer_low = self.timer_low as u16;
+        let timer_high = (self.length_and_timer_high & 0b0000_0111).as_word();
+        let timer_low = self.timer_low.as_word();
 
         (timer_high << 8) | timer_low
     }
@@ -62,38 +63,38 @@ mod tests {
     #[test]
     fn volume_data() {
         let channel = SquareChannel {
-            volume: 0b1011_0101,
+            volume: Byte::new(0b1011_0101),
             ..SquareChannel::default()
         };
 
-        assert_eq!(0b10, channel.duty());
+        assert_eq!(channel.duty(), 0b10);
         assert!(channel.is_length_counter_halted());
         assert!(channel.is_constant_volume());
-        assert_eq!(0b0101, channel.volume());
+        assert_eq!(channel.volume(), 0b0101);
     }
 
     #[test]
     fn sweep_data() {
         let channel = SquareChannel {
-            sweep: 0b1011_1101,
+            sweep: Byte::new(0b1011_1101),
             ..SquareChannel::default()
         };
 
         assert!(channel.is_sweep_enabled());
-        assert_eq!(0b011, channel.sweep_period());
+        assert_eq!(channel.sweep_period(), 0b011);
         assert!(channel.is_sweep_negated());
-        assert_eq!(0b101, channel.sweep_shift());
+        assert_eq!(channel.sweep_shift(), 0b101);
     }
 
     #[test]
     fn timer_and_length_counter_data() {
         let channel = SquareChannel {
-            timer_low: 0b1011_1001,
-            length_and_timer_high: 0b1011_1010,
+            timer_low: Byte::new(0b1011_1001),
+            length_and_timer_high: Byte::new(0b1011_1010),
             ..SquareChannel::default()
         };
 
-        assert_eq!(0b0001_0111, channel.length_counter_load());
-        assert_eq!(0b0010_1011_1001, channel.timer());
+        assert_eq!(channel.length_counter_load(), 0b0001_0111);
+        assert_eq!(channel.timer(), 0b0010_1011_1001);
     }
 }

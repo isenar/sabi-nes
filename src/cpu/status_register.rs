@@ -23,7 +23,7 @@ use std::fmt::{Display, Formatter};
 
 bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]
-    pub struct StatusRegister: Byte {
+    pub struct StatusRegister: u8 {
         const CARRY             = 0b0000_0001;
         const ZERO              = 0b0000_0010;
         const INTERRUPT_DISABLE = 0b0000_0100;
@@ -45,7 +45,7 @@ impl Display for StatusRegister {
 
 impl From<Byte> for StatusRegister {
     fn from(byte: Byte) -> Self {
-        Self::from_bits_truncate(byte)
+        Self::from_bits_truncate(byte.value())
     }
 }
 

@@ -3,7 +3,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
-    pub struct JoypadButton: Byte {
+    pub struct JoypadButton: u8 {
         const RIGHT             = 0b1000_0000;
         const LEFT              = 0b0100_0000;
         const DOWN              = 0b0010_0000;
@@ -18,17 +18,18 @@ bitflags! {
 #[derive(Debug, Default)]
 pub struct Joypad {
     strobe_mode: bool,
-    button_index: Byte,
+    button_index: usize,
     button_status: JoypadButton,
 }
 
 impl Joypad {
     pub fn read(&mut self) -> Byte {
         if self.button_index > 7 {
-            return 1;
+            return 1.into();
         }
 
-        let response = (self.button_status.bits() & (1 << self.button_index)) >> self.button_index;
+        let button_status = Byte::new(self.button_status.bits());
+        let response = (button_status & (Byte::new(1) << self.button_index)) >> self.button_index;
 
         if !self.strobe_mode && self.button_index <= 7 {
             self.button_index += 1;

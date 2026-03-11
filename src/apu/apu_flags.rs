@@ -3,7 +3,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
-    pub struct ApuFlags: Byte {
+    pub struct ApuFlags: u8 {
         const SQUARE_CHANNEL_1_ENABLED = 0b0000_0001;
         const SQUARE_CHANNEL_2_ENABLED = 0b0000_0010;
         const TRIANGLE_CHANNEL_ENABLED = 0b0000_0100;
@@ -17,6 +17,6 @@ bitflags! {
 
 impl From<Byte> for ApuFlags {
     fn from(byte: Byte) -> Self {
-        Self::from_bits_truncate(byte)
+        Self::from_bits_truncate(byte.value())
     }
 }

@@ -45,7 +45,7 @@ impl PpuRegisters {
         self.address.reset_latch();
         self.scroll.reset_latch();
 
-        status
+        status.into()
     }
 
     pub fn read_sprite_pattern_address(&self) -> Address {

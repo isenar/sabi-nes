@@ -1,5 +1,8 @@
-use derive_more::{Add, Display, Div, From, Index, LowerHex, Mul, Sub, UpperHex};
-use std::ops::{Add, Sub};
+use derive_more::{
+    Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Display, Div, From, Index, LowerHex,
+    Mul, Shl, ShlAssign, Shr, ShrAssign, Sub, UpperHex,
+};
+use std::ops::{Add, BitAnd, BitOrAssign, Sub};
 
 #[repr(transparent)]
 #[derive(
@@ -11,12 +14,22 @@ use std::ops::{Add, Sub};
     PartialOrd,
     Ord,
     Hash,
+    Default,
     From,
     Div,
     Index,
     Mul,
     Sub,
     Add,
+    BitOr,
+    BitOrAssign,
+    BitAnd,
+    BitAndAssign,
+    BitXor,
+    Shr,
+    ShrAssign,
+    Shl,
+    ShlAssign,
     Display,
     LowerHex,
     UpperHex,
@@ -31,11 +44,53 @@ impl Byte {
     pub const fn value(self) -> u8 {
         self.0
     }
+
+    pub const fn as_word(self) -> u16 {
+        self.0 as u16
+    }
+
+    pub const fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+
+    pub fn wrapping_add(&self, value: impl Into<u8>) -> Self {
+        Self::new(self.0.wrapping_add(value.into()))
+    }
+
+    pub fn wrapping_sub(&self, value: impl Into<u8>) -> Self {
+        Self::new(self.0.wrapping_sub(value.into()))
+    }
 }
 
 impl PartialEq<Address> for Byte {
     fn eq(&self, other: &Address) -> bool {
         self.0 as u16 == other.0
+    }
+}
+
+impl PartialEq<u8> for Byte {
+    fn eq(&self, other: &u8) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialOrd<u8> for Byte {
+    fn partial_cmp(&self, other: &u8) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl BitAnd<u8> for Byte {
+    type Output = Self;
+
+    fn bitand(self, rhs: u8) -> Self::Output {
+        Self::new(self.0 & rhs)
+    }
+}
+
+impl BitOrAssign<u8> for Byte {
+    fn bitor_assign(&mut self, rhs: u8) {
+        self.0 |= rhs;
     }
 }
 
@@ -89,6 +144,12 @@ impl PartialEq<Byte> for Address {
     }
 }
 
+impl From<Byte> for Address {
+    fn from(byte: Byte) -> Self {
+        Self(byte.0 as u16)
+    }
+}
+
 impl From<u8> for Address {
     fn from(byte: u8) -> Self {
         Self(byte as u16)
@@ -106,6 +167,14 @@ impl Add<u16> for Address {
 
     fn add(self, rhs: u16) -> Self::Output {
         Self(self.0 + rhs)
+    }
+}
+
+impl Add<Byte> for Address {
+    type Output = Self;
+
+    fn add(self, rhs: Byte) -> Self::Output {
+        Self(self.0 + rhs.0 as u16)
     }
 }
 
@@ -133,6 +202,6 @@ impl PartialEq<u16> for Address {
 
 impl PartialOrd<u16> for Address {
     fn partial_cmp(&self, other: &u16) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other)
+        self.0.partial_cmp(other)
     }
 }

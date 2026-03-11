@@ -19,19 +19,19 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Result<()> {
             Event::KeyDown {
                 keycode: Some(Keycode::W),
                 ..
-            } => cpu.write_byte(Address::new(0xff), 0x77)?,
+            } => cpu.write_byte(Address::new(0xff), 0x77.into())?,
             Event::KeyDown {
                 keycode: Some(Keycode::S),
                 ..
-            } => cpu.write_byte(Address::new(0xff), 0x73)?,
+            } => cpu.write_byte(Address::new(0xff), 0x73.into())?,
             Event::KeyDown {
                 keycode: Some(Keycode::A),
                 ..
-            } => cpu.write_byte(Address::new(0xff), 0x61)?,
+            } => cpu.write_byte(Address::new(0xff), 0x61.into())?,
             Event::KeyDown {
                 keycode: Some(Keycode::D),
                 ..
-            } => cpu.write_byte(Address::new(0xff), 0x64)?,
+            } => cpu.write_byte(Address::new(0xff), 0x64.into())?,
             _ => {}
         }
     }
@@ -40,7 +40,7 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Result<()> {
 }
 
 fn color(byte: Byte) -> Color {
-    match byte {
+    match byte.value() {
         0 => Color::BLACK,
         1 => Color::WHITE,
         2 | 9 => Color::GREY,
@@ -53,7 +53,7 @@ fn color(byte: Byte) -> Color {
     }
 }
 
-fn screen_update_needed(cpu: &mut Cpu, frame: &mut [Byte; 32 * 3 * 32]) -> Result<bool> {
+fn screen_update_needed(cpu: &mut Cpu, frame: &mut [u8; 32 * 3 * 32]) -> Result<bool> {
     let mut frame_idx = 0;
 
     for address in 0x0200..0x0600 {
@@ -106,7 +106,7 @@ fn main() -> Result<()> {
 
         handle_user_input(&mut cpu, &mut event_pump)?;
 
-        cpu.write_byte(Address::new(0xfe), rng.random_range(1..16))?;
+        cpu.write_byte(Address::new(0xfe), rng.random_range(1..16).into())?;
 
         if screen_update_needed(&mut cpu, &mut screen_state)? {
             texture.update(None, &screen_state, 32 * 3)?;

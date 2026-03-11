@@ -8,12 +8,18 @@ use crate::{Address, Byte, Result};
 pub use frame::Frame;
 pub use palettes::SYSTEM_PALETTE;
 
-const TRANSPARENT_PIXEL: usize = 0b00;
+const TRANSPARENT_PIXEL: Byte = Byte::new(0b00);
 
 type MetaTile = [Byte; 4];
 
 #[derive(Debug, Clone, Copy)]
 pub struct Colour(Byte, Byte, Byte);
+
+impl Colour {
+    pub const fn new(red: u8, green: u8, blue: u8) -> Self {
+        Self(Byte::new(red), Byte::new(green), Byte::new(blue))
+    }
+}
 
 pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     frame.clear_background_mask();
@@ -58,7 +64,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             frame,
             main_table,
             screen_y,
-            y_in_nametable as Byte,
+            y_in_nametable,
             scroll_x,
             0,
             Frame::WIDTH.saturating_sub(scroll_x),
@@ -71,7 +77,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 frame,
                 secondary_table,
                 screen_y,
-                y_in_nametable as Byte,
+                y_in_nametable,
                 0,
                 Frame::WIDTH - scroll_x,
                 scroll_x,
@@ -82,12 +88,13 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_scanline(
     ppu: &Ppu,
     frame: &mut Frame,
     name_table: &[Byte],
     screen_y: usize,
-    nametable_y: Byte,
+    nametable_y: usize,
     scroll_x_offset: usize,
     screen_x_start: usize,
     width: usize,
@@ -100,32 +107,31 @@ fn render_scanline(
     let attribute_table = &name_table[0x03c0..0x0400];
 
     // Calculate which tile row we're in
-    let tile_row = (nametable_y / 8) as Byte;
+    let tile_row = nametable_y / 8;
     let pixel_y_in_tile = nametable_y % 8;
 
     // Render tiles across this scanline
     for screen_x in screen_x_start..(screen_x_start + width) {
         let x_in_nametable = (screen_x.saturating_sub(screen_x_start) + scroll_x_offset) % 256;
-        let tile_column = (x_in_nametable / 8) as Byte;
+        let tile_column = x_in_nametable / 8;
         let pixel_x_in_tile = 7 - (x_in_nametable % 8);
 
-        let tile_addr = tile_row as usize * 32 + tile_column as usize;
+        let tile_addr = tile_row * 32 + tile_column;
         if tile_addr >= 0x03c0 {
             continue; // Skip attribute table area
         }
 
-        let tile_index = name_table[tile_addr] as u16;
+        let tile_index = name_table[tile_addr];
         let begin = (bank_address + tile_index * 16).as_usize(); // TODO
         let end = (bank_address + tile_index * 16 + Address::new(15)).as_usize(); // TODO
         let tile = &ppu.chr_rom[begin..=end];
         let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
 
         // Get pixel from tile
-        let upper = tile[pixel_y_in_tile as usize];
-        let lower = tile[pixel_y_in_tile as usize + 8];
-        let value =
-            (((1 & (lower >> pixel_x_in_tile)) << 1) | (1 & (upper >> pixel_x_in_tile))) as usize;
-        let colour = SYSTEM_PALETTE[bg_palette[value] as usize];
+        let upper = tile[pixel_y_in_tile];
+        let lower = tile[pixel_y_in_tile + 8];
+        let value = (((lower >> pixel_x_in_tile) & 1) << 1) | (upper >> pixel_x_in_tile) & 1;
+        let colour = SYSTEM_PALETTE[bg_palette[value.as_usize()].as_usize()]; // TODO: helper fn?
 
         // Mark as background pixel if non-transparent (value != 0)
         if value != TRANSPARENT_PIXEL {
@@ -151,7 +157,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             // Bit 0 of tile index determines which pattern table (ignored)
             // Top tile: tile_idx & 0xFE
             // Bottom tile: (tile_idx & 0xFE) + 1
-            let tile_idx_top = (sprite.index_number & 0xFE) as usize;
+            let tile_idx_top = (sprite.index_number & 0xFE).as_usize();
             let tile_idx_bottom = tile_idx_top + 1;
 
             // In 8x16 mode, bit 0 of tile index selects pattern table
@@ -175,7 +181,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             )?;
         } else {
             // 8x8 mode: render single tile
-            let tile_idx = sprite.index_number as usize;
+            let tile_idx = sprite.index_number.as_usize();
             let bank = ppu.read_sprite_pattern_address();
             render_sprite_tile(ppu, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
         }
@@ -201,7 +207,7 @@ fn render_sprite_tile(
         let mut upper = tile[y_offset];
         let mut lower = tile[y_offset + 8];
         for x_offset in (0..=7).rev() {
-            let value = (((1 & lower) << 1) | (1 & upper)) as usize;
+            let value = ((lower & 1) << 1) | (upper & 1);
             upper >>= 1;
             lower >>= 1;
 
@@ -219,7 +225,7 @@ fn render_sprite_tile(
                 continue; // Skip this pixel, background takes priority
             }
 
-            let colour = SYSTEM_PALETTE[sprite_palette[value] as usize];
+            let colour = SYSTEM_PALETTE[sprite_palette[value.as_usize()].as_usize()]; // TODO: again - helper fn
             frame.set_pixel_colour(x, y, colour);
         }
     }
@@ -227,9 +233,14 @@ fn render_sprite_tile(
     Ok(())
 }
 
-fn bg_palette(ppu: &Ppu, attribute_table: &[Byte], tile_column: Byte, tile_row: Byte) -> [Byte; 4] {
+fn bg_palette(
+    ppu: &Ppu,
+    attribute_table: &[Byte],
+    tile_column: usize,
+    tile_row: usize,
+) -> [Byte; 4] {
     let attr_table_idx = tile_row / 4 * 8 + tile_column / 4;
-    let attr_byte = attribute_table[attr_table_idx as usize];
+    let attr_byte = attribute_table[attr_table_idx];
     let palette_idx = match (tile_column % 4 / 2, tile_row % 4 / 2) {
         (0, 0) => attr_byte,
         (1, 0) => attr_byte >> 2,
@@ -238,8 +249,7 @@ fn bg_palette(ppu: &Ppu, attribute_table: &[Byte], tile_column: Byte, tile_row: 
         (_, _) => unreachable!("should not happen, we've already covered all cases"),
     };
     let palette_idx = palette_idx & 0b11;
-
-    let palette_start = 1 + (palette_idx as usize) * 4;
+    let palette_start = 1 + palette_idx.as_usize() * 4;
     [
         ppu.palette_table[0],
         ppu.palette_table[palette_start],
@@ -249,9 +259,9 @@ fn bg_palette(ppu: &Ppu, attribute_table: &[Byte], tile_column: Byte, tile_row: 
 }
 
 fn sprite_palette(ppu: &Ppu, palette_idx: Byte) -> MetaTile {
-    let start = palette_idx as usize * 4 + 0x11;
+    let start = palette_idx.as_usize() * 4 + 0x11;
     [
-        0,
+        Byte::default(),
         ppu.palette_table[start],
         ppu.palette_table[start + 1],
         ppu.palette_table[start + 2],

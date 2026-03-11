@@ -2,7 +2,7 @@ use crate::Byte;
 use crate::utils::NthBit;
 
 const OAM_DATA_SIZE: usize = 64;
-const SPRITE_DATA_SIZE: Byte = std::mem::size_of::<SpriteData>() as Byte;
+const SPRITE_DATA_SIZE: usize = size_of::<SpriteData>();
 
 /// Internal memory to keep state of sprites (Object Attribute Memory)
 #[derive(Debug)]
@@ -20,19 +20,20 @@ pub struct SpriteData {
 }
 
 impl SpriteData {
+    // TODO: Revise if we want to return usize here
     pub fn x_pos(&self, x_offset: usize) -> usize {
         if self.flip_horizontally() {
-            self.x as usize + 7 - x_offset
+            self.x.as_usize() + 7 - x_offset
         } else {
-            self.x as usize + x_offset
+            self.x.as_usize() + x_offset
         }
     }
 
     pub fn y_pos(&self, y_offset: usize) -> usize {
         if self.flip_vertically() {
-            self.y as usize + 7 - y_offset
+            self.y.as_usize() + 7 - y_offset
         } else {
-            self.y as usize + y_offset
+            self.y.as_usize() + y_offset
         }
     }
 
@@ -69,8 +70,8 @@ impl Default for Oam {
 
 impl Oam {
     pub fn read(&self) -> Byte {
-        let sprite_data = &self.sprites[self.address.div_euclid(SPRITE_DATA_SIZE) as usize];
-        let sprite_data_index = self.address % SPRITE_DATA_SIZE;
+        let sprite_data = &self.sprites[self.address.as_usize().div_euclid(SPRITE_DATA_SIZE)];
+        let sprite_data_index = self.address.as_usize() % SPRITE_DATA_SIZE;
 
         match sprite_data_index {
             0 => sprite_data.y,
@@ -86,8 +87,8 @@ impl Oam {
     }
 
     pub fn write(&mut self, value: Byte) {
-        let sprite_data = &mut self.sprites[self.address.div_euclid(SPRITE_DATA_SIZE) as usize];
-        let sprite_data_index = self.address % SPRITE_DATA_SIZE;
+        let sprite_data = &mut self.sprites[self.address.as_usize().div_euclid(SPRITE_DATA_SIZE)];
+        let sprite_data_index = self.address.as_usize() % SPRITE_DATA_SIZE;
 
         match sprite_data_index {
             0 => sprite_data.y = value,

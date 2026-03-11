@@ -27,6 +27,6 @@ impl Apu {
     }
 
     pub fn status_register(&self) -> Byte {
-        self.flags.bits()
+        self.flags.bits().into()
     }
 }

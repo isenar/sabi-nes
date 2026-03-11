@@ -34,8 +34,8 @@ impl Bus {
         let ppu = Ppu::new(&rom.chr_rom, rom.screen_mirroring);
 
         Bus {
-            cpu_vram: [0; VRAM_SIZE],
-            prg_ram: [0; PRG_RAM_SIZE],
+            cpu_vram: [Byte::default(); VRAM_SIZE],
+            prg_ram: [Byte::default(); PRG_RAM_SIZE],
             rom,
             ppu,
             apu: Apu::default(),
@@ -45,8 +45,8 @@ impl Bus {
         }
     }
 
-    pub fn tick(&mut self, cycles: Byte) -> Result<()> {
-        self.cycles += cycles as usize;
+    pub fn tick(&mut self, cycles: usize) -> Result<()> {
+        self.cycles += cycles;
 
         let nmi_before = self.ppu.nmi_interrupt;
         let nmi_after = self.ppu.tick(cycles * 3);
@@ -118,9 +118,9 @@ impl Memory for Bus {
             0x400e => self.apu.noise_channel.mode_and_period,
             0x400f => self.apu.noise_channel.len_counter_and_env_restart,
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
-            0x4015 => self.apu.flags.bits(),
+            0x4015 => self.apu.flags.bits().into(),
             0x4016 => self.joypad.read(),
-            0x4017 => 0, // TODO: Frame Counter impl
+            0x4017 => 0.into(), // TODO: Frame Counter impl
             PRG_RAM_START..=PRG_RAM_END => {
                 let index: usize = (addr - PRG_RAM_START).into(); // TODO
                 self.prg_ram[index]
@@ -132,7 +132,7 @@ impl Memory for Bus {
             }
             _ => {
                 debug!("Ignored attempt to read address ${addr:0X}");
-                0
+                0.into()
             }
         })
     }
@@ -177,8 +177,8 @@ impl Memory for Bus {
             0x4012 => self.apu.dmc.sample_address = value,
             0x4013 => self.apu.dmc.sample_length = value,
             0x4014 => {
-                let mut buffer = [0; 256];
-                let hi = (value as u16) << 8;
+                let mut buffer = [Byte::default(); 256];
+                let hi = (value.as_word()) << 8;
                 // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
                 // for now we'll use the good old for loop
                 for (offset, byte) in buffer.iter_mut().enumerate() {
@@ -221,8 +221,8 @@ mod tests {
 
     fn test_rom() -> Rom {
         Rom {
-            prg_rom: vec![0x10; PRG_ROM_BANK_SIZE],
-            chr_rom: vec![0x20; CHR_ROM_BANK_SIZE],
+            prg_rom: vec![0x10.into(); PRG_ROM_BANK_SIZE],
+            chr_rom: vec![0x20.into(); CHR_ROM_BANK_SIZE],
             mapper: Box::new(Nrom128 {}),
             screen_mirroring: MirroringType::Horizontal,
         }
@@ -232,29 +232,31 @@ mod tests {
     fn write_to_ram() {
         let mut bus = test_bus();
         let address = Address::new(0x0012);
-        bus.write_byte(address, 0xaa)
+        let byte = 0xaa.into();
+        bus.write_byte(address, byte)
             .expect("Failed to write to RAM");
 
-        assert_matches!(bus.read_byte(address), Ok(0xaa));
+        assert_eq!(bus.read_byte(address).unwrap(), byte);
     }
 
     #[test]
     fn write_to_ram_with_mirroring() {
         let mut bus = test_bus();
         let address = Address::new(0x1eff);
-        bus.write_byte(address, 0xaa)
+        let byte = 0xaa.into();
+        bus.write_byte(address, byte)
             .expect("Failed to write to RAM");
 
-        assert_matches!(bus.read_byte(address), Ok(0xaa));
+        assert_eq!(bus.read_byte(address).unwrap(), byte);
         // 0x1eff truncated to 11 bits == 0x06ff
-        assert_matches!(bus.read_byte(Address::new(0x06ff)), Ok(0xaa));
+        assert_eq!(bus.read_byte(Address::new(0x06ff)).unwrap(), byte);
     }
 
     #[test]
     fn read_from_cartridge_rom() {
         let mut bus = test_bus();
 
-        assert_matches!(bus.read_byte(Address::new(0x9000)), Ok(0x10));
+        assert_eq!(bus.read_byte(Address::new(0x9000)).unwrap(), 0x10);
     }
 
     #[test]
@@ -263,6 +265,6 @@ mod tests {
 
         // NROM doesn't have writable registers, but the write should succeed
         // (mapper's default write implementation does nothing)
-        assert_matches!(bus.write_byte(Address::new(0x9000), 0xef), Ok(()));
+        assert_matches!(bus.write_byte(Address::new(0x9000), 0xef.into()), Ok(()));
     }
 }

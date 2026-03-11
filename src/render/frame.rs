@@ -1,9 +1,8 @@
-use crate::Byte;
 use crate::render::Colour;
 
 #[derive(Debug)]
 pub struct Frame {
-    pub pixel_data: [Byte; Self::WIDTH * Self::HEIGHT * 3],
+    pub pixel_data: [u8; Self::WIDTH * Self::HEIGHT * 3],
     /// Track which pixels have non-transparent background (for sprite priority)
     background_mask: [bool; Self::WIDTH * Self::HEIGHT],
 }
@@ -25,9 +24,9 @@ impl Frame {
         let base = y * 3 * Self::WIDTH + x * 3;
 
         if base + 2 < self.pixel_data.len() {
-            self.pixel_data[base] = rgb.0;
-            self.pixel_data[base + 1] = rgb.1;
-            self.pixel_data[base + 2] = rgb.2;
+            self.pixel_data[base] = rgb.0.value();
+            self.pixel_data[base + 1] = rgb.1.value();
+            self.pixel_data[base + 2] = rgb.2.value();
         }
     }
 

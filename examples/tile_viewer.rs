@@ -25,10 +25,10 @@ fn show_tiles(chr_rom: &[Byte], bank: usize) -> Result<Frame> {
             let mut lower = tile[y + 8];
 
             for x in (0..=7).rev() {
-                let value = ((1 & upper) << 1) | (1 & lower);
+                let value = ((upper & 1) << 1) | (lower & 1);
                 upper >>= 1;
                 lower >>= 1;
-                let colour = match value {
+                let colour = match value.value() {
                     0 => SYSTEM_PALETTE[0x02],
                     1 => SYSTEM_PALETTE[0x23],
                     2 => SYSTEM_PALETTE[0x27],

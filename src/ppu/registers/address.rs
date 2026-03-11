@@ -11,8 +11,8 @@ pub struct AddressRegister {
 impl Default for AddressRegister {
     fn default() -> Self {
         Self {
-            high: 0,
-            low: 0,
+            high: Byte::default(),
+            low: Byte::default(),
             hi_ptr: true,
         }
     }
@@ -32,7 +32,7 @@ impl AddressRegister {
 
     pub fn increment(&mut self, increment: Byte) {
         let prev_low = self.low;
-        self.low = self.low.wrapping_add(increment);
+        self.low = self.low.wrapping_add(increment.value());
 
         if prev_low > self.low {
             self.high = self.high.wrapping_add(1);
@@ -42,16 +42,17 @@ impl AddressRegister {
     }
 
     pub fn get(&self) -> Address {
-        Address::new(((self.high as u16) << 8) | self.low as u16)
+        Address::new(((self.high.as_word()) << 8) | self.low.as_word())
     }
 
     pub fn reset_latch(&mut self) {
         self.hi_ptr = true;
     }
 
+    // TODO: Should be word! Byte should implement a method for truncated value from word
     fn set(&mut self, data: Address) {
-        self.high = (data.value() >> 8) as Byte;
-        self.low = (data.value() & 0xff) as Byte;
+        self.high = Byte::new((data.value() >> 8) as u8);
+        self.low = Byte::new((data.value() & 0xff) as u8);
     }
 
     fn mirror_down(&mut self) {
@@ -68,11 +69,11 @@ mod tests {
     #[test]
     fn single_write_fills_high_byte() {
         let mut addr_reg = AddressRegister::default();
-        addr_reg.update(0x01);
+        addr_reg.update(0x01.into());
 
         let expected = AddressRegister {
-            high: 0x01,
-            low: 0x00,
+            high: 0x01.into(),
+            low: 0x00.into(),
             hi_ptr: false,
         };
 
@@ -83,12 +84,12 @@ mod tests {
     #[test]
     fn double_write_fills_both_bites() {
         let mut addr_reg = AddressRegister::default();
-        addr_reg.update(0x12);
-        addr_reg.update(0x34);
+        addr_reg.update(0x12.into());
+        addr_reg.update(0x34.into());
 
         let expected = AddressRegister {
-            high: 0x12,
-            low: 0x34,
+            high: 0x12.into(),
+            low: 0x34.into(),
             hi_ptr: true,
         };
 
@@ -99,15 +100,15 @@ mod tests {
     #[test]
     fn multiple_writes_store_only_two_last_values() {
         let mut addr_reg = AddressRegister::default();
-        addr_reg.update(0x01);
-        addr_reg.update(0x12);
-        addr_reg.update(0x02);
-        addr_reg.update(0x23);
-        addr_reg.update(0x2f);
+        addr_reg.update(0x01.into());
+        addr_reg.update(0x12.into());
+        addr_reg.update(0x02.into());
+        addr_reg.update(0x23.into());
+        addr_reg.update(0x2f.into());
 
         let expected = AddressRegister {
-            high: 0x2f,
-            low: 0x23,
+            high: 0x2f.into(),
+            low: 0x23.into(),
             hi_ptr: false,
         };
 
@@ -117,11 +118,11 @@ mod tests {
     #[test]
     fn write_with_mirroring() {
         let mut addr_reg = AddressRegister::default();
-        addr_reg.update(0x4f);
+        addr_reg.update(0x4f.into());
 
         let expected = AddressRegister {
-            high: 0x0f,
-            low: 0x00,
+            high: 0x0f.into(),
+            low: 0x00.into(),
             hi_ptr: false,
         };
 

@@ -23,8 +23,8 @@ impl TriangleChannel {
     }
 
     pub fn timer(&self) -> u16 {
-        let timer_high = (self.length_and_timer_high & 0b0000_0111) as u16;
-        let timer_low = self.timer_low as u16;
+        let timer_high = (self.length_and_timer_high & 0b0000_0111).as_word();
+        let timer_low = self.timer_low.as_word();
 
         (timer_high << 8) | timer_low
     }
@@ -41,23 +41,23 @@ mod tests {
     #[test]
     fn linear_counter_data() {
         let channel = TriangleChannel {
-            linear_counter: 0b1011_0100,
+            linear_counter: 0b1011_0100.into(),
             ..TriangleChannel::default()
         };
 
         assert!(channel.is_linear_counter_enabled());
-        assert_eq!(0b0011_0100, channel.counter_reload());
+        assert_eq!(channel.counter_reload(), 0b0011_0100);
     }
 
     #[test]
     fn timer_data() {
         let channel = TriangleChannel {
-            timer_low: 0b1101_1011,
-            length_and_timer_high: 0b1011_0011,
+            timer_low: Byte::new(0b1101_1011),
+            length_and_timer_high: Byte::new(0b1011_0011),
             ..TriangleChannel::default()
         };
 
-        assert_eq!(0b0001_0110, channel.length_counter_load());
-        assert_eq!(0b0011_1101_1011, channel.timer());
+        assert_eq!(channel.length_counter_load(), 0b0001_0110);
+        assert_eq!(channel.timer(), 0b0011_1101_1011);
     }
 }

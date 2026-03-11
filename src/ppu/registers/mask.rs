@@ -16,7 +16,7 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
-    pub struct MaskRegister: Byte {
+    pub struct MaskRegister: u8 {
         const GREYSCALE                = 0b0000_0001;
         const LEFTMOST_8PXL_BACKGROUND = 0b0000_0010;
         const LEFTMOST_8PXL_SPRITE     = 0b0000_0100;
@@ -37,7 +37,7 @@ pub enum Color {
 
 impl MaskRegister {
     pub fn update(&mut self, value: Byte) {
-        *self = Self::from_bits_retain(value);
+        *self = Self::from_bits_retain(value.value());
     }
 
     pub fn show_background(&self) -> bool {

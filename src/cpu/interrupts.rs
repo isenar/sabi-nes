@@ -6,11 +6,11 @@ pub struct Interrupt {
     // TODO: use the mask
     #[allow(unused)]
     pub break_flag_mask: Byte,
-    pub cpu_cycles: Byte,
+    pub cpu_cycles: usize,
 }
 
 pub const NMI: Interrupt = Interrupt {
     vector_addr: Address::new(0xfffa),
-    break_flag_mask: 0b0010_0000,
+    break_flag_mask: Byte::new(0b0010_0000),
     cpu_cycles: 2,
 };

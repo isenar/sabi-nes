@@ -51,12 +51,12 @@ pub struct Mmc1 {
 impl Mmc1 {
     pub fn new(prg_rom_banks: usize, chr_rom_banks: usize) -> Self {
         Self {
-            shift_register: 0x10, // Bit 5 set indicates empty
+            shift_register: Byte::new(0x10), // Bit 5 set indicates empty
             shift_count: 0,
-            control: 0x0C, // Default: last bank fixed, 8KB CHR mode
-            chr_bank_0: 0,
-            chr_bank_1: 0,
-            prg_bank: 0,
+            control: Byte::new(0x0C), // Default: last bank fixed, 8KB CHR mode
+            chr_bank_0: Byte::default(),
+            chr_bank_1: Byte::default(),
+            prg_bank: Byte::default(),
             prg_rom_banks,
             chr_rom_banks,
         }
@@ -67,7 +67,7 @@ impl Mmc1 {
     fn write_register(&mut self, address: Address, value: Byte) {
         // Reset if bit 7 is set
         if value & 0x80 != 0 {
-            self.shift_register = 0x10;
+            self.shift_register = 0x10.into();
             self.shift_count = 0;
             self.control |= 0x0C; // Set to default mode
             return;
@@ -96,7 +96,7 @@ impl Mmc1 {
             }
 
             // Reset shift register
-            self.shift_register = 0x10;
+            self.shift_register = Byte::new(0x10);
             self.shift_count = 0;
         }
     }
@@ -104,9 +104,9 @@ impl Mmc1 {
     /// Map PRG ROM address (0-based offset 0x0000-0x7FFF from CPU $8000-$FFFF)
     fn map_prg_address(&self, address: Address) -> usize {
         let bank_mode = (self.control >> 2) & 0b11;
-        let prg_bank_num = (self.prg_bank & 0x0F) as usize;
+        let prg_bank_num = (self.prg_bank & 0x0F).as_usize();
 
-        match bank_mode {
+        match bank_mode.value() {
             0 | 1 => {
                 // 32KB mode: ignore low bit of bank number
                 let bank = (prg_bank_num >> 1) % (self.prg_rom_banks / 2);
@@ -145,19 +145,19 @@ impl Mmc1 {
 
         let chr_mode = (self.control >> 4) & 1;
 
-        match chr_mode {
+        match chr_mode.value() {
             0 => {
                 // 8KB mode: use CHR bank 0, ignore low bit
-                let bank = ((self.chr_bank_0 >> 1) as usize) % (self.chr_rom_banks / 2);
+                let bank = ((self.chr_bank_0 >> 1).as_usize()) % (self.chr_rom_banks / 2);
                 bank * 0x2000 + address.as_usize() // TODO
             }
             1 => {
                 // 4KB mode: two separate 4KB banks
                 if address < 0x1000 {
-                    let bank = (self.chr_bank_0 as usize) % self.chr_rom_banks;
+                    let bank = self.chr_bank_0.as_usize() % self.chr_rom_banks;
                     bank * 0x1000 + (address.as_usize() & 0x0FFF) // TODO
                 } else {
-                    let bank = (self.chr_bank_1 as usize) % self.chr_rom_banks;
+                    let bank = self.chr_bank_1.as_usize() % self.chr_rom_banks;
                     bank * 0x1000 + (address.as_usize() & 0x0FFF) // TODO
                 }
             }

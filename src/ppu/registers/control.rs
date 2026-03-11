@@ -22,7 +22,7 @@ const NAMETABLE_BASE_ADDR: Address = Address::new(0x2000);
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
-    pub struct ControlRegister: Byte {
+    pub struct ControlRegister: u8 {
         const NAMETABLE1              = 0b0000_0001;
         const NAMETABLE2              = 0b0000_0010;
         const VRAM_ADDR_INCREMENT     = 0b0000_0100;
@@ -36,7 +36,7 @@ bitflags! {
 
 impl ControlRegister {
     pub fn update(&mut self, value: Byte) {
-        *self = Self::from_bits_truncate(value);
+        *self = Self::from_bits_truncate(value.value()); // TODO: lol
     }
 
     pub fn vram_addr_increment(&self) -> Byte {
@@ -45,6 +45,7 @@ impl ControlRegister {
         } else {
             1
         }
+        .into()
     }
 
     pub fn sprite_pattern_address(&self) -> Address {
@@ -72,13 +73,13 @@ mod tests {
     fn vram_addr_increment_disabled() {
         let register = ControlRegister::empty();
 
-        assert_eq!(1, register.vram_addr_increment());
+        assert_eq!(register.vram_addr_increment(), 1);
     }
 
     #[test]
     fn vram_addr_increment_enabled() {
         let register = ControlRegister::VRAM_ADDR_INCREMENT;
 
-        assert_eq!(32, register.vram_addr_increment());
+        assert_eq!(register.vram_addr_increment(), 32);
     }
 }

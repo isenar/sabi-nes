@@ -7,23 +7,23 @@ use std::collections::HashMap;
 pub struct Opcode {
     pub code: Byte,
     pub name: &'static str,
-    pub bytes: Byte,
-    pub cycles: Byte,
+    pub bytes: usize,
+    pub cycles: usize,
     pub addressing_mode: AddressingMode,
     pub needs_page_cross_check: bool,
 }
 
 impl Opcode {
     pub const fn new(
-        code: Byte,
+        code: u8,
         name: &'static str,
-        bytes: Byte,
-        cycles: Byte,
+        bytes: usize,
+        cycles: usize,
         addressing_mode: AddressingMode,
         needs_page_cross_check: bool,
     ) -> Self {
         Self {
-            code,
+            code: Byte::new(code),
             name,
             bytes,
             cycles,
@@ -32,7 +32,7 @@ impl Opcode {
         }
     }
 
-    pub const fn length(&self) -> Byte {
+    pub const fn length(&self) -> usize {
         self.bytes - 1
     }
 }

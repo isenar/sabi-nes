@@ -37,22 +37,22 @@ mod tests {
     #[test]
     fn flags_and_rate_data() {
         let dmc = Dmc {
-            flags_and_rate: 0b1010_0011,
+            flags_and_rate: Byte::new(0b1010_0011),
             ..Dmc::default()
         };
 
         assert!(dmc.is_irq_enabled());
         assert!(!dmc.is_looping());
-        assert_eq!(0b0011, dmc.rate_index());
+        assert_eq!(dmc.rate_index(), 0b0011);
     }
 
     #[test]
     fn direct_load_data() {
         let dmc = Dmc {
-            direct_load: 0b1010_0101,
+            direct_load: Byte::new(0b1010_0101),
             ..Dmc::default()
         };
 
-        assert_eq!(0b0010_0101, dmc.direct_load());
+        assert_eq!(dmc.direct_load(), 0b0010_0101);
     }
 }

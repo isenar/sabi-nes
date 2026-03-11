@@ -3,11 +3,11 @@ use once_cell::sync::Lazy;
 use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
 use sabi_nes::cpu::AddressingMode;
 use sabi_nes::cpu::opcodes::{OPCODES_MAPPING, Opcode};
-use sabi_nes::{Address, Byte, Cpu, Memory, Result};
+use sabi_nes::{Address, Cpu, Memory, Result};
 
-pub static TEST_ROM: Lazy<Vec<Byte>> = Lazy::new(|| {
+pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
     let mut rom = vec![];
-    let header = vec![
+    let header = [
         0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x00,
     ];
@@ -80,9 +80,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
     let value = cpu.read_byte((cpu.program_counter + 1).into())?;
     let address: Address = cpu.read_word((cpu.program_counter + 1).into())?.into();
-    let target_address: Address = cpu
-        .operand_address(opcode, (cpu.program_counter + 1).into())?
-        .into();
+    let target_address = cpu.operand_address(opcode, (cpu.program_counter + 1).into())?;
 
     let opcode_asm_args = match opcode.addressing_mode {
         AddressingMode::Immediate => {
@@ -115,19 +113,19 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             }
         }
         AddressingMode::AbsoluteX => {
-            let incremented = address.wrapping_add(cpu.register_x);
+            let incremented = address.wrapping_add(cpu.register_x.value());
             let value = cpu.read_byte(incremented)?;
 
             format!("${:04X},X @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::AbsoluteY => {
-            let incremented = address.wrapping_add(cpu.register_y);
+            let incremented = address.wrapping_add(cpu.register_y.value());
             let value = cpu.read_byte(incremented)?;
 
             format!("${:04X},Y @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::IndirectX => {
-            let incremented = value.wrapping_add(cpu.register_x);
+            let incremented = value.wrapping_add(cpu.register_x.value());
             let target_cell_value = cpu.read_byte(target_address)?;
 
             format!(
@@ -136,7 +134,7 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             )
         }
         AddressingMode::IndirectY => {
-            let address = target_address.wrapping_sub(cpu.register_y);
+            let address = target_address.wrapping_sub(cpu.register_y.value());
             let target_cell_value = cpu.read_byte(target_address)?;
 
             format!(
@@ -147,21 +145,20 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
         AddressingMode::Implied => String::new(),
         AddressingMode::Accumulator => "A".into(),
         AddressingMode::Relative => {
-            let offset = value as i8;
-            let jmp_addr = cpu
+            let offset = value.value() as i8; // TODO: lol
+            let jump_address = cpu
                 .program_counter
                 .wrapping_add(2)
                 .wrapping_add(offset as u16);
 
-            format!("${:04X}", jmp_addr)
+            format!("${jump_address:04X}")
         }
         AddressingMode::Indirect => {
-            format!("(${:04X}) = {:04X}", address, target_address)
+            format!("(${address:04X}) = {target_address:04X}")
         }
     };
-    let opcode_asm = format!("{} {}", opcode.name, opcode_asm_args);
 
-    Ok(opcode_asm)
+    Ok(format!("{} {opcode_asm_args}", opcode.name))
 }
 
 #[cfg(test)]
@@ -174,17 +171,17 @@ mod tests {
     fn trace_format() -> Result<()> {
         let rom = Rom::from_bytes(&TEST_ROM)?;
         let mut bus = Bus::new(rom);
-        bus.write_byte(Address::new(0x64), 0xa2)?;
-        bus.write_byte(Address::new(0x65), 0x01)?;
-        bus.write_byte(Address::new(0x66), 0xca)?;
-        bus.write_byte(Address::new(0x67), 0x88)?;
-        bus.write_byte(Address::new(0x68), 0x00)?;
+        bus.write_byte(Address::new(0x64), 0xa2.into())?;
+        bus.write_byte(Address::new(0x65), 0x01.into())?;
+        bus.write_byte(Address::new(0x66), 0xca.into())?;
+        bus.write_byte(Address::new(0x67), 0x88.into())?;
+        bus.write_byte(Address::new(0x68), 0x00.into())?;
 
         let mut cpu = Cpu::new(bus);
         cpu.program_counter = 0x64;
-        cpu.accumulator = 1;
-        cpu.register_x = 2;
-        cpu.register_y = 3;
+        cpu.accumulator = 1.into();
+        cpu.register_x = 2.into();
+        cpu.register_y = 3.into();
 
         let mut traces = vec![];
         loop {
@@ -211,19 +208,19 @@ mod tests {
         let mut bus = Bus::new(rom);
 
         // ORA ($33),Y
-        bus.write_byte(Address::new(0x64), 0x11)?;
-        bus.write_byte(Address::new(0x65), 0x33)?;
+        bus.write_byte(Address::new(0x64), 0x11.into())?;
+        bus.write_byte(Address::new(0x65), 0x33.into())?;
 
         //data
-        bus.write_byte(Address::new(0x33), 0x00)?;
-        bus.write_byte(Address::new(0x34), 0x04)?;
+        bus.write_byte(Address::new(0x33), 0x00.into())?;
+        bus.write_byte(Address::new(0x34), 0x04.into())?;
 
         //target cell
-        bus.write_byte(Address::new(0x0405), 0xaa)?;
+        bus.write_byte(Address::new(0x0405), 0xaa.into())?;
 
         let mut cpu = Cpu::new(bus);
         cpu.program_counter = 0x64;
-        cpu.register_y = 5;
+        cpu.register_y = 5.into();
 
         let mut traces = vec![];
         loop {

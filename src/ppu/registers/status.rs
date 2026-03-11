@@ -19,12 +19,11 @@
 //!            line); cleared after reading $2002 and at dot 1 of the
 //!            pre-render line.
 
-use crate::Byte;
 use bitflags::bitflags;
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
-    pub struct StatusRegister: Byte {
+    pub struct StatusRegister: u8 {
         const UNUSED1         = 0b0000_0001;
         const UNUSED2         = 0b0000_0010;
         const UNUSED3         = 0b0000_0100;

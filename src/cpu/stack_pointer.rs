@@ -2,7 +2,7 @@ use crate::{Address, Byte};
 use std::fmt::{Debug, Display, Formatter};
 
 const STACK_BEGIN_ADDR: Address = Address::new(0x0100); // stack is located at page $01 (0x100 - 0x01ff)
-const STACK_RESET: Byte = 0xfd;
+const STACK_RESET: Byte = Byte::new(0xfd);
 
 /// Stack Pointer (or S register) is a byte-wide pointer which stores the stack
 /// index into which the next stack element will be inserted
@@ -32,7 +32,7 @@ impl StackPointer {
     }
 
     pub fn address(&self) -> Address {
-        STACK_BEGIN_ADDR + self.0 as u16
+        STACK_BEGIN_ADDR + self.0
     }
 
     pub fn set(&mut self, value: Byte) {

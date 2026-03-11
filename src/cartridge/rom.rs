@@ -7,11 +7,11 @@ use log::debug;
 use std::path::Path;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
-const NES_TAG: [Byte; 4] = [0x4e, 0x45, 0x53, 0x1a];
+const NES_TAG: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a]; // TODO
 
 bitflags! {
     #[derive(Debug, Copy, Clone)]
-    struct ControlByte1: Byte {
+    struct ControlByte1: u8 {
         const MIRRORING               = 0b0000_0001; // 1 for vertical, 0 for horizontal
         const BATTERY_BACKED_RAM      = 0b0000_0010;
         const HAS_TRAINER             = 0b0000_0100;
@@ -25,13 +25,13 @@ bitflags! {
 
 impl ControlByte1 {
     pub fn mapper_bits_lo(&self) -> Byte {
-        self.bits() >> 4
+        Byte::new(self.bits()) >> 4
     }
 }
 
 bitflags! {
     #[derive(Debug, Copy, Clone)]
-    struct ControlByte2: Byte {
+    struct ControlByte2: u8 {
         const INES_V1_FIRST   = 0b0000_0001; // 0 for iNES v1 format
         const INES_V1_SECOND  = 0b0000_0010; // 0 for iNES v1 format
         const INES_FMT_FIRST  = 0b0000_0100; // if INES_FMT bits are == 10, then it's NES2.0 format,
@@ -47,7 +47,7 @@ bitflags! {
 
 impl ControlByte2 {
     pub fn mapper_bits_hi(&self) -> Byte {
-        (*self & Self::MAPPER_MASK).bits()
+        (*self & Self::MAPPER_MASK).bits().into()
     }
 }
 
@@ -64,10 +64,10 @@ struct RomHeader {
     pub prg_ram_units: usize,
 }
 
-impl TryFrom<&[Byte]> for RomHeader {
+impl TryFrom<&[u8]> for RomHeader {
     type Error = anyhow::Error;
 
-    fn try_from(data: &[Byte]) -> Result<Self> {
+    fn try_from(data: &[u8]) -> Result<Self> {
         Self::validate(data)?;
 
         Ok(Self {
@@ -81,7 +81,7 @@ impl TryFrom<&[Byte]> for RomHeader {
 }
 
 impl RomHeader {
-    fn validate(data: &[Byte]) -> Result<()> {
+    fn validate(data: &[u8]) -> Result<()> {
         if data[0..4] != NES_TAG {
             bail!("File is not an iNES format - missing 'NES' tag");
         }
@@ -102,7 +102,7 @@ impl RomHeader {
     fn mapper(&self) -> Result<Box<dyn Mapper>> {
         let ines_mapper_id =
             self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi();
-        Ok(match ines_mapper_id {
+        Ok(match ines_mapper_id.value() {
             0 => {
                 debug!("NROM (id=000) mapper detected");
                 if self.prg_rom_banks == 1 {
@@ -136,7 +136,7 @@ impl Rom {
         Self::from_bytes(&game_bytes)
     }
 
-    pub fn from_bytes(data: &[Byte]) -> Result<Self> {
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let header: RomHeader = data
             .get(0..16)
             .ok_or_else(|| anyhow!("Failed to parse first 16 bytes for header"))?
@@ -155,14 +155,18 @@ impl Rom {
         let prg_rom_start = 16 + skip_trainer as usize * 512;
         let chr_rom_start = prg_rom_start + prg_rom_size;
 
-        let prg_rom: Vec<_> = data
+        let prg_rom = data
             .get(prg_rom_start..(prg_rom_start + prg_rom_size))
             .ok_or_else(|| anyhow!("Failed to retrieve PRG ROM data - not enough bytes"))?
-            .into();
-        let chr_rom: Vec<_> = data
+            .iter()
+            .map(|&byte| Byte::new(byte))
+            .collect();
+        let chr_rom = data
             .get(chr_rom_start..(chr_rom_start + chr_rom_size))
             .ok_or_else(|| anyhow!("Failed to retrieve CHR ROM data - not enough bytes"))?
-            .into();
+            .iter()
+            .map(|&byte| Byte::new(byte))
+            .collect();
 
         Ok(Self {
             prg_rom,

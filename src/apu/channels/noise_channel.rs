@@ -46,23 +46,23 @@ mod tests {
     #[test]
     fn volume_data() {
         let channel = NoiseChannel {
-            volume: 0b1011_1010,
+            volume: Byte::new(0b1011_1010),
             ..NoiseChannel::default()
         };
 
         assert!(channel.is_length_counter_halted());
         assert!(channel.is_constant_volume());
-        assert_eq!(0b1010, channel.volume_divider_period());
+        assert_eq!(channel.volume_divider_period(), 0b1010);
     }
 
     #[test]
     fn mode_and_period_data() {
         let channel = NoiseChannel {
-            mode_and_period: 0b1010_0011,
+            mode_and_period: Byte::new(0b1010_0011),
             ..NoiseChannel::default()
         };
 
         assert_eq!(NoiseMode::Short, channel.mode());
-        assert_eq!(0b0011, channel.timer_period());
+        assert_eq!(channel.timer_period(), 0b0011);
     }
 }
