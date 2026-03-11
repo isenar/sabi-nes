@@ -42,7 +42,7 @@ impl AddressRegister {
     }
 
     pub fn get(&self) -> Address {
-        ((self.high as Address) << 8) | self.low as Address
+        Address::new(((self.high as u16) << 8) | self.low as u16)
     }
 
     pub fn reset_latch(&mut self) {
@@ -50,8 +50,8 @@ impl AddressRegister {
     }
 
     fn set(&mut self, data: Address) {
-        self.high = (data >> 8) as Byte;
-        self.low = (data & 0xff) as Byte;
+        self.high = (data.value() >> 8) as Byte;
+        self.low = (data.value() & 0xff) as Byte;
     }
 
     fn mirror_down(&mut self) {
@@ -77,7 +77,7 @@ mod tests {
         };
 
         assert_eq!(expected, addr_reg);
-        assert_eq!(0x0100, addr_reg.get());
+        assert_eq!(addr_reg.get(), 0x0100);
     }
 
     #[test]
@@ -93,7 +93,7 @@ mod tests {
         };
 
         assert_eq!(expected, addr_reg);
-        assert_eq!(0x1234, addr_reg.get());
+        assert_eq!(addr_reg.get(), 0x1234);
     }
 
     #[test]

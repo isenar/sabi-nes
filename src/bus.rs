@@ -1,23 +1,22 @@
 use crate::apu::Apu;
 use crate::cartridge::Rom;
-use crate::cpu::Address;
 use crate::input::joypad::Joypad;
 use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
-use crate::{Byte, Memory, Result};
+use crate::{Address, Byte, Memory, Result};
 use anyhow::bail;
 use log::debug;
 
 const VRAM_SIZE: usize = 2048;
 const PRG_RAM_SIZE: usize = 8192;
-const RAM: Address = 0x0000;
-const RAM_MIRRORS_END: Address = 0x1fff;
-const PPU_REGISTERS_MIRRORS_START: Address = 0x2008;
-const PPU_REGISTERS_MIRRORS_END: Address = 0x3fff;
-const PRG_RAM_START: Address = 0x6000;
-const PRG_RAM_END: Address = 0x7fff;
-const ROM_START: Address = 0x8000;
-const ROM_END: Address = 0xffff;
+const RAM: u16 = 0x0000;
+const RAM_MIRRORS_END: u16 = 0x1fff;
+const PPU_REGISTERS_MIRRORS_START: u16 = 0x2008;
+const PPU_REGISTERS_MIRRORS_END: u16 = 0x3fff;
+const PRG_RAM_START: u16 = 0x6000;
+const PRG_RAM_END: u16 = 0x7fff;
+const ROM_START: u16 = 0x8000;
+const ROM_END: u16 = 0xffff;
 
 pub struct Bus {
     cpu_vram: [Byte; VRAM_SIZE],
@@ -84,10 +83,10 @@ impl Bus {
 }
 
 impl Memory for Bus {
-    fn read(&mut self, addr: Address) -> Result<Byte> {
-        Ok(match addr {
+    fn read_byte(&mut self, addr: Address) -> Result<Byte> {
+        Ok(match addr.value() {
             RAM..=RAM_MIRRORS_END => {
-                let mirror_base_addr = addr.mirror_cpu_vram_addr() as usize;
+                let mirror_base_addr: usize = addr.mirror_cpu_vram_addr().into();
                 self.cpu_vram[mirror_base_addr]
             }
             0x2000 => bail!("Attempted to read from write-only PPU control register"),
@@ -100,7 +99,7 @@ impl Memory for Bus {
             0x2007 => self.ppu.read()?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = addr.mirror_ppu_registers_addr();
-                self.read(mirror_base_addr)?
+                self.read_byte(mirror_base_addr)?
             }
             0x4000 => self.apu.square_channel1.volume,
             0x4001 => self.apu.square_channel1.sweep,
@@ -123,7 +122,7 @@ impl Memory for Bus {
             0x4016 => self.joypad.read(),
             0x4017 => 0, // TODO: Frame Counter impl
             PRG_RAM_START..=PRG_RAM_END => {
-                let index = (addr - PRG_RAM_START) as usize;
+                let index: usize = (addr - PRG_RAM_START).into(); // TODO
                 self.prg_ram[index]
             }
             ROM_START..=ROM_END => {
@@ -138,10 +137,10 @@ impl Memory for Bus {
         })
     }
 
-    fn write(&mut self, addr: Address, value: Byte) -> Result<()> {
-        match addr {
+    fn write_byte(&mut self, address: Address, value: Byte) -> Result<()> {
+        match address.value() {
             RAM..=RAM_MIRRORS_END => {
-                let mirror_base_addr = addr.mirror_cpu_vram_addr() as usize;
+                let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
                 self.cpu_vram[mirror_base_addr] = value;
             }
             0x2000 => self.ppu.write_to_control_register(value),
@@ -153,9 +152,9 @@ impl Memory for Bus {
             0x2006 => self.ppu.write_to_addr_register(value),
             0x2007 => self.ppu.write(value)?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr.mirror_ppu_registers_addr();
+                let mirror_base_addr = address.mirror_ppu_registers_addr();
 
-                self.write(mirror_base_addr, value)?;
+                self.write_byte(mirror_base_addr, value)?;
             }
             0x4000 => self.apu.square_channel1.volume = value,
             0x4001 => self.apu.square_channel1.sweep = value,
@@ -179,11 +178,12 @@ impl Memory for Bus {
             0x4013 => self.apu.dmc.sample_length = value,
             0x4014 => {
                 let mut buffer = [0; 256];
-                let hi = (value as Address) << 8;
+                let hi = (value as u16) << 8;
                 // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
                 // for now we'll use the good old for loop
                 for (offset, byte) in buffer.iter_mut().enumerate() {
-                    *byte = self.read(hi + offset as Address)?;
+                    let address = Address::new(hi + offset as u16);
+                    *byte = self.read_byte(address)?;
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);
@@ -192,15 +192,15 @@ impl Memory for Bus {
             0x4016 => self.joypad.write(value),
             0x4017 => {} // TODO: Frame Counter impl
             PRG_RAM_START..=PRG_RAM_END => {
-                let index = (addr - PRG_RAM_START) as usize;
+                let index: usize = (address - PRG_RAM_START).into();
                 self.prg_ram[index] = value;
             }
             ROM_START..=ROM_END => {
                 // Allow mapper to handle writes (for mappers with registers like MMC1)
-                self.rom.mapper.write(addr, value);
+                self.rom.mapper.write(address, value);
             }
             _ => {
-                debug!("Ignored attempt to write to address ${addr:0X}");
+                debug!("Ignored attempt to write to address ${address:0X}");
             }
         }
 
@@ -231,26 +231,30 @@ mod tests {
     #[test]
     fn write_to_ram() {
         let mut bus = test_bus();
-        bus.write(0x0012, 0xaa).expect("Failed to write to RAM");
+        let address = Address::new(0x0012);
+        bus.write_byte(address, 0xaa)
+            .expect("Failed to write to RAM");
 
-        assert_matches!(bus.read(0x0012), Ok(0xaa));
+        assert_matches!(bus.read_byte(address), Ok(0xaa));
     }
 
     #[test]
     fn write_to_ram_with_mirroring() {
         let mut bus = test_bus();
-        bus.write(0x1eff, 0xaa).expect("Failed to write to RAM");
+        let address = Address::new(0x1eff);
+        bus.write_byte(address, 0xaa)
+            .expect("Failed to write to RAM");
 
-        assert_matches!(bus.read(0x1eff), Ok(0xaa));
+        assert_matches!(bus.read_byte(address), Ok(0xaa));
         // 0x1eff truncated to 11 bits == 0x06ff
-        assert_matches!(bus.read(0x06ff), Ok(0xaa));
+        assert_matches!(bus.read_byte(Address::new(0x06ff)), Ok(0xaa));
     }
 
     #[test]
     fn read_from_cartridge_rom() {
         let mut bus = test_bus();
 
-        assert_matches!(bus.read(0x9000), Ok(0x10));
+        assert_matches!(bus.read_byte(Address::new(0x9000)), Ok(0x10));
     }
 
     #[test]
@@ -259,6 +263,6 @@ mod tests {
 
         // NROM doesn't have writable registers, but the write should succeed
         // (mapper's default write implementation does nothing)
-        assert_matches!(bus.write(0x9000, 0xef), Ok(()));
+        assert_matches!(bus.write_byte(Address::new(0x9000), 0xef), Ok(()));
     }
 }

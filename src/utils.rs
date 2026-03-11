@@ -34,16 +34,16 @@ impl NthBit for Byte {
 
 impl MirroredAddress for Address {
     fn mirror_cpu_vram_addr(&self) -> Self {
-        self & 0b0000_0111_1111_1111
+        Self::new(self.value() & 0b0000_0111_1111_1111)
     }
 
     fn mirror_ppu_addr(&self) -> Self {
         // PPU internal address mirroring (for VRAM addresses)
-        self & 0b0010_1111_1111_1111
+        Self::new(self.value() & 0b0010_1111_1111_1111)
     }
 
     fn mirror_ppu_registers_addr(&self) -> Self {
         // CPU bus: PPU registers at 0x2000-0x2007 are mirrored every 8 bytes up to 0x3FFF
-        0x2000 + (self & 0b0000_0000_0000_0111)
+        Self::new(0x2000 + (self.value() & 0b0000_0000_0000_0111))
     }
 }

@@ -4,7 +4,7 @@ use crate::Byte;
 pub struct ScrollRegister {
     pub scroll_x: Byte,
     pub scroll_y: Byte,
-    latch: bool,
+    pub(crate) latch: bool,
 }
 
 impl ScrollRegister {

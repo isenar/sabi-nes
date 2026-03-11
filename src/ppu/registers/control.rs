@@ -18,7 +18,7 @@
 use crate::{Address, Byte};
 use bitflags::bitflags;
 
-const NAMETABLE_BASE_ADDR: Address = 0x2000;
+const NAMETABLE_BASE_ADDR: Address = Address::new(0x2000);
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
@@ -29,7 +29,7 @@ bitflags! {
         const SPRITE_PATTERN_ADDR     = 0b0000_1000;
         const BACKROUND_PATTERN_ADDR  = 0b0001_0000;
         const SPRITE_SIZE             = 0b0010_0000;
-        const MASTER_SLAVE_SELECT     = 0b0100_0000;
+        const MASTER_SLAVE_SELECT     = 0b0100_0000; // unused
         const GENERATE_NMI            = 0b1000_0000;
     }
 }
@@ -48,12 +48,13 @@ impl ControlRegister {
     }
 
     pub fn sprite_pattern_address(&self) -> Address {
-        Address::from(self.contains(Self::SPRITE_PATTERN_ADDR)) * 0x1000
+        let address = u16::from(self.contains(Self::SPRITE_PATTERN_ADDR)) * 0x1000;
+        address.into()
     }
 
-    pub const fn name_table_address(&self) -> Address {
-        let address_lower = self.contains(Self::NAMETABLE1) as Address * 0x400;
-        let address_higher = self.contains(Self::NAMETABLE2) as Address * 0x800;
+    pub fn name_table_address(&self) -> Address {
+        let address_lower = self.contains(Self::NAMETABLE1) as u16 * 0x400;
+        let address_higher = self.contains(Self::NAMETABLE2) as u16 * 0x800;
 
         NAMETABLE_BASE_ADDR + address_lower + address_higher
     }

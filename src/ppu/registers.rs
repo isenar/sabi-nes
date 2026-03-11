@@ -96,6 +96,10 @@ impl PpuRegisters {
         self.scroll.scroll_y
     }
 
+    pub fn read_scroll_latch(&self) -> bool {
+        self.scroll.latch
+    }
+
     pub fn set_vblank(&mut self) -> &mut Self {
         self.status.vblank_started();
         self
@@ -125,9 +129,11 @@ impl PpuRegisters {
     }
 
     pub fn background_pattern_address(&self) -> Address {
-        self.control
-            .contains(ControlRegister::BACKROUND_PATTERN_ADDR) as Address
-            * 0x1000
+        (self
+            .control
+            .contains(ControlRegister::BACKROUND_PATTERN_ADDR) as u16
+            * 0x1000)
+            .into()
     }
 
     pub fn increment_vram_address(&mut self) {

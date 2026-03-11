@@ -10,7 +10,7 @@ use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
-use sdl2::render::{Texture, WindowCanvas};
+use sdl2::render::WindowCanvas;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 

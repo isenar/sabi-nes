@@ -14,7 +14,6 @@
 
 use crate::cartridge::mappers::{Mapper, MapperId};
 use crate::{Address, Byte, Result};
-use log::debug;
 
 #[derive(Debug)]
 pub struct Mmc1 {
@@ -84,7 +83,7 @@ impl Mmc1 {
             let register_value = self.shift_register;
 
             // Determine which register based on address
-            match address {
+            match address.value() {
                 0x8000..=0x9FFF => {
                     self.control = register_value;
                 }
@@ -111,25 +110,25 @@ impl Mmc1 {
             0 | 1 => {
                 // 32KB mode: ignore low bit of bank number
                 let bank = (prg_bank_num >> 1) % (self.prg_rom_banks / 2);
-                bank * 0x8000 + address as usize
+                bank * 0x8000 + address.as_usize()
             }
             2 => {
                 // Fix first bank at $8000, switch $C000
                 if address < 0x4000 {
-                    address as usize // First 16KB bank
+                    address.as_usize() // First 16KB bank
                 } else {
                     let bank = prg_bank_num % self.prg_rom_banks;
-                    bank * 0x4000 + (address & 0x3FFF) as usize
+                    bank * 0x4000 + (address.as_usize() & 0x3FFF)
                 }
             }
             3 => {
                 // Switch $8000, fix last bank at $C000
                 if address < 0x4000 {
                     let bank = prg_bank_num % self.prg_rom_banks;
-                    bank * 0x4000 + address as usize
+                    bank * 0x4000 + address.as_usize()
                 } else {
                     let last_bank = self.prg_rom_banks - 1;
-                    last_bank * 0x4000 + (address & 0x3FFF) as usize
+                    last_bank * 0x4000 + (address.as_usize() & 0x3FFF)
                 }
             }
             _ => unreachable!(),
@@ -141,7 +140,7 @@ impl Mmc1 {
     fn map_chr_address(&self, address: Address) -> usize {
         // If no CHR banks (CHR-RAM), just pass through the address
         if self.chr_rom_banks == 0 {
-            return address as usize;
+            return address.as_usize();
         }
 
         let chr_mode = (self.control >> 4) & 1;
@@ -150,16 +149,16 @@ impl Mmc1 {
             0 => {
                 // 8KB mode: use CHR bank 0, ignore low bit
                 let bank = ((self.chr_bank_0 >> 1) as usize) % (self.chr_rom_banks / 2);
-                bank * 0x2000 + address as usize
+                bank * 0x2000 + address.as_usize() // TODO
             }
             1 => {
                 // 4KB mode: two separate 4KB banks
                 if address < 0x1000 {
                     let bank = (self.chr_bank_0 as usize) % self.chr_rom_banks;
-                    bank * 0x1000 + (address & 0x0FFF) as usize
+                    bank * 0x1000 + (address.as_usize() & 0x0FFF) // TODO
                 } else {
                     let bank = (self.chr_bank_1 as usize) % self.chr_rom_banks;
-                    bank * 0x1000 + (address & 0x0FFF) as usize
+                    bank * 0x1000 + (address.as_usize() & 0x0FFF) // TODO
                 }
             }
             _ => unreachable!(),

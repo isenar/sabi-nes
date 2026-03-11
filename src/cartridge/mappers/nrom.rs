@@ -13,11 +13,7 @@ pub type Nrom256 = Nrom<2>;
 
 impl Mapper for Nrom128 {
     fn map_address(&self, address: Address) -> Result<usize> {
-        Ok(if address >= 0x4000 {
-            (address % 0x4000) as usize
-        } else {
-            address as usize
-        })
+        Ok(address.value() as usize % 0x4000) // TODO
     }
 
     /// NROM-128 doesn't have any registers, so we can just return the address as-is
@@ -26,7 +22,7 @@ impl Mapper for Nrom128 {
 
 impl Mapper for Nrom256 {
     fn map_address(&self, address: Address) -> Result<usize> {
-        Ok(address as usize)
+        Ok(address.into())
     }
 
     /// NROM-256 doesn't have any registers, so we can just return the address as-is

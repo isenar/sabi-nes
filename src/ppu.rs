@@ -13,6 +13,12 @@ use anyhow::bail;
 const VRAM_SIZE: usize = 2048;
 const PALETTE_TABLE_SIZE: usize = 64;
 const CHR_RAM_SIZE: usize = 8192;
+const MIRRORS: [Address; 4] = [
+    Address::new(0x3f10),
+    Address::new(0x3f14),
+    Address::new(0x3f18),
+    Address::new(0x3f1c),
+];
 
 #[derive(Debug)]
 pub struct Ppu {
@@ -34,6 +40,9 @@ pub struct Ppu {
     pub nmi_interrupt: NmiStatus,
 
     internal_data_buffer: Byte,
+
+    /// Track scroll values per scanline for mid-frame scroll changes
+    pub scanline_scroll: [(u8, u8); 262], // (scroll_x, scroll_y) for each scanline
 }
 
 impl Ppu {
@@ -55,6 +64,7 @@ impl Ppu {
             scanline: 0,
             nmi_interrupt: NmiStatus::Inactive,
             internal_data_buffer: Byte::default(),
+            scanline_scroll: [(0, 0); 262],
         }
     }
 
@@ -68,6 +78,14 @@ impl Ppu {
 
             self.cycles -= 341;
             self.scanline += 1;
+
+            // Capture scroll at the START of each visible scanline
+            // This is when the PPU actually latches the scroll values for rendering
+            if self.scanline < 240 {
+                let scroll_x = self.registers.read_scroll_x();
+                let scroll_y = self.registers.read_scroll_y();
+                self.scanline_scroll[self.scanline as usize] = (scroll_x, scroll_y);
+            }
 
             if self.scanline == 241 {
                 self.registers.set_vblank().reset_sprite_zero_hit();
@@ -139,28 +157,28 @@ impl Ppu {
     pub fn write(&mut self, value: Byte) -> Result<()> {
         let addr = self.registers.read_address();
 
-        match addr {
+        match addr.value() {
             0x0000..=0x1fff => {
                 // Write to CHR-RAM (writable), ignore if CHR-ROM (read-only)
                 // We detect CHR-RAM by checking if size matches CHR_RAM_SIZE
                 if self.chr_rom.len() == CHR_RAM_SIZE {
-                    self.chr_rom[addr as usize] = value;
+                    self.chr_rom[addr.as_usize()] = value;
                 }
             }
             0x2000..=0x2fff => {
-                let mirrored_addr = self.mirror_vram_addr(addr) as usize;
-                self.vram[mirrored_addr] = value;
+                let mirrorred = self.mirror_vram_addr(addr);
+                self.vram[mirrorred.as_usize()] = value;
             }
-            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({:#x})", addr),
+            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({addr:#x})"),
             0x3f00..=0x3fff => {
-                let mut addr = addr as usize;
+                let mut addr = addr;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
-                if [0x3f10, 0x3f14, 0x3f18, 0x3f1c].contains(&addr) {
-                    addr -= 0x10;
+                if MIRRORS.contains(&addr) {
+                    addr = addr - 0x10; // TODO?
                 }
 
                 let offset_addr = addr - 0x3f00;
-                self.palette_table[offset_addr] = value;
+                self.palette_table[offset_addr.as_usize()] = value;
             }
             0x4000.. => bail!(
                 "Unexpected access to mirrored space on PPU write ({:#x})",
@@ -177,35 +195,32 @@ impl Ppu {
         let addr = self.registers.read_address();
         self.increment_vram_address();
 
-        match addr {
+        match addr.value() {
             0x0000..=0x1fff => {
                 let result = self.internal_data_buffer;
-                self.internal_data_buffer = self.chr_rom[addr as usize];
+                self.internal_data_buffer = self.chr_rom[addr.as_usize()];
 
                 Ok(result)
             }
             0x2000..=0x2fff => {
                 let result = self.internal_data_buffer;
-                let mirrored_addr = self.mirror_vram_addr(addr);
-                self.internal_data_buffer = self.vram[mirrored_addr as usize];
+                let mirrored = self.mirror_vram_addr(addr);
+                self.internal_data_buffer = self.vram[mirrored.as_usize()];
 
                 Ok(result)
             }
-            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({:#x})", addr),
+            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({addr:#x})"),
             0x3f00..=0x3fff => {
-                let mut addr = addr as usize;
+                let mut addr = addr;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
-                if [0x3f10, 0x3f14, 0x3f18, 0x3f1c].contains(&addr) {
-                    addr -= 0x10;
+                if MIRRORS.contains(&addr) {
+                    addr = addr - 0x10; // TODO?
                 }
 
-                let offset_addr = addr - 0x3f00;
-                Ok(self.palette_table[offset_addr])
+                let offset_address = addr - 0x3f00;
+                Ok(self.palette_table[offset_address.as_usize()])
             }
-            0x4000.. => bail!(
-                "Unexpected access to mirrored space on PPU read ({:#x})",
-                addr
-            ),
+            0x4000.. => bail!("Unexpected access to mirrored space on PPU read ({addr:#x})"),
         }
     }
 
@@ -214,7 +229,7 @@ impl Ppu {
         let vram_index = mirrored_vram_addr - 0x2000;
         let name_table = vram_index / 0x0400;
 
-        let offset = match (self.mirroring, name_table) {
+        let offset = match (self.mirroring, name_table.value()) {
             (MirroringType::Vertical, 2 | 3) | (MirroringType::Horizontal, 3) => 0x800,
             (MirroringType::Horizontal, 1 | 2) => 0x400,
             _ => 0x000,
@@ -225,8 +240,9 @@ impl Ppu {
 
     fn is_sprite_zero_hit(&self) -> bool {
         let oam_data = self.registers.read_oam_dma();
-        let y = u16::from(oam_data[0].y);
-        let x = oam_data[0].x as usize;
+        let SpriteData { x, y, .. } = oam_data[0];
+        let y = u16::from(y);
+        let x = x as usize;
         let scanline = self.scanline;
 
         y == scanline && x <= self.cycles && self.registers.show_sprites()

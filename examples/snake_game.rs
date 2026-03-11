@@ -1,5 +1,5 @@
 use sabi_nes::cartridge::Rom;
-use sabi_nes::{Bus, Byte, Cpu, Memory};
+use sabi_nes::{Address, Bus, Byte, Cpu, Memory};
 
 use anyhow::Result;
 use rand::RngExt;
@@ -19,19 +19,19 @@ fn handle_user_input(cpu: &mut Cpu, event_pump: &mut EventPump) -> Result<()> {
             Event::KeyDown {
                 keycode: Some(Keycode::W),
                 ..
-            } => cpu.write(0xff, 0x77)?,
+            } => cpu.write_byte(Address::new(0xff), 0x77)?,
             Event::KeyDown {
                 keycode: Some(Keycode::S),
                 ..
-            } => cpu.write(0xff, 0x73)?,
+            } => cpu.write_byte(Address::new(0xff), 0x73)?,
             Event::KeyDown {
                 keycode: Some(Keycode::A),
                 ..
-            } => cpu.write(0xff, 0x61)?,
+            } => cpu.write_byte(Address::new(0xff), 0x61)?,
             Event::KeyDown {
                 keycode: Some(Keycode::D),
                 ..
-            } => cpu.write(0xff, 0x64)?,
+            } => cpu.write_byte(Address::new(0xff), 0x64)?,
             _ => {}
         }
     }
@@ -56,8 +56,9 @@ fn color(byte: Byte) -> Color {
 fn screen_update_needed(cpu: &mut Cpu, frame: &mut [Byte; 32 * 3 * 32]) -> Result<bool> {
     let mut frame_idx = 0;
 
-    for addr in 0x0200..0x0600 {
-        let color_idx = cpu.read(addr)?;
+    for address in 0x0200..0x0600 {
+        let address = Address::new(address);
+        let color_idx = cpu.read_byte(address)?;
         let (red, green, blue) = color(color_idx).rgb();
         if frame[frame_idx] != red || frame[frame_idx + 1] != green || frame[frame_idx + 2] != blue
         {
@@ -105,7 +106,7 @@ fn main() -> Result<()> {
 
         handle_user_input(&mut cpu, &mut event_pump)?;
 
-        cpu.write(0xfe, rng.random_range(1..16))?;
+        cpu.write_byte(Address::new(0xfe), rng.random_range(1..16))?;
 
         if screen_update_needed(&mut cpu, &mut screen_state)? {
             texture.update(None, &screen_state, 32 * 3)?;

@@ -31,10 +31,8 @@ pub fn render(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
 
 fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     let name_table_address = ppu.registers.read_name_table_address();
-    let scroll_x = ppu.registers.read_scroll_x() as usize;
-    let scroll_y = ppu.registers.read_scroll_y() as usize;
 
-    let (main_table, secondary_table) = match (ppu.mirroring, name_table_address) {
+    let (main_table, secondary_table) = match (ppu.mirroring, name_table_address.value()) {
         (MirroringType::Vertical, 0x2000 | 0x2800)
         | (MirroringType::Horizontal, 0x2000 | 0x2400) => {
             (&ppu.vram[0..0x0400], &ppu.vram[0x0400..0x0800])
@@ -47,6 +45,11 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     };
 
     for screen_y in 0..Frame::HEIGHT {
+        // Use scroll values captured for this specific scanline
+        let (scroll_x, scroll_y) = ppu.scanline_scroll[screen_y];
+        let scroll_x = scroll_x as usize;
+        let scroll_y = scroll_y as usize;
+
         let y_in_nametable = (screen_y + scroll_y) % 240;
 
         // Render main portion
@@ -55,7 +58,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
             frame,
             main_table,
             screen_y,
-            y_in_nametable,
+            y_in_nametable as Byte,
             scroll_x,
             0,
             Frame::WIDTH.saturating_sub(scroll_x),
@@ -68,7 +71,7 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
                 frame,
                 secondary_table,
                 screen_y,
-                y_in_nametable,
+                y_in_nametable as Byte,
                 0,
                 Frame::WIDTH - scroll_x,
                 scroll_x,
@@ -79,13 +82,12 @@ fn render_background(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_scanline(
     ppu: &Ppu,
     frame: &mut Frame,
     name_table: &[Byte],
     screen_y: usize,
-    nametable_y: usize,
+    nametable_y: Byte,
     scroll_x_offset: usize,
     screen_x_start: usize,
     width: usize,
@@ -94,7 +96,7 @@ fn render_scanline(
         return Ok(());
     }
 
-    let bank = ppu.registers.background_pattern_address();
+    let bank_address = ppu.registers.background_pattern_address();
     let attribute_table = &name_table[0x03c0..0x0400];
 
     // Calculate which tile row we're in
@@ -112,14 +114,15 @@ fn render_scanline(
             continue; // Skip attribute table area
         }
 
-        let tile_index = name_table[tile_addr] as Address;
-        let tile = &ppu.chr_rom
-            [(bank + tile_index * 16) as usize..=(bank + tile_index * 16 + 15) as usize];
+        let tile_index = name_table[tile_addr] as u16;
+        let begin = (bank_address + tile_index * 16).as_usize(); // TODO
+        let end = (bank_address + tile_index * 16 + Address::new(15)).as_usize(); // TODO
+        let tile = &ppu.chr_rom[begin..=end];
         let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
 
         // Get pixel from tile
-        let upper = tile[pixel_y_in_tile];
-        let lower = tile[pixel_y_in_tile + 8];
+        let upper = tile[pixel_y_in_tile as usize];
+        let lower = tile[pixel_y_in_tile as usize + 8];
         let value =
             (((1 & (lower >> pixel_x_in_tile)) << 1) | (1 & (upper >> pixel_x_in_tile))) as usize;
         let colour = SYSTEM_PALETTE[bg_palette[value] as usize];
@@ -153,9 +156,9 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
 
             // In 8x16 mode, bit 0 of tile index selects pattern table
             let bank = if sprite.index_number & 1 == 0 {
-                0
+                Address::new(0)
             } else {
-                0x1000
+                Address::new(0x1000)
             };
 
             // Render top half
@@ -173,7 +176,7 @@ fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
         } else {
             // 8x8 mode: render single tile
             let tile_idx = sprite.index_number as usize;
-            let bank = ppu.read_sprite_pattern_address() as usize;
+            let bank = ppu.read_sprite_pattern_address();
             render_sprite_tile(ppu, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
         }
     }
@@ -186,11 +189,12 @@ fn render_sprite_tile(
     frame: &mut Frame,
     sprite: &SpriteData,
     tile_idx: usize,
-    bank: usize,
+    bank_address: Address,
     sprite_palette: &MetaTile,
     y_base_offset: usize,
 ) -> Result<()> {
-    let tile = &ppu.chr_rom[(bank + tile_idx * 16)..=(bank + tile_idx * 16 + 15)];
+    let bank_address = bank_address.as_usize();
+    let tile = &ppu.chr_rom[(bank_address + tile_idx * 16)..=(bank_address + tile_idx * 16 + 15)];
     let priority_behind = sprite.priority();
 
     for y_offset in 0..=7 {

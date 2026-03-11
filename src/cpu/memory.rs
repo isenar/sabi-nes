@@ -1,22 +1,21 @@
-use crate::cpu::Address;
-use crate::{Byte, Result};
+use crate::{Address, Byte, Result};
 
 pub trait Memory {
-    fn read(&mut self, addr: Address) -> Result<Byte>;
-    fn write(&mut self, addr: Address, value: Byte) -> Result<()>;
+    fn read_byte(&mut self, addr: Address) -> Result<Byte>;
+    fn write_byte(&mut self, addr: Address, value: Byte) -> Result<()>;
 
-    fn read_u16(&mut self, addr: Address) -> Result<u16> {
-        let lo = self.read(addr)?;
-        let hi = self.read(addr + 1)?;
+    fn read_word(&mut self, addr: Address) -> Result<u16> {
+        let lo = self.read_byte(addr)?;
+        let hi = self.read_byte(addr + 1u16)?;
 
         Ok(u16::from_le_bytes([lo, hi]))
     }
 
-    fn write_u16(&mut self, addr: Address, data: u16) -> Result<()> {
+    fn write_word(&mut self, addr: Address, data: u16) -> Result<()> {
         let [lo, hi] = data.to_le_bytes();
 
-        self.write(addr, lo)?;
-        self.write(addr + 1, hi)?;
+        self.write_byte(addr, lo)?;
+        self.write_byte(addr + 1u16, hi)?;
 
         Ok(())
     }
