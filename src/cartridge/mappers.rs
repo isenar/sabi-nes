@@ -15,6 +15,5 @@ pub trait Mapper {
     fn map_address(&self, address: Address) -> Result<usize>;
 
     /// Write to mapper registers (for mappers that support writes)
-    /// Default implementation does nothing (for read-only mappers like NROM)
     fn write(&mut self, address: Address, value: Byte);
 }

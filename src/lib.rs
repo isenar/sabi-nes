@@ -12,4 +12,4 @@ pub use anyhow::{Error, Result};
 pub use bus::Bus;
 pub use cartridge::Rom;
 pub use cpu::{Cpu, Memory};
-pub use primitives::{Address, Byte};
+pub use primitives::{Address, Byte, Word};

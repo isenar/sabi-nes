@@ -1,11 +1,11 @@
 use crate::utils::MirroredAddress;
-use crate::{Address, Byte};
+use crate::{Address, Byte, Word};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AddressRegister {
     high: Byte,
     low: Byte,
-    hi_ptr: bool,
+    is_high: bool,
 }
 
 impl Default for AddressRegister {
@@ -13,19 +13,19 @@ impl Default for AddressRegister {
         Self {
             high: Byte::default(),
             low: Byte::default(),
-            hi_ptr: true,
+            is_high: true,
         }
     }
 }
 
 impl AddressRegister {
     pub fn update(&mut self, value: Byte) {
-        if self.hi_ptr {
+        if self.is_high {
             self.high = value;
         } else {
             self.low = value;
         }
-        self.hi_ptr = !self.hi_ptr;
+        self.is_high = !self.is_high;
 
         self.mirror_down();
     }
@@ -42,22 +42,21 @@ impl AddressRegister {
     }
 
     pub fn get(&self) -> Address {
-        Address::new(((self.high.as_word()) << 8) | self.low.as_word())
+        Word::from_le_bytes(self.low, self.high).as_address()
     }
 
     pub fn reset_latch(&mut self) {
-        self.hi_ptr = true;
+        self.is_high = true;
     }
 
-    // TODO: Should be word! Byte should implement a method for truncated value from word
-    fn set(&mut self, data: Address) {
-        self.high = Byte::new((data.value() >> 8) as u8);
-        self.low = Byte::new((data.value() & 0xff) as u8);
+    fn set(&mut self, word: Word) {
+        self.low = Byte::new((word.value() & 0xff) as u8);
+        self.high = Byte::new((word.value() >> 8) as u8);
     }
 
     fn mirror_down(&mut self) {
         if self.get() > 0x3fff {
-            self.set(self.get().mirror_ppu_addr());
+            self.set(self.get().mirror_ppu_addr().as_word());
         }
     }
 }
@@ -74,7 +73,7 @@ mod tests {
         let expected = AddressRegister {
             high: 0x01.into(),
             low: 0x00.into(),
-            hi_ptr: false,
+            is_high: false,
         };
 
         assert_eq!(expected, addr_reg);
@@ -90,7 +89,7 @@ mod tests {
         let expected = AddressRegister {
             high: 0x12.into(),
             low: 0x34.into(),
-            hi_ptr: true,
+            is_high: true,
         };
 
         assert_eq!(expected, addr_reg);
@@ -109,7 +108,7 @@ mod tests {
         let expected = AddressRegister {
             high: 0x2f.into(),
             low: 0x23.into(),
-            hi_ptr: false,
+            is_high: false,
         };
 
         assert_eq!(expected, addr_reg);
@@ -123,7 +122,7 @@ mod tests {
         let expected = AddressRegister {
             high: 0x0f.into(),
             low: 0x00.into(),
-            hi_ptr: false,
+            is_high: false,
         };
 
         assert_eq!(expected, addr_reg);

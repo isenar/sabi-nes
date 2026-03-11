@@ -20,6 +20,14 @@ use bitflags::bitflags;
 
 const NAMETABLE_BASE_ADDR: Address = Address::new(0x2000);
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum SpriteSize {
+    /// 8x8
+    Small,
+    /// 8x16
+    Large,
+}
+
 bitflags! {
     #[derive(Debug, Copy, Clone, Default)]
     pub struct ControlRegister: u8 {
@@ -49,19 +57,34 @@ impl ControlRegister {
     }
 
     pub fn sprite_pattern_address(&self) -> Address {
-        let address = u16::from(self.contains(Self::SPRITE_PATTERN_ADDR)) * 0x1000;
-        address.into()
+        if self.contains(Self::SPRITE_PATTERN_ADDR) {
+            Address::new(0x1000)
+        } else {
+            Address::new(0x0000)
+        }
     }
 
     pub fn name_table_address(&self) -> Address {
-        let address_lower = self.contains(Self::NAMETABLE1) as u16 * 0x400;
-        let address_higher = self.contains(Self::NAMETABLE2) as u16 * 0x800;
+        let low = if self.contains(Self::NAMETABLE1) {
+            0x400
+        } else {
+            0x000
+        };
+        let high = if self.contains(Self::NAMETABLE2) {
+            0x800
+        } else {
+            0x000
+        };
 
-        NAMETABLE_BASE_ADDR + address_lower + address_higher
+        NAMETABLE_BASE_ADDR + low + high
     }
 
-    pub fn is_sprite_8x16(&self) -> bool {
-        self.contains(Self::SPRITE_SIZE)
+    pub fn sprite_size(&self) -> SpriteSize {
+        if self.contains(Self::SPRITE_SIZE) {
+            SpriteSize::Large
+        } else {
+            SpriteSize::Small
+        }
     }
 }
 

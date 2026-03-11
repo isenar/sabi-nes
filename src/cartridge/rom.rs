@@ -7,7 +7,7 @@ use log::debug;
 use std::path::Path;
 
 /// "NES" followed by MS-DOS end-of-file used to recognize .NES (iNES) files
-const NES_TAG: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a]; // TODO
+const NES_TAG: [u8; 4] = [0x4e, 0x45, 0x53, 0x1a];
 
 bitflags! {
     #[derive(Debug, Copy, Clone)]
@@ -92,7 +92,7 @@ impl RomHeader {
             bail!("Only iNes 1.0 format is currently supported");
         }
 
-        if !data[8..16].iter().all(|&byte| byte == 0) {
+        if data[8..16].iter().any(|&byte| byte != 0) {
             bail!("last 8 bytes of the header are not 0s");
         }
 

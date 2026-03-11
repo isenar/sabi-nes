@@ -2,7 +2,7 @@ mod frame;
 mod palettes;
 
 use crate::cartridge::MirroringType;
-use crate::ppu::{Ppu, SpriteData};
+use crate::ppu::{Ppu, SpriteData, SpriteSize};
 use crate::{Address, Byte, Result};
 
 pub use frame::Frame;
@@ -121,9 +121,9 @@ fn render_scanline(
             continue; // Skip attribute table area
         }
 
-        let tile_index = name_table[tile_addr];
-        let begin = (bank_address + tile_index * 16).as_usize(); // TODO
-        let end = (bank_address + tile_index * 16 + Address::new(15)).as_usize(); // TODO
+        let tile_index = name_table[tile_addr].as_usize();
+        let begin = bank_address.as_usize() + tile_index * 16; // TODO
+        let end = bank_address.as_usize() + tile_index * 16 + 15; // TODO
         let tile = &ppu.chr_rom[begin..=end];
         let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
 
@@ -146,44 +146,47 @@ fn render_scanline(
 
 fn render_sprites(ppu: &Ppu, frame: &mut Frame) -> Result<()> {
     let oam_data = ppu.registers.read_oam_dma();
-    let is_8x16 = ppu.registers.is_sprite_8x16();
+    let sprite_size = ppu.registers.sprite_size();
 
     for sprite in oam_data {
         let palette_idx = sprite.palette_index();
         let sprite_palette = sprite_palette(ppu, palette_idx);
 
-        if is_8x16 {
-            // 8x16 mode: render two 8x8 tiles vertically
-            // Bit 0 of tile index determines which pattern table (ignored)
-            // Top tile: tile_idx & 0xFE
-            // Bottom tile: (tile_idx & 0xFE) + 1
-            let tile_idx_top = (sprite.index_number & 0xFE).as_usize();
-            let tile_idx_bottom = tile_idx_top + 1;
+        match sprite_size {
+            SpriteSize::Large => {
+                // 8x16 mode: render two 8x8 tiles vertically
+                // Bit 0 of tile index determines which pattern table (ignored)
+                // Top tile: tile_idx & 0xFE
+                // Bottom tile: (tile_idx & 0xFE) + 1
+                let tile_idx_top = (sprite.index_number & 0xFE).as_usize();
+                let tile_idx_bottom = tile_idx_top + 1;
 
-            // In 8x16 mode, bit 0 of tile index selects pattern table
-            let bank = if sprite.index_number & 1 == 0 {
-                Address::new(0)
-            } else {
-                Address::new(0x1000)
-            };
+                // In 8x16 mode, bit 0 of tile index selects pattern table
+                let bank = if sprite.index_number & 1 == 0 {
+                    Address::new(0)
+                } else {
+                    Address::new(0x1000)
+                };
 
-            // Render top half
-            render_sprite_tile(ppu, frame, sprite, tile_idx_top, bank, &sprite_palette, 0)?;
-            // Render bottom half
-            render_sprite_tile(
-                ppu,
-                frame,
-                sprite,
-                tile_idx_bottom,
-                bank,
-                &sprite_palette,
-                8,
-            )?;
-        } else {
-            // 8x8 mode: render single tile
-            let tile_idx = sprite.index_number.as_usize();
-            let bank = ppu.read_sprite_pattern_address();
-            render_sprite_tile(ppu, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
+                // Render top half
+                render_sprite_tile(ppu, frame, sprite, tile_idx_top, bank, &sprite_palette, 0)?;
+                // Render bottom half
+                render_sprite_tile(
+                    ppu,
+                    frame,
+                    sprite,
+                    tile_idx_bottom,
+                    bank,
+                    &sprite_palette,
+                    8,
+                )?;
+            }
+            SpriteSize::Small => {
+                // 8x8 mode: render single tile
+                let tile_idx = sprite.index_number.as_usize();
+                let bank = ppu.read_sprite_pattern_address();
+                render_sprite_tile(ppu, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
+            }
         }
     }
 

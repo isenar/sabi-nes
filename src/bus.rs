@@ -83,10 +83,10 @@ impl Bus {
 }
 
 impl Memory for Bus {
-    fn read_byte(&mut self, addr: Address) -> Result<Byte> {
-        Ok(match addr.value() {
+    fn read_byte(&mut self, address: Address) -> Result<Byte> {
+        Ok(match address.value() {
             RAM..=RAM_MIRRORS_END => {
-                let mirror_base_addr: usize = addr.mirror_cpu_vram_addr().into();
+                let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
                 self.cpu_vram[mirror_base_addr]
             }
             0x2000 => bail!("Attempted to read from write-only PPU control register"),
@@ -98,7 +98,7 @@ impl Memory for Bus {
             0x2006 => bail!("Attempted to read from write-only PPU address register"),
             0x2007 => self.ppu.read()?,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
-                let mirror_base_addr = addr.mirror_ppu_registers_addr();
+                let mirror_base_addr = address.mirror_ppu_registers_addr();
                 self.read_byte(mirror_base_addr)?
             }
             0x4000 => self.apu.square_channel1.volume,
@@ -122,16 +122,16 @@ impl Memory for Bus {
             0x4016 => self.joypad.read(),
             0x4017 => 0.into(), // TODO: Frame Counter impl
             PRG_RAM_START..=PRG_RAM_END => {
-                let index: usize = (addr - PRG_RAM_START).into(); // TODO
+                let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index]
             }
             ROM_START..=ROM_END => {
-                let address = addr - ROM_START;
+                let address = address - ROM_START;
                 let mapped_address = self.rom.mapper.map_address(address)?;
                 self.rom.prg_rom[mapped_address]
             }
             _ => {
-                debug!("Ignored attempt to read address ${addr:0X}");
+                debug!("Ignored attempt to read address ${address:0X}");
                 0.into()
             }
         })
@@ -178,11 +178,11 @@ impl Memory for Bus {
             0x4013 => self.apu.dmc.sample_length = value,
             0x4014 => {
                 let mut buffer = [Byte::default(); 256];
-                let hi = (value.as_word()) << 8;
+                let high = value.as_word() << 8;
                 // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
                 // for now we'll use the good old for loop
                 for (offset, byte) in buffer.iter_mut().enumerate() {
-                    let address = Address::new(hi + offset as u16);
+                    let address = (high + offset as u16).as_address();
                     *byte = self.read_byte(address)?;
                 }
 
@@ -192,7 +192,7 @@ impl Memory for Bus {
             0x4016 => self.joypad.write(value),
             0x4017 => {} // TODO: Frame Counter impl
             PRG_RAM_START..=PRG_RAM_END => {
-                let index: usize = (address - PRG_RAM_START).into();
+                let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index] = value;
             }
             ROM_START..=ROM_END => {

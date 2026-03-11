@@ -23,7 +23,7 @@ fn cpu_validation_test() -> Result<()> {
 
     // PC starts here (as seen in nestest.log).
     // If it's not set, the test ROM won't work properly.
-    cpu.program_counter = 0xc000;
+    cpu.program_counter = 0xc000.into();
 
     let mut traces = Vec::with_capacity(VALID_LINES_SO_FAR);
     loop {

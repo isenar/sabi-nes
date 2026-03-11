@@ -15,11 +15,9 @@ use crate::cpu::stack_pointer::StackPointer;
 use crate::cpu::status_register::StatusRegister;
 use crate::ppu::NmiStatus;
 use crate::utils::NthBit;
-use crate::{Address, Byte};
+use crate::{Address, Byte, Word};
 use anyhow::{Context, Result, anyhow, bail};
 use log::debug;
-
-pub type ProgramCounter = u16;
 
 const PROGRAM_ROM_BEGIN_ADDR: Address = Address::new(0x0600);
 const RESET_VECTOR_BEGIN_ADDR: Address = Address::new(0xfffc);
@@ -34,7 +32,7 @@ pub struct Cpu {
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
-    pub program_counter: ProgramCounter,
+    pub program_counter: Word,
     pub stack_pointer: StackPointer,
     bus: Bus,
 }
@@ -48,14 +46,12 @@ impl Memory for Cpu {
         self.bus.write_byte(addr, value)
     }
 
-    // TODO: Should return Word!
-    fn read_word(&mut self, addr: Address) -> Result<u16> {
+    fn read_word(&mut self, addr: Address) -> Result<Word> {
         self.bus.read_word(addr)
     }
 
-    // TODO: Should take Word!
-    fn write_word(&mut self, addr: Address, data: u16) -> Result<()> {
-        self.bus.write_word(addr, data)
+    fn write_word(&mut self, addr: Address, word: Word) -> Result<()> {
+        self.bus.write_word(addr, word)
     }
 }
 
@@ -66,7 +62,7 @@ impl Cpu {
             register_x: Byte::default(),
             register_y: Byte::default(),
             status_register: StatusRegister::INIT,
-            program_counter: 0,
+            program_counter: Word::default(),
             stack_pointer: StackPointer::default(),
             bus,
         }
@@ -96,7 +92,7 @@ impl Cpu {
             self.interrupt(interrupts::NMI)?;
         }
 
-        let code = self.read_byte(self.program_counter.into())?;
+        let code = self.read_byte(self.program_counter.as_address())?;
         let instruction_pc = self.program_counter;
         self.program_counter += 1;
 
@@ -147,7 +143,7 @@ impl Cpu {
             "INC" => self.inc(address)?,
             "INX" => self.inx(),
             "INY" => self.iny(),
-            "JMP" => self.program_counter = address.value(),
+            "JMP" => self.program_counter = address.as_word(),
             "JSR" => self.jsr()?,
             "LDA" => self.lda(address)?,
             "LDX" => self.ldx(address)?,
@@ -155,7 +151,7 @@ impl Cpu {
             "LSR" => self.lsr(address, opcode.addressing_mode)?,
             "NOP" | "*NOP" => {} // noop - do nothing
             "ORA" => self.ora(address)?,
-            "PHA" => self.push_stack(self.accumulator)?,
+            "PHA" => self.push_byte_to_stack(self.accumulator)?,
             "PHP" => self.php()?,
             "PLA" => self.pla()?,
             "PLP" => self.plp()?,
@@ -251,7 +247,7 @@ impl Cpu {
     fn add_to_acc(&mut self, data: Byte) {
         let input_carry = self.status_register.contains(StatusRegister::CARRY) as u16;
         let sum_wide = self.accumulator.as_word() + data.as_word() + input_carry;
-        let result = Byte::new(sum_wide as u8); // TODO: Add comment about intentional truncation!
+        let result = Byte::from_word_lossy(sum_wide);
 
         self.status_register
             .set_carry_flag(sum_wide > 0xff)
@@ -508,31 +504,31 @@ impl Cpu {
     }
 
     fn jsr(&mut self) -> Result<()> {
-        self.push_stack_wide(self.program_counter + 1)?;
-        let target_address = self.read_word(self.program_counter.into())?;
+        self.push_word_to_stack(self.program_counter + 1)?;
+        let target_address = self.read_word(self.program_counter.as_address())?;
         self.program_counter = target_address;
 
         Ok(())
     }
 
     fn rti(&mut self) -> Result<()> {
-        self.status_register = self.pop_stack()?.into();
+        self.status_register = self.pop_byte_from_stack()?.into();
         self.status_register.remove(StatusRegister::BREAK);
         self.status_register.insert(StatusRegister::BREAK2);
 
-        self.program_counter = self.pop_stack_u16()?;
+        self.program_counter = self.pop_word_from_stack()?;
 
         Ok(())
     }
 
     fn rts(&mut self) -> Result<()> {
-        self.program_counter = self.pop_stack_u16()? + 1;
+        self.program_counter = self.pop_word_from_stack()? + 1;
 
         Ok(())
     }
 
     fn pla(&mut self) -> Result<()> {
-        let value = self.pop_stack()?;
+        let value = self.pop_byte_from_stack()?;
 
         self.accumulator = value;
         self.status_register
@@ -542,7 +538,7 @@ impl Cpu {
     }
 
     fn plp(&mut self) -> Result<()> {
-        let value = self.pop_stack()?;
+        let value = self.pop_byte_from_stack()?;
 
         self.status_register = StatusRegister::from(value);
         self.status_register.remove(StatusRegister::BREAK);
@@ -555,39 +551,39 @@ impl Cpu {
         let mut status_register_with_b_flags = self.status_register;
         status_register_with_b_flags.insert(StatusRegister::BREAK | StatusRegister::BREAK2);
 
-        self.push_stack(status_register_with_b_flags.bits().into()) // TODO?
+        self.push_byte_to_stack(status_register_with_b_flags.bits().into()) // TODO?
     }
 
     fn branch(&mut self, condition: bool) -> Result<()> {
         if condition {
             self.bus.tick(1)?;
 
-            let jump = self.read_byte(self.program_counter.into())?.value() as i8;
+            let jump = self.read_byte(self.program_counter.as_address())?.value() as i8;
             let jump_addr = self
                 .program_counter
-                .wrapping_add(1)
+                .wrapping_add(1u16)
                 .wrapping_add(jump as u16)
-                .into();
+                .as_address();
 
-            if is_page_crossed(self.program_counter.into(), jump_addr) {
+            if is_page_crossed(self.program_counter.as_address(), jump_addr) {
                 self.bus.tick(1)?;
             }
 
-            self.program_counter = jump_addr.value();
+            self.program_counter = jump_addr.as_word();
         }
 
         Ok(())
     }
 
     pub fn pc_operand_address(&mut self, opcode: &Opcode) -> Result<Address> {
-        self.operand_address(opcode, self.program_counter.into())
+        self.operand_address(opcode, self.program_counter.as_address())
     }
 
     pub fn operand_address(&mut self, opcode: &Opcode, address: Address) -> Result<Address> {
         Ok(match opcode.addressing_mode {
             AddressingMode::Immediate => address,
             AddressingMode::ZeroPage => self.read_byte(address)?.into(),
-            AddressingMode::Absolute => self.read_word(address)?.into(),
+            AddressingMode::Absolute => self.read_word(address)?.as_address(),
             AddressingMode::ZeroPageX => {
                 let pos = self.read_byte(address)?;
                 let addr = pos.wrapping_add(self.register_x.value());
@@ -602,8 +598,8 @@ impl Cpu {
                 addr.into()
             }
             AddressingMode::AbsoluteX => {
-                let base = Address::new(self.read_word(address)?); // TODO: Should use Word!
-                let incremented = base.wrapping_add(self.register_x.as_word());
+                let base = self.read_word(address)?.as_address();
+                let incremented = base.wrapping_add(self.register_x.value());
 
                 if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
                     self.bus.tick(1)?;
@@ -612,7 +608,7 @@ impl Cpu {
                 incremented
             }
             AddressingMode::AbsoluteY => {
-                let base: Address = self.read_word(address)?.into(); // TODO: Should use Word!
+                let base = self.read_word(address)?.as_address(); // TODO: Should use Word!
                 let incremented = base.wrapping_add(self.register_y.value());
 
                 if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
@@ -624,16 +620,16 @@ impl Cpu {
             AddressingMode::IndirectX => {
                 let base = self.read_byte(address)?;
                 let ptr = base.wrapping_add(self.register_x.value());
-                let lo = self.read_byte(ptr.into())?;
-                let hi = self.read_byte(ptr.wrapping_add(1).into())?;
+                let low = self.read_byte(ptr.into())?;
+                let high = self.read_byte(ptr.wrapping_add(1).into())?;
 
-                u16::from_le_bytes([lo.value(), hi.value()]).into() // TODO: Use Word, and implement from_le_bytes for it
+                Word::from_le_bytes(low, high).as_address()
             }
             AddressingMode::IndirectY => {
                 let base = self.read_byte(address)?;
-                let lo = self.read_byte(base.into())?.value();
-                let hi = self.read_byte(base.wrapping_add(1).into())?.value();
-                let deref_base = Address::new(u16::from_le_bytes([lo, hi])); // TODO: WORD?
+                let low = self.read_byte(base.into())?;
+                let high = self.read_byte(base.wrapping_add(1).into())?;
+                let deref_base = Word::from_le_bytes(low, high).as_address();
                 let incremented = deref_base.wrapping_add(self.register_y.value());
 
                 if opcode.needs_page_cross_check && is_page_crossed(deref_base, incremented) {
@@ -643,20 +639,20 @@ impl Cpu {
                 incremented
             }
             AddressingMode::Indirect => {
-                let target_address = Address::new(self.read_word(address)?);
+                let target_address = self.read_word(address)?.as_address();
 
                 // recreate the CPU bug with page boundaries:
                 // "The indirect jump instruction does not increment the page address when the indirect pointer
                 // crosses a page boundary.
                 // JMP ($xxFF) will fetch the address from $xxFF and $xx00."
                 if target_address.value() & 0x00ff == 0x00ff {
-                    let lo = self.read_byte(target_address)?.as_word(); // TODO: WORD
+                    let low = self.read_byte(target_address)?;
                     let buggy_address = Address::new(target_address.value() & 0xff00); // TODO: Support BitAnd?
-                    let hi = self.read_byte(buggy_address)?.as_word(); // TODO: WORD
+                    let high = self.read_byte(buggy_address)?;
 
-                    Address::new((hi << 8) | lo)
+                    Word::from_le_bytes(low, high).as_address()
                 } else {
-                    self.read_word(target_address)?.into()
+                    self.read_word(target_address)?.as_address()
                 }
             }
             _ => 0u16.into(),
@@ -670,43 +666,42 @@ impl Cpu {
         Ok(value)
     }
 
-    fn push_stack(&mut self, value: Byte) -> Result<()> {
-        self.write_byte(self.stack_pointer.address(), value)?;
+    fn push_byte_to_stack(&mut self, byte: Byte) -> Result<()> {
+        self.write_byte(self.stack_pointer.address(), byte)?;
 
         self.stack_pointer.decrement();
 
         Ok(())
     }
 
-    fn push_stack_wide(&mut self, value: u16) -> Result<()> {
-        let [lo, hi] = value.to_le_bytes();
+    fn push_word_to_stack(&mut self, word: Word) -> Result<()> {
+        let [low, high] = word.to_le_bytes();
 
-        self.push_stack(hi.into())?;
-        self.push_stack(lo.into())?;
+        self.push_byte_to_stack(high)?;
+        self.push_byte_to_stack(low)?;
 
         Ok(())
     }
 
-    fn pop_stack(&mut self) -> Result<Byte> {
+    fn pop_byte_from_stack(&mut self) -> Result<Byte> {
         self.stack_pointer.increment();
         self.read_byte(self.stack_pointer.address())
     }
 
-    // TODO: WORD
-    fn pop_stack_u16(&mut self) -> Result<u16> {
-        let low_byte = self.pop_stack()?.as_word();
-        let high_byte = self.pop_stack()?.as_word();
+    fn pop_word_from_stack(&mut self) -> Result<Word> {
+        let low_byte = self.pop_byte_from_stack()?;
+        let high_byte = self.pop_byte_from_stack()?;
 
-        Ok((high_byte << 8) | low_byte)
+        Ok(Word::from_le_bytes(low_byte, high_byte))
     }
 
     fn interrupt(&mut self, interrupt: Interrupt) -> Result<()> {
-        self.push_stack_wide(self.program_counter)?;
+        self.push_word_to_stack(self.program_counter)?;
         let mut status = self.status_register;
         status.remove(StatusRegister::BREAK);
         status.insert(StatusRegister::BREAK2);
 
-        self.push_stack(status.bits().into())?;
+        self.push_byte_to_stack(status.bits().into())?;
         self.status_register.disable_interrupt();
 
         self.bus.tick(interrupt.cpu_cycles)?;
@@ -786,7 +781,6 @@ fn is_page_crossed(before: Address, after: Address) -> bool {
 mod tests {
     use super::*;
     use crate::cartridge::Rom;
-    use assert_matches::assert_matches;
     use once_cell::sync::Lazy;
 
     pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
@@ -808,7 +802,7 @@ mod tests {
     #[derive(Debug)]
     enum Write {
         Byte(Address, Byte),
-        Word(Address, u16), // TODO: Use Word!
+        Word(Address, Word),
     }
 
     struct CpuBuilder {
@@ -820,14 +814,14 @@ mod tests {
             Self { writes: vec![] }
         }
 
-        fn write(mut self, address: Address, value: Byte) -> Self {
-            self.writes.push(Write::Byte(address, value));
+        fn write_byte(mut self, address: Address, byte: Byte) -> Self {
+            self.writes.push(Write::Byte(address, byte));
 
             self
         }
 
-        fn write_u16(mut self, address: Address, value: u16) -> Self {
-            self.writes.push(Write::Word(address, value));
+        fn write_word(mut self, address: impl Into<Address>, word: impl Into<Word>) -> Self {
+            self.writes.push(Write::Word(address.into(), word.into()));
 
             self
         }
@@ -863,7 +857,7 @@ mod tests {
 
             cpu.load(&data).expect("Failed to load");
             cpu.reset().expect("Failed to reset");
-            cpu.program_counter = PROGRAM_ROM_BEGIN_ADDR.value();
+            cpu.program_counter = PROGRAM_ROM_BEGIN_ADDR.as_word();
             cpu.run().expect("Failed to run");
 
             cpu
@@ -895,7 +889,7 @@ mod tests {
         fn load_from_memory() {
             let data = [0xa5, 0x10, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0x10), 0x55.into())
+                .write_byte(Address::new(0x10), 0x55.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0x55);
@@ -905,7 +899,7 @@ mod tests {
         fn ldx_absolute() {
             let data = [0xae, 0x34, 0x12, 0x00];
             let cpu = CpuBuilder::new()
-                .write_u16(Address::new(0x1234), 0xff)
+                .write_word(0x1234u16, 0xff)
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 0xff);
@@ -917,7 +911,7 @@ mod tests {
         fn ldy_zero_page() {
             let data = [0xa4, 0xaa, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0xaa), 0x66.into())
+                .write_byte(Address::new(0xaa), 0x66.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_y, 0x66);
@@ -936,7 +930,7 @@ mod tests {
             let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
             let mut cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_matches!(cpu.read_word(Address::new(0x1234)), Ok(0x75));
+            assert_eq!(cpu.read_word(Address::new(0x1234)).unwrap(), 0x75);
             assert!(cpu.status_register.is_empty());
         }
 
@@ -947,7 +941,7 @@ mod tests {
             let data = [0x86, 0xee, 0x00];
             let address = Address::new(0xee);
             let mut cpu = CpuBuilder::new()
-                .write(address, 0x12.into())
+                .write_byte(address, 0x12.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0x00);
@@ -964,8 +958,8 @@ mod tests {
             // 5. call STY with ZeroPageX addressing mode (store registry value Y in byte X on page zero
             let data = [0xa6, 0x01, 0xa4, 0x03, 0x94, 0x00];
             let mut cpu = CpuBuilder::new()
-                .write(Address::new(0x01), 0x02.into())
-                .write(Address::new(0x03), 0x04.into())
+                .write_byte(Address::new(0x01), 0x02.into())
+                .write_byte(Address::new(0x03), 0x04.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 0x02);
@@ -996,7 +990,7 @@ mod tests {
             let data = [0xc6, 0x11, 0x00];
             let address = Address::new(0x11);
             let mut cpu = CpuBuilder::new()
-                .write(address, 0xf1.into())
+                .write_byte(address, 0xf1.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0xf0);
@@ -1066,7 +1060,7 @@ mod tests {
         fn bit_zero_page() {
             let data = [0xa9, 0b1101_1010, 0x24, 0xdd, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0xdd), 0b1110_1010.into())
+                .write_byte(Address::new(0xdd), 0b1110_1010.into())
                 .build_and_run(&data);
 
             // accumulator value should not change
@@ -1084,7 +1078,7 @@ mod tests {
             // 3. perform bitwise XOR on the accumulator with value under address 0xbeef
             let data = [0xa9, 0b1101_0110, 0x4d, 0xef, 0x1a, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0x1aef), 0b1010_0000.into())
+                .write_byte(Address::new(0x1aef), 0b1010_0000.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0b0111_0110);
@@ -1098,7 +1092,7 @@ mod tests {
             // 3. perform bitwise OR on the accumulator with value under address 0xcc
             let data = [0xa9, 0b1101_0110, 0x05, 0xcc, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0xcc), 0b0011_1011.into())
+                .write_byte(Address::new(0xcc), 0b0011_1011.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0b1111_1111);
@@ -1134,7 +1128,7 @@ mod tests {
             let data = [0xe8, 0x16, 0xaa, 0x00];
             let address = Address::new(0xab);
             let mut cpu = CpuBuilder::new()
-                .write(address, 0b0100_1101.into())
+                .write_byte(address, 0b0100_1101.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 1);
@@ -1164,7 +1158,7 @@ mod tests {
             let data = [0x4e, 0xda, 0x0a, 0x00];
             let address = Address::new(0x0ada);
             let mut cpu = CpuBuilder::new()
-                .write(address, 0b0101_0111.into())
+                .write_byte(address, 0b0101_0111.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0b0010_1011);
@@ -1193,7 +1187,7 @@ mod tests {
             let data = [0x38, 0x26, 0xff, 0x00];
             let address = Address::new(0xff);
             let mut cpu = CpuBuilder::new()
-                .write(address, 0b1010_1101.into())
+                .write_byte(address, 0b1010_1101.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0b0101_1011);
@@ -1222,7 +1216,7 @@ mod tests {
             let data = [0xe8, 0x7e, 0x33, 0x12, 0x00];
             let address = Address::new(0x1234);
             let mut cpu = CpuBuilder::new()
-                .write(address, 0b0100_1101.into())
+                .write_byte(address, 0b0100_1101.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0b0010_0110);
@@ -1271,7 +1265,7 @@ mod tests {
         fn adc_zero_page_with_wrapping() {
             let data = [0xa9, 0xfe, 0x38, 0x65, 0x11, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0x11), 0xaa.into())
+                .write_byte(Address::new(0x11), 0xaa.into())
                 .build_and_run(&data);
 
             // 0xfe + 0x1 + 0xaa wrapped
@@ -1287,7 +1281,7 @@ mod tests {
         fn cmp_absolute_same_values() {
             let data = [0xa9, 0x11, 0xcd, 0xde, 0x1e, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0x1ede), 0x11.into())
+                .write_byte(Address::new(0x1ede), 0x11.into())
                 .build_and_run(&data);
 
             // CMP should not change the value of accumulator
@@ -1315,7 +1309,7 @@ mod tests {
             // compare reg X = 0x2 with value 0xfe
             let data = [0xe8, 0xe8, 0xe4, 0xdd, 0x00];
             let cpu = CpuBuilder::new()
-                .write(Address::new(0xdd), 0xfe.into())
+                .write_byte(Address::new(0xdd), 0xfe.into())
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 0x2);
@@ -1349,7 +1343,7 @@ mod tests {
         fn jmp_indirect() {
             let data = [0x6c, 0x34, 0x12];
             let cpu = CpuBuilder::new()
-                .write_u16(Address::new(0x1234), 0xbeee)
+                .write_word(0x1234u16, 0xbeee)
                 .build_and_run(&data);
 
             assert_eq!(cpu.program_counter, 0xbeef);

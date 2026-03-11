@@ -5,15 +5,15 @@ mod oam;
 mod scroll;
 mod status;
 
+use crate::ppu::registers::oam::Oam;
+use crate::{Address, Byte};
+
 pub use address::AddressRegister;
-pub use control::ControlRegister;
+pub use control::{ControlRegister, SpriteSize};
 pub use mask::MaskRegister;
+pub use oam::SpriteData;
 pub use scroll::ScrollRegister;
 pub use status::StatusRegister;
-
-use crate::ppu::registers::oam::Oam;
-pub use crate::ppu::registers::oam::SpriteData;
-use crate::{Address, Byte};
 
 #[derive(Debug, Default)]
 pub struct PpuRegisters {
@@ -64,8 +64,8 @@ impl PpuRegisters {
         self.control.update(value);
     }
 
-    pub fn is_sprite_8x16(&self) -> bool {
-        self.control.is_sprite_8x16()
+    pub fn sprite_size(&self) -> SpriteSize {
+        self.control.sprite_size()
     }
 
     pub fn write_mask(&mut self, value: Byte) {

@@ -2,7 +2,7 @@ mod nmi_status;
 mod registers;
 
 pub use nmi_status::NmiStatus;
-pub use registers::SpriteData;
+pub use registers::{SpriteData, SpriteSize};
 
 use crate::cartridge::MirroringType;
 use crate::ppu::registers::PpuRegisters;

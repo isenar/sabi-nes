@@ -2,7 +2,7 @@ use derive_more::{
     Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Display, Div, From, Index, LowerHex,
     Mul, Shl, ShlAssign, Shr, ShrAssign, Sub, UpperHex,
 };
-use std::ops::{Add, BitAnd, BitOrAssign, Sub};
+use std::ops::{Add, AddAssign, BitAnd, BitOrAssign, Shl, Sub};
 
 #[repr(transparent)]
 #[derive(
@@ -41,12 +41,16 @@ impl Byte {
         Self(byte)
     }
 
+    pub const fn from_word_lossy(word: Word) -> Self {
+        Self::new(word.0 as u8)
+    }
+
     pub const fn value(self) -> u8 {
         self.0
     }
 
-    pub const fn as_word(self) -> u16 {
-        self.0 as u16
+    pub const fn as_word(self) -> Word {
+        Word::new(self.0 as u16)
     }
 
     pub const fn as_usize(self) -> usize {
@@ -94,6 +98,93 @@ impl BitOrAssign<u8> for Byte {
     }
 }
 
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Hash,
+    From,
+    Div,
+    Index,
+    Mul,
+    Sub,
+    Add,
+    Display,
+    LowerHex,
+    UpperHex,
+)]
+pub struct Word(u16);
+
+impl Word {
+    pub const fn new(word: u16) -> Self {
+        Self(word)
+    }
+
+    pub const fn from_le_bytes(low: Byte, high: Byte) -> Self {
+        Self::new(u16::from_le_bytes([low.value(), high.value()]))
+    }
+
+    pub const fn value(self) -> u16 {
+        self.0
+    }
+
+    pub const fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+
+    pub const fn as_address(self) -> Address {
+        Address::new(self.0)
+    }
+
+    pub fn to_le_bytes(self) -> [Byte; 2] {
+        let [low, high] = self.0.to_le_bytes();
+        [Byte::new(low), Byte::new(high)]
+    }
+
+    pub fn wrapping_add(&self, value: impl Into<u16>) -> Self {
+        Self::new(self.0.wrapping_add(value.into()))
+    }
+}
+
+impl PartialEq<u16> for Word {
+    fn eq(&self, other: &u16) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialOrd<u16> for Word {
+    fn partial_cmp(&self, other: &u16) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl Add<u16> for Word {
+    type Output = Self;
+
+    fn add(self, rhs: u16) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl AddAssign<u16> for Word {
+    fn add_assign(&mut self, rhs: u16) {
+        self.0 += rhs;
+    }
+}
+
+impl Shl<u16> for Word {
+    type Output = Self;
+
+    fn shl(self, rhs: u16) -> Self::Output {
+        Self::new(self.0 << rhs)
+    }
+}
+
 #[repr(transparent)]
 #[derive(
     Debug,
@@ -127,6 +218,10 @@ impl Address {
 
     pub const fn as_usize(self) -> usize {
         self.0 as usize
+    }
+
+    pub const fn as_word(self) -> Word {
+        Word::new(self.0)
     }
 
     pub fn wrapping_add(&self, value: impl Into<u16>) -> Self {

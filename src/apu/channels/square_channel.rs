@@ -1,5 +1,5 @@
-use crate::Byte;
 use crate::utils::NthBit;
+use crate::{Byte, Word};
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct SquareChannel {
@@ -43,12 +43,10 @@ impl SquareChannel {
         self.sweep & 0b0000_0111
     }
 
-    // TODO: WORD
-    fn timer(self) -> u16 {
-        let timer_high = (self.length_and_timer_high & 0b0000_0111).as_word();
-        let timer_low = self.timer_low.as_word();
+    fn timer(self) -> Word {
+        let timer_high = (self.length_and_timer_high & 0b0000_0111);
 
-        (timer_high << 8) | timer_low
+        Word::from_le_bytes(self.timer_low, timer_high)
     }
 
     fn length_counter_load(self) -> Byte {
