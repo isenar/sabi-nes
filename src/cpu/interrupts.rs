@@ -12,5 +12,5 @@ pub struct Interrupt {
 pub const NMI: Interrupt = Interrupt {
     vector_addr: Address::new(0xfffa),
     break_flag_mask: Byte::new(0b0010_0000),
-    cpu_cycles: 2,
+    cpu_cycles: 7,
 };

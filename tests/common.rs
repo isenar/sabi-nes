@@ -148,6 +148,7 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
         AddressingMode::Accumulator => "A".into(),
         AddressingMode::Relative => {
             let offset = value.value().cast_signed();
+            #[allow(clippy::cast_sign_loss)]
             let jump_address = cpu
                 .program_counter
                 .wrapping_add(2u16)

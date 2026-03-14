@@ -2,7 +2,7 @@ use sabi_nes::Result;
 use sabi_nes::input::joypad::Joypad;
 use sabi_nes::render::Frame;
 
-/// Trait for emulator frontends (rendering, input, timing)
+/// Trait for emulator frontends (rendering, input, timing, audio)
 pub trait Frontend {
     /// Render a frame to the screen
     fn render_frame(&mut self, frame: &Frame) -> Result<()>;
@@ -13,4 +13,8 @@ pub trait Frontend {
 
     /// Sleep to maintain the target frame rate
     fn frame_limit(&mut self);
+
+    /// Push audio samples to the output device.
+    /// Default implementation discards samples (no audio).
+    fn queue_audio(&mut self, _samples: &[f32]) {}
 }

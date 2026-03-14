@@ -28,6 +28,8 @@ pub struct Bus {
     joypad: Joypad,
     cycles: usize,
     frame_ready: bool,
+    // Extra cycles to consume on the next tick, used for OAM DMA stall.
+    pending_cycles: usize,
 }
 
 impl Bus {
@@ -43,20 +45,29 @@ impl Bus {
             joypad: Joypad::default(),
             cycles: 0,
             frame_ready: false,
+            pending_cycles: 0,
         }
     }
 
     pub fn tick(&mut self, cycles: usize) -> Result<()> {
+        // Include any cycles stalled by OAM DMA from the previous instruction.
+        let cycles = cycles + std::mem::take(&mut self.pending_cycles);
+
         self.cycles += cycles;
 
         let nmi_before = self.ppu.nmi_interrupt;
         let nmi_after = self.ppu.tick(cycles * 3);
+        self.apu.tick(cycles);
 
         if NmiStatus::activated(nmi_before, nmi_after) {
             self.frame_ready = true;
         }
 
         Ok(())
+    }
+
+    pub fn drain_audio_samples(&mut self) -> Vec<f32> {
+        self.apu.drain_samples()
     }
 
     pub fn poll_nmi_status(&mut self) -> NmiStatus {
@@ -164,11 +175,17 @@ impl Memory for Bus {
             0x4000 => self.apu.square_channel1.volume = value,
             0x4001 => self.apu.square_channel1.sweep = value,
             0x4002 => self.apu.square_channel1.timer_low = value,
-            0x4003 => self.apu.square_channel1.length_and_timer_high = value,
+            0x4003 => {
+                self.apu.square_channel1.length_and_timer_high = value;
+                self.apu.square_channel1.on_length_timer_write();
+            }
             0x4004 => self.apu.square_channel2.volume = value,
             0x4005 => self.apu.square_channel2.sweep = value,
             0x4006 => self.apu.square_channel2.timer_low = value,
-            0x4007 => self.apu.square_channel2.length_and_timer_high = value,
+            0x4007 => {
+                self.apu.square_channel2.length_and_timer_high = value;
+                self.apu.square_channel2.on_length_timer_write();
+            }
             0x4008 => self.apu.triangle_channel.linear_counter = value,
             // 0x4009 is unused
             0x400a => self.apu.triangle_channel.timer_low = value,
@@ -192,6 +209,10 @@ impl Memory for Bus {
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);
+                // Real hardware stalls the CPU for 513 cycles (+ 1 alignment
+                // cycle on odd CPU cycles). We use 514 as a conservative
+                // approximation; the difference of 1 cycle is negligible.
+                self.pending_cycles += 514;
             }
             0x4015 => self.apu.set_status_register(value),
             0x4016 => self.joypad.write(value),

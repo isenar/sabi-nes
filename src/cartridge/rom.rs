@@ -92,8 +92,8 @@ impl RomHeader {
             bail!("Only iNes 1.0 format is currently supported");
         }
 
-        if data[8..16].iter().any(|&byte| byte != 0) {
-            bail!("last 8 bytes of the header are not 0s");
+        if data[10..16].iter().any(|&byte| byte != 0) {
+            bail!("header bytes 10-15 are not 0 — file may not be iNES 1.0 format");
         }
 
         Ok(())
@@ -182,6 +182,11 @@ impl Rom {
             .collect();
 
         mapper.load_chr(chr_rom);
+
+        let mapper_n =
+            header.control_byte1.mapper_bits_lo() | header.control_byte2.mapper_bits_hi();
+
+        log::info!("ROM loaded: mapper={mapper_n}, mirroring={screen_mirroring:?}");
 
         Ok(Self {
             prg_rom,

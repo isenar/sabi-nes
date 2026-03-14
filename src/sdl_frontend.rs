@@ -7,6 +7,7 @@ use sabi_nes::Result;
 use sabi_nes::input::joypad::{Joypad, JoypadButton};
 use sabi_nes::render::Frame;
 use sdl2::EventPump;
+use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
@@ -16,6 +17,10 @@ use std::time::{Duration, Instant};
 
 const TARGET_FPS: u64 = 60;
 const FRAME_DURATION: Duration = Duration::from_micros(1_000_000 / TARGET_FPS);
+
+// Allow ~4 frames of audio in the SDL queue before we stop pushing.
+// At 44100 Hz, 1 frame ≈ 735 samples × 4 bytes = 2940 bytes.
+const MAX_AUDIO_QUEUE_BYTES: u32 = 2940 * 4;
 
 static JOYPAD_BUTTON_MAP: Lazy<HashMap<Keycode, JoypadButton>> = Lazy::new(|| {
     hashmap! {
@@ -34,6 +39,9 @@ pub struct SdlFrontend {
     canvas: WindowCanvas,
     event_pump: EventPump,
     last_frame_time: Instant,
+    audio_queue: AudioQueue<f32>,
+    fps_counter: u32,
+    fps_timer: Instant,
 }
 
 impl SdlFrontend {
@@ -47,13 +55,27 @@ impl SdlFrontend {
             .resizable()
             .build()?;
 
-        let canvas = window.into_canvas().present_vsync().build()?;
+        let canvas = window.into_canvas().build()?;
         let event_pump = sdl_context.event_pump().map_err(Error::msg)?;
+
+        let audio_subsystem = sdl_context.audio().map_err(Error::msg)?;
+        let spec = AudioSpecDesired {
+            freq: Some(44_100),
+            channels: Some(1),
+            samples: Some(1024),
+        };
+        let audio_queue = audio_subsystem
+            .open_queue::<f32, _>(None, &spec)
+            .map_err(Error::msg)?;
+        audio_queue.resume();
 
         Ok(Self {
             canvas,
             event_pump,
             last_frame_time: Instant::now(),
+            audio_queue,
+            fps_counter: 0,
+            fps_timer: Instant::now(),
         })
     }
 }
@@ -106,8 +128,38 @@ impl Frontend for SdlFrontend {
     fn frame_limit(&mut self) {
         let elapsed = self.last_frame_time.elapsed();
         if elapsed < FRAME_DURATION {
-            std::thread::sleep(FRAME_DURATION - elapsed);
+            let remaining = FRAME_DURATION - elapsed;
+            // Sleep for most of the time (OS sleep is coarse-grained, typically
+            // 1–10 ms on macOS/Linux). Leave the last 2 ms for a spin-wait so
+            // we don't overshoot the target by a full scheduler quantum.
+            if remaining > Duration::from_millis(2) {
+                std::thread::sleep(remaining - Duration::from_millis(2));
+            }
+            while self.last_frame_time.elapsed() < FRAME_DURATION {
+                std::hint::spin_loop();
+            }
         }
         self.last_frame_time = Instant::now();
+
+        // Update window title with measured FPS once per second.
+        self.fps_counter += 1;
+        let fps_elapsed = self.fps_timer.elapsed();
+        if fps_elapsed >= Duration::from_secs(1) {
+            let fps = self.fps_counter as f64 / fps_elapsed.as_secs_f64();
+            let _ = self
+                .canvas
+                .window_mut()
+                .set_title(&format!("Sabi NES — {fps:.1} fps"));
+            self.fps_counter = 0;
+            self.fps_timer = Instant::now();
+        }
+    }
+
+    fn queue_audio(&mut self, samples: &[f32]) {
+        // Don't let the queue grow unboundedly if the emulator runs faster than
+        // the audio device drains it.
+        if self.audio_queue.size() < MAX_AUDIO_QUEUE_BYTES {
+            let _ = self.audio_queue.queue_audio(samples);
+        }
     }
 }

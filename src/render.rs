@@ -56,7 +56,6 @@ fn render_background(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Resul
     let scroll_y = ppu.registers.read_scroll_y().as_usize();
 
     for screen_y in 0..Frame::HEIGHT {
-
         let y_in_nametable = (screen_y + scroll_y) % 240;
 
         // Render main portion
