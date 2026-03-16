@@ -10,7 +10,7 @@ authors = ["Dariusz Dajka <dariusz.dajka@gmail.com>"]
 [dependencies]
 anyhow = "~1.0.97"
 bitflags = "~2.11.0"
-clap = { version = "~4.5.31", features = ["derive"] }
+clap = { version = "~4.6.0", features = ["derive"] }
 derive_more = { version = "~2.1.1", features = ["full"] } # TODO - only use features we need
 env_logger = "~0.11.9"
 log = "~0.4.29"
