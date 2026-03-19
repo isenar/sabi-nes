@@ -16,7 +16,53 @@ const CPU_CLOCK: f64 = 1_789_773.0;
 const SAMPLE_RATE: f64 = 44_100.0;
 const CYCLES_PER_SAMPLE: f64 = CPU_CLOCK / SAMPLE_RATE;
 
-#[derive(Debug, Default)]
+// First-order IIR filter coefficients derived from the real NES hardware.
+// All use the matched-z formula: α = exp(-2π * fc / Fs).
+//
+// High-pass filters remove DC offset (two cascaded capacitors on the NES board):
+//   HP1 ~90 Hz  — slow drift removal
+//   HP2 ~440 Hz — faster drift removal
+// Low-pass filter softens high-frequency aliasing from the square/noise waveforms:
+//   LP ~14 kHz
+const HP1_CHARGE: f32 = 0.998_728; // exp(-2π * 90   / 44100)
+const HP2_CHARGE: f32 = 0.939_241; // exp(-2π * 440  / 44100)
+const LP_CHARGE: f32 = 0.136_270; // exp(-2π * 14000 / 44100)
+
+/// Three cascaded first-order IIR filters matching the NES analog output stage.
+///
+/// Two high-pass filters eliminate the DC offset that arises when channels
+/// hold a constant value (e.g. the triangle sequencer freezing on note-off).
+/// The low-pass filter rolls off aliasing above 14 kHz.
+#[derive(Debug, Default, Clone, Copy)]
+struct AudioFilter {
+    hp1_prev_in: f32,
+    hp1_prev_out: f32,
+    hp2_prev_in: f32,
+    hp2_prev_out: f32,
+    lp_prev_out: f32,
+}
+
+impl AudioFilter {
+    fn process(&mut self, input: f32) -> f32 {
+        // High-pass 1: y[n] = α * (y[n-1] + x[n] - x[n-1])
+        let hp1 = HP1_CHARGE * (self.hp1_prev_out + input - self.hp1_prev_in);
+        self.hp1_prev_in = input;
+        self.hp1_prev_out = hp1;
+
+        // High-pass 2: same formula chained onto hp1 output
+        let hp2 = HP2_CHARGE * (self.hp2_prev_out + hp1 - self.hp2_prev_in);
+        self.hp2_prev_in = hp1;
+        self.hp2_prev_out = hp2;
+
+        // Low-pass: y[n] = (1 - α) * x[n] + α * y[n-1]
+        let lp = (1.0 - LP_CHARGE) * hp2 + LP_CHARGE * self.lp_prev_out;
+        self.lp_prev_out = lp;
+
+        lp
+    }
+}
+
+#[derive(Debug)]
 pub struct Apu {
     pub flags: ApuFlags,
     pub square_channel1: SquareChannel,
@@ -29,19 +75,65 @@ pub struct Apu {
     // Audio synthesis state
     cycle_accumulator: f64,
     samples: Vec<f32>,
+    filter: AudioFilter,
+
+    // True until $4015 is first written; returns open-bus 0xFF on reads until then.
+    status_open_bus: bool,
+}
+
+impl Default for Apu {
+    fn default() -> Self {
+        Self {
+            flags: ApuFlags::default(),
+            square_channel1: SquareChannel::channel1(),
+            square_channel2: SquareChannel::default(),
+            triangle_channel: TriangleChannel::default(),
+            noise_channel: NoiseChannel::default(),
+            dmc: Dmc::default(),
+            frame_counter: FrameCounter::default(),
+            cycle_accumulator: 0.0,
+            samples: Vec::new(),
+            filter: AudioFilter::default(),
+            status_open_bus: true,
+        }
+    }
 }
 
 impl Apu {
     pub fn set_status_register(&mut self, byte: Byte) {
+        self.status_open_bus = false;
         self.flags = ApuFlags::from(byte);
         self.square_channel1
             .set_enabled(self.flags.contains(ApuFlags::SQUARE_CHANNEL_1_ENABLED));
         self.square_channel2
             .set_enabled(self.flags.contains(ApuFlags::SQUARE_CHANNEL_2_ENABLED));
+        self.triangle_channel
+            .set_enabled(self.flags.contains(ApuFlags::TRIANGLE_CHANNEL_ENABLED));
+        self.noise_channel
+            .set_enabled(self.flags.contains(ApuFlags::NOISE_CHANNEL_ENABLED));
     }
 
+    /// Read $4015: returns length counter status for each channel.
+    /// Bit 0: square 1 active, bit 1: square 2 active,
+    /// bit 2: triangle active, bit 3: noise active, bit 4: DMC active (unimplemented).
     pub fn status_register(&self) -> Byte {
-        self.flags.bits().into()
+        if self.status_open_bus {
+            return Byte::new(0xFF);
+        }
+        let mut status = 0u8;
+        if self.square_channel1.is_active() {
+            status |= 0x01;
+        }
+        if self.square_channel2.is_active() {
+            status |= 0x02;
+        }
+        if self.triangle_channel.is_active() {
+            status |= 0x04;
+        }
+        if self.noise_channel.is_active() {
+            status |= 0x08;
+        }
+        Byte::new(status)
     }
 
     /// Advance the APU by `cycles` CPU cycles, accumulating audio samples.
@@ -49,17 +141,27 @@ impl Apu {
         for _ in 0..cycles {
             self.square_channel1.tick();
             self.square_channel2.tick();
+            self.triangle_channel.tick();
+            self.noise_channel.tick();
 
             match self.frame_counter.tick() {
                 FrameSignal::QuarterFrame => {
                     self.square_channel1.clock_envelope();
                     self.square_channel2.clock_envelope();
+                    self.noise_channel.clock_envelope();
+                    self.triangle_channel.clock_linear_counter();
                 }
                 FrameSignal::HalfFrame => {
                     self.square_channel1.clock_envelope();
                     self.square_channel2.clock_envelope();
+                    self.noise_channel.clock_envelope();
+                    self.triangle_channel.clock_linear_counter();
                     self.square_channel1.clock_length_counter();
                     self.square_channel2.clock_length_counter();
+                    self.triangle_channel.clock_length_counter();
+                    self.noise_channel.clock_length_counter();
+                    self.square_channel1.clock_sweep();
+                    self.square_channel2.clock_sweep();
                 }
                 FrameSignal::None => {}
             }
@@ -67,25 +169,40 @@ impl Apu {
             self.cycle_accumulator += 1.0;
             if self.cycle_accumulator >= CYCLES_PER_SAMPLE {
                 self.cycle_accumulator -= CYCLES_PER_SAMPLE;
-                self.samples.push(self.mix());
+                let raw = self.mix();
+                self.samples.push(self.filter.process(raw));
             }
         }
     }
 
-    /// Take all accumulated samples since the last call, leaving the buffer empty.
     pub fn drain_samples(&mut self) -> Vec<f32> {
         std::mem::take(&mut self.samples)
     }
 
-    // NES square-channel mixing approximation from the nesdev wiki.
-    // Output is in roughly -1.0..1.0.
+    /// NES mixer approximation based on the Lookup Table solution
+    /// in [NESDev wiki page][nes_dev].
+    ///
+    /// [nes_dev]: https://www.nesdev.org/wiki/APU_Mixer
+    // TODO: this does not include DMC yet!
     fn mix(&self) -> f32 {
-        let sq1 = f32::from(self.square_channel1.output());
-        let sq2 = f32::from(self.square_channel2.output());
-        let sq_sum = sq1 + sq2;
-        if sq_sum == 0.0 {
-            return 0.0;
-        }
-        95.88 / (8128.0 / sq_sum + 100.0)
+        let square1_output = f32::from(self.square_channel1.output());
+        let square2_output = f32::from(self.square_channel2.output());
+        let square_sum = square1_output + square2_output;
+        let square_out = if square_sum == 0.0 {
+            0.0
+        } else {
+            95.88 / (8128.0 / square_sum + 100.0)
+        };
+
+        let triangle_output = f32::from(self.triangle_channel.output());
+        let noise_output = f32::from(self.noise_channel.output());
+        let tnd_sum = triangle_output / 8227.0 + noise_output / 12241.0;
+        let tnd_out = if tnd_sum == 0.0 {
+            0.0
+        } else {
+            159.79 / (1.0 / tnd_sum + 100.0)
+        };
+
+        square_out + tnd_out
     }
 }

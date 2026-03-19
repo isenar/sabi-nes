@@ -1,8 +1,8 @@
 use derive_more::{
-    Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Display, Div, From, Index, LowerHex,
-    Mul, Shl, ShlAssign, Shr, ShrAssign, Sub, UpperHex,
+    Add, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, Display, Div, From, LowerHex, Shl,
+    ShlAssign, Shr, ShrAssign, Sub, UpperHex,
 };
-use std::ops::{Add, AddAssign, BitAnd, BitOrAssign, Shl, Sub};
+use std::ops::{Add, AddAssign, BitAnd, BitAndAssign, BitOrAssign, Shl, Sub, SubAssign};
 
 #[repr(transparent)]
 #[derive(
@@ -16,10 +16,6 @@ use std::ops::{Add, AddAssign, BitAnd, BitOrAssign, Shl, Sub};
     Hash,
     Default,
     From,
-    Div,
-    Index,
-    Mul,
-    Sub,
     Add,
     BitOr,
     BitOrAssign,
@@ -113,9 +109,6 @@ impl BitOrAssign<u8> for Byte {
     PartialOrd,
     Hash,
     From,
-    Div,
-    Index,
-    Mul,
     Sub,
     Add,
     Display,
@@ -181,6 +174,12 @@ impl AddAssign<u16> for Word {
     }
 }
 
+impl SubAssign<u16> for Word {
+    fn sub_assign(&mut self, rhs: u16) {
+        self.0 -= rhs;
+    }
+}
+
 impl Shl<u16> for Word {
     type Output = Self;
 
@@ -192,6 +191,7 @@ impl Shl<u16> for Word {
 #[repr(transparent)]
 #[derive(
     Debug,
+    Default,
     Copy,
     Clone,
     PartialEq,
@@ -201,8 +201,6 @@ impl Shl<u16> for Word {
     Hash,
     From,
     Div,
-    Index,
-    Mul,
     Sub,
     Add,
     Display,
@@ -302,5 +300,25 @@ impl PartialEq<u16> for Address {
 impl PartialOrd<u16> for Address {
     fn partial_cmp(&self, other: &u16) -> Option<std::cmp::Ordering> {
         self.0.partial_cmp(other)
+    }
+}
+
+impl BitAnd<u16> for Address {
+    type Output = Self;
+
+    fn bitand(self, rhs: u16) -> Self::Output {
+        Self::new(self.0 & rhs)
+    }
+}
+
+impl BitAndAssign<u16> for Address {
+    fn bitand_assign(&mut self, rhs: u16) {
+        self.0 &= rhs;
+    }
+}
+
+impl AddAssign<u16> for Address {
+    fn add_assign(&mut self, rhs: u16) {
+        self.0 += rhs;
     }
 }

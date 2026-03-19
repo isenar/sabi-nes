@@ -55,7 +55,7 @@ impl Bus {
 
         self.cycles += cycles;
 
-        let nmi_before = self.ppu.nmi_interrupt;
+        let nmi_before = self.ppu.nmi_status;
         let nmi_after = self.ppu.tick(cycles * 3);
         self.apu.tick(cycles);
 
@@ -71,8 +71,8 @@ impl Bus {
     }
 
     pub fn poll_nmi_status(&mut self) -> NmiStatus {
-        let current = self.ppu.nmi_interrupt;
-        self.ppu.nmi_interrupt = NmiStatus::Inactive;
+        let current = self.ppu.nmi_status;
+        self.ppu.nmi_status = NmiStatus::Inactive;
 
         current
     }
@@ -134,16 +134,16 @@ impl Memory for Bus {
             0x400e => self.apu.noise_channel.mode_and_period,
             0x400f => self.apu.noise_channel.len_counter_and_env_restart,
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
-            0x4015 => self.apu.flags.bits().into(),
+            0x4015 => self.apu.status_register(),
             0x4016 => self.joypad.read(),
-            0x4017 => 0.into(), // TODO: Frame Counter impl
+            // TODO: For reads, this is actually Player 2's controller, not frame counter!
+            0x4017 => 0.into(),
             PRG_RAM_START..=PRG_RAM_END => {
                 let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index]
             }
             ROM_START..=ROM_END => {
-                let address = address - ROM_START;
-                let mapped_address = self.rom.mapper.map_address(address)?;
+                let mapped_address = self.rom.mapper.map_address(address - ROM_START)?;
                 self.rom.prg_rom[mapped_address]
             }
             _ => {
@@ -173,14 +173,20 @@ impl Memory for Bus {
                 self.write_byte(mirror_base_addr, value)?;
             }
             0x4000 => self.apu.square_channel1.volume = value,
-            0x4001 => self.apu.square_channel1.sweep = value,
+            0x4001 => {
+                self.apu.square_channel1.sweep = value;
+                self.apu.square_channel1.on_sweep_write();
+            }
             0x4002 => self.apu.square_channel1.timer_low = value,
             0x4003 => {
                 self.apu.square_channel1.length_and_timer_high = value;
                 self.apu.square_channel1.on_length_timer_write();
             }
             0x4004 => self.apu.square_channel2.volume = value,
-            0x4005 => self.apu.square_channel2.sweep = value,
+            0x4005 => {
+                self.apu.square_channel2.sweep = value;
+                self.apu.square_channel2.on_sweep_write();
+            }
             0x4006 => self.apu.square_channel2.timer_low = value,
             0x4007 => {
                 self.apu.square_channel2.length_and_timer_high = value;
@@ -189,11 +195,17 @@ impl Memory for Bus {
             0x4008 => self.apu.triangle_channel.linear_counter = value,
             // 0x4009 is unused
             0x400a => self.apu.triangle_channel.timer_low = value,
-            0x400b => self.apu.triangle_channel.length_and_timer_high = value,
+            0x400b => {
+                self.apu.triangle_channel.length_and_timer_high = value;
+                self.apu.triangle_channel.on_length_timer_write();
+            }
             0x400c => self.apu.noise_channel.volume = value,
             // 0x400d is unused
             0x400e => self.apu.noise_channel.mode_and_period = value,
-            0x400f => self.apu.noise_channel.len_counter_and_env_restart = value,
+            0x400f => {
+                self.apu.noise_channel.len_counter_and_env_restart = value;
+                self.apu.noise_channel.on_length_timer_write();
+            }
             0x4010 => self.apu.dmc.flags_and_rate = value,
             0x4011 => self.apu.dmc.direct_load = value,
             0x4012 => self.apu.dmc.sample_address = value,
