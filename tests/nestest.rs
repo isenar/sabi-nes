@@ -7,12 +7,9 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Lines};
 use std::path::Path;
 
-// TODO: remove this once APU is implemented and whole test passes
-const VALID_LINES_SO_FAR: usize = 8980;
-
 fn read_lines(filename: impl AsRef<Path>) -> io::Result<Lines<BufReader<File>>> {
     let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+    Ok(BufReader::new(file).lines())
 }
 
 #[test]
@@ -22,10 +19,10 @@ fn cpu_validation_test() -> Result<()> {
     let mut cpu = Cpu::new(bus);
 
     // PC starts here (as seen in nestest.log).
-    // If it's not set, the test ROM won't work properly.
+    // This specific value enables running the test ROM in "automation" mode.
     cpu.program_counter = 0xc000.into();
 
-    let mut traces = Vec::with_capacity(VALID_LINES_SO_FAR);
+    let mut traces = Vec::new();
     loop {
         traces.push(trace(&mut cpu)?);
         if cpu.step()? {
@@ -34,17 +31,13 @@ fn cpu_validation_test() -> Result<()> {
     }
 
     let lines = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?;
-    let expected_traces = lines.zip(traces).enumerate().take(VALID_LINES_SO_FAR);
+    let traces = lines.zip(traces).enumerate();
 
-    for (line_num, (expected_trace, actual_trace)) in expected_traces {
+    for (line, (expected_trace, actual_trace)) in traces {
         let expected_trace = expected_trace?;
+        let line = line + 1;
 
-        assert_eq!(
-            expected_trace,
-            actual_trace,
-            "Failed at line#{}",
-            line_num + 1
-        );
+        assert_eq!(expected_trace, actual_trace, "Mismatch at line#{line}");
     }
 
     Ok(())

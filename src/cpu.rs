@@ -77,8 +77,9 @@ impl Cpu {
     }
 
     pub fn load(&mut self, data: &[Byte]) -> Result<()> {
-        for (idx, &value) in data.iter().enumerate() {
-            let addr = Address::from(u16::try_from(idx)?); // TODO
+        for (index, &value) in data.iter().enumerate() {
+            let index = u16::try_from(index)?;
+            let addr = Address::from(index);
             self.write_byte(addr + PROGRAM_ROM_BEGIN_ADDR, value)?;
         }
 
@@ -831,16 +832,6 @@ mod tests {
 
             self
         }
-
-        //     #[cfg(test)]
-        //     pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {
-        //         self.load(data)?;
-        //         self.reset()?;
-        //         self.program_counter = PROGRAM_ROM_BEGIN_ADDR.value();
-        //         self.run()?;
-        //
-        //         Ok(())
-        //     }
 
         fn build_and_run(self, data: &[u8]) -> Cpu {
             let rom = Rom::from_bytes(&TEST_ROM).expect("Failed to parse test ROM");

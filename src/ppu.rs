@@ -35,7 +35,7 @@ pub struct Ppu {
 
     pub scanline: usize,
     pub cycles: usize,
-    pub nmi_interrupt: NmiStatus,
+    pub nmi_status: NmiStatus,
 
     internal_data_buffer: Byte,
 }
@@ -49,7 +49,7 @@ impl Ppu {
             registers: PpuRegisters::default(),
             cycles: 0,
             scanline: 0,
-            nmi_interrupt: NmiStatus::Inactive,
+            nmi_status: NmiStatus::Inactive,
             internal_data_buffer: Byte::default(),
         }
     }
@@ -68,18 +68,18 @@ impl Ppu {
             if self.scanline == 241 {
                 self.registers.set_vblank().reset_sprite_zero_hit();
                 if self.registers.is_generating_nmi() {
-                    self.nmi_interrupt = NmiStatus::Active;
+                    self.nmi_status = NmiStatus::Active;
                 }
             }
 
             if self.scanline >= 262 {
                 self.scanline = 0;
-                self.nmi_interrupt = NmiStatus::Inactive;
+                self.nmi_status = NmiStatus::Inactive;
                 self.registers.reset_vblank().reset_sprite_zero_hit();
             }
         }
 
-        self.nmi_interrupt
+        self.nmi_status
     }
 
     pub fn increment_vram_address(&mut self) {
@@ -108,7 +108,7 @@ impl Ppu {
         let after = self.registers.is_generating_nmi();
 
         if !before && after && self.registers.is_in_vblank() {
-            self.nmi_interrupt = NmiStatus::Active;
+            self.nmi_status = NmiStatus::Active;
         }
     }
 
