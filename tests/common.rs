@@ -22,7 +22,7 @@ pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
 });
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
-    let code = cpu.read_byte(cpu.program_counter.as_address())?;
+    let code = cpu.read_byte(cpu.program_counter)?;
     let opcode = OPCODES_MAPPING
         .get(&code)
         .ok_or_else(|| anyhow!("Opcode `{code:#x}` not supported"))?;
@@ -58,7 +58,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
         1 => format!(
             "{:02X} {:02X}",
             opcode.code,
-            cpu.read_byte((cpu.program_counter + 1).as_address())?
+            cpu.read_byte(cpu.program_counter + 1)?
         ),
         2 => match opcode.addressing_mode {
             AddressingMode::Implied => {
@@ -68,8 +68,8 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 format!(
                     "{:02X} {:02X} {:02X}",
                     opcode.code,
-                    cpu.read_byte((cpu.program_counter + 1).as_address())?,
-                    cpu.read_byte((cpu.program_counter + 2).as_address())?,
+                    cpu.read_byte(cpu.program_counter + 1)?,
+                    cpu.read_byte(cpu.program_counter + 2)?,
                 )
             }
         },
@@ -78,11 +78,11 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 }
 
 fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
-    let value = cpu.read_byte((cpu.program_counter + 1).as_address())?;
+    let value = cpu.read_byte(cpu.program_counter + 1)?;
     let address = cpu
-        .read_word((cpu.program_counter + 1).as_address())?
+        .read_word(cpu.program_counter + 1)?
         .as_address();
-    let target_address = cpu.operand_address(opcode, (cpu.program_counter + 1).as_address())?;
+    let target_address = cpu.operand_address(opcode, cpu.program_counter + 1)?;
 
     let opcode_asm_args = match opcode.addressing_mode {
         AddressingMode::Immediate => {
@@ -183,7 +183,7 @@ mod tests {
         bus.write_byte(Address::new(0x68), 0x00.into())?;
 
         let mut cpu = Cpu::new(bus);
-        cpu.program_counter = 0x64.into();
+        cpu.program_counter = Address::new(0x64);
         cpu.accumulator = 1.into();
         cpu.register_x = 2.into();
         cpu.register_y = 3.into();
@@ -224,7 +224,7 @@ mod tests {
         bus.write_byte(Address::new(0x0405), 0xaa.into())?;
 
         let mut cpu = Cpu::new(bus);
-        cpu.program_counter = 0x64.into();
+        cpu.program_counter = Address::new(0x64);
         cpu.register_y = 0x05.into();
 
         let mut traces = vec![];

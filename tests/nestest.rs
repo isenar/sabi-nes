@@ -2,7 +2,7 @@ mod common;
 
 use crate::common::trace;
 use pretty_assertions::assert_eq;
-use sabi_nes::{Bus, Cpu, Result, Rom};
+use sabi_nes::{Address, Bus, Cpu, Result, Rom};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Lines};
 use std::path::Path;
@@ -20,7 +20,7 @@ fn cpu_validation_test() -> Result<()> {
 
     // PC starts here (as seen in nestest.log).
     // This specific value enables running the test ROM in "automation" mode.
-    cpu.program_counter = 0xc000.into();
+    cpu.program_counter = Address::new(0xc000);
 
     let mut traces = Vec::new();
     loop {
