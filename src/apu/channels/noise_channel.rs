@@ -1,10 +1,8 @@
 use crate::Byte;
 use crate::utils::NthBit;
 
-const LENGTH_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
-    192, 24, 72, 26, 16, 28, 32, 30,
-];
+use super::common::LENGTH_TABLE;
+use super::envelope::Envelope;
 
 // Maps the 4-bit period index (bits 3-0 of $400E) to a CPU-clock timer period (NTSC).
 const TIMER_TABLE: [u16; 16] = [
@@ -23,10 +21,7 @@ pub struct NoiseChannel {
     lfsr: u16,
     length_counter: u8,
 
-    // Envelope state (identical to square channel)
-    envelope_start_flag: bool,
-    envelope_divider: u8,
-    envelope_decay: u8,
+    envelope: Envelope,
 }
 
 impl Default for NoiseChannel {
@@ -39,9 +34,7 @@ impl Default for NoiseChannel {
             timer_counter: 0,
             lfsr: 1, // hardware power-on state
             length_counter: 0,
-            envelope_start_flag: false,
-            envelope_divider: 0,
-            envelope_decay: 0,
+            envelope: Envelope::default(),
         }
     }
 }
@@ -66,7 +59,7 @@ impl NoiseChannel {
             let index = (self.len_counter_and_env_restart >> 3).value() as usize;
             self.length_counter = LENGTH_TABLE[index];
         }
-        self.envelope_start_flag = true;
+        self.envelope.restart();
     }
 
     /// Advance the timer by one CPU cycle; clock the LFSR when it expires.
@@ -88,48 +81,38 @@ impl NoiseChannel {
 
     /// Clock the envelope generator (called at ~240 Hz, on each quarter-frame).
     pub fn clock_envelope(&mut self) {
-        if self.envelope_start_flag {
-            self.envelope_start_flag = false;
-            self.envelope_decay = 15;
-            self.envelope_divider = self.volume_divider_period().value();
-        } else if self.envelope_divider == 0 {
-            self.envelope_divider = self.volume_divider_period().value();
-            if self.envelope_decay > 0 {
-                self.envelope_decay -= 1;
-            } else if self.is_length_counter_halted() {
-                self.envelope_decay = 15;
-            }
-        } else {
-            self.envelope_divider -= 1;
-        }
+        self.envelope.clock(
+            self.volume_divider_period(),
+            self.is_length_counter_halted(),
+        );
     }
 
     /// Current output level in the range 0–15, ready for mixing.
     /// Silenced if disabled, length counter is zero, or LFSR bit 0 is set.
-    pub fn output(&self) -> u8 {
+    pub fn output(&self) -> Byte {
         if !self.enabled || self.length_counter == 0 || self.lfsr & 1 == 1 {
-            return 0;
+            return 0x00.into();
         }
         if self.is_constant_volume() {
-            self.volume_divider_period().value()
+            self.volume_divider_period()
         } else {
-            self.envelope_decay
+            self.envelope.decay_level()
         }
     }
 
-    pub fn is_length_counter_halted(&self) -> bool {
+    fn is_length_counter_halted(&self) -> bool {
         self.volume.nth_bit::<5>()
     }
 
-    pub fn is_constant_volume(&self) -> bool {
+    fn is_constant_volume(&self) -> bool {
         self.volume.nth_bit::<4>()
     }
 
-    pub fn volume_divider_period(&self) -> Byte {
+    fn volume_divider_period(&self) -> Byte {
         self.volume & 0b0000_1111
     }
 
-    pub fn mode(&self) -> NoiseMode {
+    fn mode(&self) -> NoiseMode {
         if self.mode_and_period.nth_bit::<7>() {
             NoiseMode::Short
         } else {
@@ -137,7 +120,7 @@ impl NoiseChannel {
         }
     }
 
-    pub fn timer_period(&self) -> Byte {
+    fn timer_period(&self) -> Byte {
         self.mode_and_period & 0b0000_1111
     }
 
@@ -234,5 +217,40 @@ mod tests {
         channel.volume = Byte::new(0b0001_1111); // constant volume = 15
         // Don't write $400F, so length_counter stays 0
         assert_eq!(channel.output(), 0);
+    }
+
+    #[test]
+    fn output_uses_envelope_decay() {
+        // volume: no halt, constant-volume bit CLEAR, period=3
+        let mut channel = NoiseChannel {
+            volume: Byte::new(0b0000_0011),
+            ..NoiseChannel::default()
+        };
+        channel.set_enabled(true);
+        channel.len_counter_and_env_restart = Byte::new(0b1111_1000);
+        channel.on_length_timer_write();
+
+        // Advance LFSR until bit 0 is 0 (channel not muted by LFSR)
+        for _ in 0..100 {
+            if channel.lfsr & 1 == 0 {
+                break;
+            }
+            channel.clock_lfsr();
+        }
+        assert_eq!(
+            channel.lfsr & 1,
+            0,
+            "LFSR bit 0 should be 0 for audible output"
+        );
+
+        // First envelope clock: start-flag fires, decay → 15.
+        channel.clock_envelope();
+        assert_eq!(channel.output(), 15);
+
+        // After period+1 more clocks, decay steps to 14.
+        for _ in 0..=3 {
+            channel.clock_envelope();
+        }
+        assert_eq!(channel.output(), 14);
     }
 }

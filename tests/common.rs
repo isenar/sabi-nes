@@ -79,9 +79,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 
 fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
     let value = cpu.read_byte(cpu.program_counter + 1)?;
-    let address = cpu
-        .read_word(cpu.program_counter + 1)?
-        .as_address();
+    let address = cpu.read_word(cpu.program_counter + 1)?.as_address();
     let target_address = cpu.operand_address(opcode, cpu.program_counter + 1)?;
 
     let opcode_asm_args = match opcode.addressing_mode {

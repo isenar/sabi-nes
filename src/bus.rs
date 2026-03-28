@@ -7,6 +7,7 @@ use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Memory, Result};
 use anyhow::bail;
 use log::debug;
+use std::mem;
 
 const VRAM_SIZE: usize = 2048;
 const PRG_RAM_SIZE: usize = 8192;
@@ -51,7 +52,7 @@ impl Bus {
 
     pub fn tick(&mut self, cycles: usize) -> Result<()> {
         // Include any cycles stalled by OAM DMA from the previous instruction.
-        let cycles = cycles + std::mem::take(&mut self.pending_cycles);
+        let cycles = cycles + mem::take(&mut self.pending_cycles);
 
         self.cycles += cycles;
 

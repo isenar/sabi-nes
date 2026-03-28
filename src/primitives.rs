@@ -57,6 +57,10 @@ impl Byte {
         self.0 as usize
     }
 
+    pub const fn as_float(self) -> f32 {
+        self.0 as f32
+    }
+
     pub const fn wrapping_add(&self, value: u8) -> Self {
         Self::new(self.0.wrapping_add(value))
     }
@@ -95,6 +99,12 @@ impl BitAnd<u8> for Byte {
 impl BitOrAssign<u8> for Byte {
     fn bitor_assign(&mut self, rhs: u8) {
         self.0 |= rhs;
+    }
+}
+
+impl SubAssign<u8> for Byte {
+    fn sub_assign(&mut self, rhs: u8) {
+        self.0 -= rhs;
     }
 }
 

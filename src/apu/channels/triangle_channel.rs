@@ -1,11 +1,7 @@
 use crate::utils::NthBit;
 use crate::{Byte, Word};
 
-// See square_channel.rs for the length table — shared by all channels.
-const LENGTH_TABLE: [u8; 32] = [
-    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22,
-    192, 24, 72, 26, 16, 28, 32, 30,
-];
+use super::common::LENGTH_TABLE;
 
 // 32-step triangle sequence: counts 15 down to 0, then 0 up to 15.
 const TRIANGLE_SEQUENCE: [u8; 32] = [
@@ -86,33 +82,35 @@ impl TriangleChannel {
         }
         // Control flag (bit 7) doubles as halt: when clear, the reload flag
         // is cleared after use so the linear counter can expire normally.
-        if !self.is_control_flag_set() {
+        if !self.is_linear_counter_enabled() {
             self.linear_counter_reload_flag = false;
         }
     }
 
     /// Clock the length counter (called at ~120 Hz, on each half-frame).
     pub fn clock_length_counter(&mut self) {
-        if !self.is_control_flag_set() && self.length_counter > 0 {
+        if !self.is_linear_counter_enabled() && self.length_counter > 0 {
             self.length_counter -= 1;
         }
     }
 
     /// Current output level in the range 0–15, ready for mixing.
-    pub fn output(&self) -> u8 {
+    pub fn output(&self) -> Byte {
         if !self.enabled {
-            return 0;
+            return 0x00.into();
         }
         // Silence ultrasonic periods: very short periods produce a DC-offset
         // pop on real hardware; suppress them the same way square does.
         if self.timer() < 2 {
-            return 0;
+            return 0x00.into();
         }
         // When length or linear counter is 0, the sequencer is frozen (see tick()).
         // We output the held value rather than 0 to avoid a click on note-off.
-        TRIANGLE_SEQUENCE[self.sequencer_pos as usize]
+        TRIANGLE_SEQUENCE[self.sequencer_pos as usize].into()
     }
 
+    /// Bit 7 of $4008: doubles as both the linear counter enable and the
+    /// length counter halt (control flag).
     pub fn is_linear_counter_enabled(self) -> bool {
         self.linear_counter.nth_bit::<7>()
     }
@@ -121,17 +119,13 @@ impl TriangleChannel {
         self.linear_counter & 0b0111_1111
     }
 
-    pub fn timer(&self) -> Word {
+    fn timer(&self) -> Word {
         let timer_high = self.length_and_timer_high & 0b0000_0111;
         Word::from_le_bytes(self.timer_low, timer_high)
     }
 
-    pub fn length_counter_load(&self) -> Byte {
+    fn length_counter_load(&self) -> Byte {
         self.length_and_timer_high >> 3
-    }
-
-    fn is_control_flag_set(&self) -> bool {
-        self.linear_counter.nth_bit::<7>()
     }
 }
 
