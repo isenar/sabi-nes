@@ -108,6 +108,14 @@ impl Default for Apu {
 }
 
 impl Apu {
+    pub fn write_frame_counter(&mut self, value: Byte) {
+        self.frame_counter.write(value);
+    }
+
+    pub fn irq_status(&self) -> bool {
+        self.frame_counter.is_irq_pending()
+    }
+
     pub fn set_status_register(&mut self, byte: Byte) {
         self.status_open_bus = false;
         self.flags = ApuFlags::from(byte);
@@ -121,17 +129,29 @@ impl Apu {
             .set_enabled(self.flags.contains(ApuFlags::NOISE_CHANNEL_ENABLED));
     }
 
-    /// Read $4015: returns length counter status for each channel.
+    /// Read $4015: returns length counter and IRQ status, then clears the frame IRQ flag.
     /// Bit 0: square 1 active,
     /// Bit 1: square 2 active,
     /// Bit 2: triangle active,
     /// Bit 3: noise active,
-    /// Bit 4: DMC active (unimplemented).
-    pub fn status_register(&self) -> Byte {
+    /// Bit 4: DMC active (unimplemented),
+    /// Bit 6: frame counter IRQ pending.
+    pub fn read_status_register(&mut self) -> Byte {
         if self.status_open_bus {
             return Byte::new(0xFF);
         }
-        let mut status = 0;
+        let status = self.peek_status_register();
+        self.frame_counter.clear_irq();
+
+        status
+    }
+
+    /// Read APU status without side effects (does not clear the frame counter IRQ flag).
+    pub fn peek_status_register(&self) -> Byte {
+        if self.status_open_bus {
+            return Byte::new(0xFF);
+        }
+        let mut status = Byte::new(0x00);
         if self.square_channel1.is_active() {
             status |= 0x01;
         }
@@ -144,7 +164,11 @@ impl Apu {
         if self.noise_channel.is_active() {
             status |= 0x08;
         }
-        Byte::new(status)
+        if self.frame_counter.is_irq_pending() {
+            status |= 0x40;
+        }
+
+        status
     }
 
     /// Advance the APU by `cycles` CPU cycles, accumulating audio samples.

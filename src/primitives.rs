@@ -61,12 +61,18 @@ impl Byte {
         self.0 as f32
     }
 
-    pub const fn wrapping_add(&self, value: u8) -> Self {
-        Self::new(self.0.wrapping_add(value))
+    pub fn wrapping_add(&self, value: impl Into<Self>) -> Self {
+        Self::new(self.0.wrapping_add(value.into().0))
     }
 
-    pub const fn wrapping_sub(&self, value: u8) -> Self {
-        Self::new(self.0.wrapping_sub(value))
+    pub fn wrapping_sub(&self, value: impl Into<Self>) -> Self {
+        Self::new(self.0.wrapping_sub(value.into().0))
+    }
+}
+
+impl From<Byte> for u16 {
+    fn from(byte: Byte) -> Self {
+        byte.0 as _
     }
 }
 
@@ -209,6 +215,7 @@ impl Shl<u16> for Word {
     PartialOrd,
     Ord,
     Hash,
+    BitOr,
     From,
     Div,
     Sub,

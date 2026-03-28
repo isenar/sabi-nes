@@ -6,8 +6,9 @@ use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Memory, Result};
 use anyhow::bail;
-use log::debug;
+use log::{debug, warn};
 use std::mem;
+use std::ops::DerefMut;
 
 const VRAM_SIZE: usize = 2048;
 const PRG_RAM_SIZE: usize = 8192;
@@ -31,6 +32,12 @@ pub struct Bus {
     frame_ready: bool,
     // Extra cycles to consume on the next tick, used for OAM DMA stall.
     pending_cycles: usize,
+    // The PPU data bus retains the last value driven on it. Write-only register
+    // reads return this value; $2002 uses it for the lower 5 bits.
+    ppu_open_bus: Byte,
+    // The CPU data bus retains the last value driven on it. Reads from unmapped
+    // addresses return this value instead of driving the bus to zero.
+    cpu_open_bus: Byte,
 }
 
 impl Bus {
@@ -47,6 +54,8 @@ impl Bus {
             cycles: 0,
             frame_ready: false,
             pending_cycles: 0,
+            ppu_open_bus: Byte::default(),
+            cpu_open_bus: Byte::default(),
         }
     }
 
@@ -69,6 +78,10 @@ impl Bus {
 
     pub fn drain_audio_samples(&mut self) -> Vec<f32> {
         self.apu.drain_samples()
+    }
+
+    pub fn poll_irq_status(&self) -> bool {
+        self.apu.irq_status()
     }
 
     pub fn poll_nmi_status(&mut self) -> NmiStatus {
@@ -97,26 +110,19 @@ impl Bus {
     pub fn joypad_mut(&mut self) -> &mut Joypad {
         &mut self.joypad
     }
-}
 
-impl Memory for Bus {
-    fn read_byte(&mut self, address: Address) -> Result<Byte> {
-        Ok(match address.value() {
+    /// Read a byte without triggering any side effects. Used by the trace/debugger
+    /// so display reads don't corrupt cpu_open_bus or other stateful registers.
+    pub fn peek_byte(&self, address: Address) -> Byte {
+        match address.value() {
             RAM..=RAM_MIRRORS_END => {
                 let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
                 self.cpu_vram[mirror_base_addr]
             }
-            0x2000 => bail!("Attempted to read from write-only PPU control register"),
-            0x2001 => bail!("Attempted to read from write-only PPU mask register"),
-            0x2002 => self.ppu.read_status_register(),
-            0x2003 => bail!("Attempted to read from write-only PPU OAM address register"),
-            0x2004 => self.ppu.read_oam_data(),
-            0x2005 => bail!("Attempted to read from write-only PPU scroll register"),
-            0x2006 => bail!("Attempted to read from write-only PPU address register"),
-            0x2007 => self.ppu.read(&*self.rom.mapper)?,
+            0x2000..=0x2007 => self.ppu_open_bus,
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
-                self.read_byte(mirror_base_addr)?
+                self.peek_byte(mirror_base_addr)
             }
             0x4000 => self.apu.square_channel1.volume,
             0x4001 => self.apu.square_channel1.sweep,
@@ -127,18 +133,67 @@ impl Memory for Bus {
             0x4006 => self.apu.square_channel2.timer_low,
             0x4007 => self.apu.square_channel2.length_and_timer_high,
             0x4008 => self.apu.triangle_channel.linear_counter,
-            // 0x4009 is unused
             0x400a => self.apu.triangle_channel.timer_low,
             0x400b => self.apu.triangle_channel.length_and_timer_high,
             0x400c => self.apu.noise_channel.volume,
-            // 0x400d is unused
             0x400e => self.apu.noise_channel.mode_and_period,
             0x400f => self.apu.noise_channel.len_counter_and_env_restart,
+            0x4015 => self.apu.peek_status_register(),
+            0x4016 | 0x4017 => 0.into(),
+            PRG_RAM_START..=PRG_RAM_END => {
+                let index = (address - PRG_RAM_START).as_usize();
+                self.prg_ram[index]
+            }
+            ROM_START..=ROM_END => match self.rom.mapper.map_address(address - ROM_START) {
+                Ok(mapped) => self.rom.prg_rom[mapped],
+                Err(_) => self.cpu_open_bus,
+            },
+            _ => self.cpu_open_bus,
+        }
+    }
+}
+
+impl Memory for Bus {
+    fn read_byte(&mut self, address: Address) -> Result<Byte> {
+        let value: Byte = match address.value() {
+            RAM..=RAM_MIRRORS_END => {
+                let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
+                self.cpu_vram[mirror_base_addr]
+            }
+            0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 => {
+                // Write-only registers — nothing drives the bus, so the latch value decays back.
+                debug!("Read from write-only PPU register ${address:04X}");
+                self.ppu_open_bus
+            }
+            0x2002 => {
+                // Bits 7–5 come from the PPU status register; bits 4–0 come from the open bus latch.
+                let status = self.ppu.read_status_register();
+                let value = (status & 0xE0) | (self.ppu_open_bus & 0x1F);
+                self.ppu_open_bus = value;
+                value
+            }
+            0x2004 => {
+                let value = self.ppu.read_oam_data();
+                self.ppu_open_bus = value;
+                value
+            }
+            0x2007 => {
+                let value = self.ppu.read(&*self.rom.mapper)?;
+                self.ppu_open_bus = value;
+                value
+            }
+            PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
+                let mirror_base_addr = address.mirror_ppu_registers_addr();
+                self.read_byte(mirror_base_addr)?
+            }
+            // $4000–$400F are write-only APU registers; reads return open bus.
             0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
-            0x4015 => self.apu.status_register(),
-            0x4016 => self.joypad.read(),
+            // $4015 is internal to the 2A03; its value doesn't drive the external data bus.
+            // Bit 5 is not driven by the 2A03 at all, so it remains whatever was on the bus.
+            0x4015 => return Ok(self.apu.read_status_register() | (self.cpu_open_bus & 0x20)),
+            0x4016 => (self.joypad.read() & 0x1F) | (self.cpu_open_bus & 0xE0),
             // TODO: For reads, this is actually Player 2's controller, not frame counter!
-            0x4017 => 0.into(),
+            0x4017 => self.cpu_open_bus & 0xE0,
             PRG_RAM_START..=PRG_RAM_END => {
                 let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index]
@@ -149,25 +204,52 @@ impl Memory for Bus {
             }
             _ => {
                 debug!("Ignored attempt to read address ${address:0X}");
-                0.into()
+                return Ok(self.cpu_open_bus);
             }
-        })
+        };
+        self.cpu_open_bus = value;
+        Ok(value)
     }
 
     fn write_byte(&mut self, address: Address, value: Byte) -> Result<()> {
+        self.cpu_open_bus = value;
         match address.value() {
             RAM..=RAM_MIRRORS_END => {
                 let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
                 self.cpu_vram[mirror_base_addr] = value;
             }
-            0x2000 => self.ppu.write_to_control_register(value),
-            0x2001 => self.ppu.write_to_mask_register(value),
-            0x2002 => bail!("Attempted to write to PPU status register"),
-            0x2003 => self.ppu.write_to_oam_address_register(value),
-            0x2004 => self.ppu.write_to_oam_data(value),
-            0x2005 => self.ppu.write_to_scroll_register(value),
-            0x2006 => self.ppu.write_to_addr_register(value),
-            0x2007 => self.ppu.write(value, &mut *self.rom.mapper)?,
+            0x2000 => {
+                self.ppu_open_bus = value;
+                self.ppu.write_to_control_register(value);
+            }
+            0x2001 => {
+                self.ppu_open_bus = value;
+                self.ppu.write_to_mask_register(value);
+            }
+            0x2002 => {
+                self.ppu_open_bus = value;
+                warn!("Attempted to write to PPU status register");
+            }
+            0x2003 => {
+                self.ppu_open_bus = value;
+                self.ppu.write_to_oam_address_register(value);
+            }
+            0x2004 => {
+                self.ppu_open_bus = value;
+                self.ppu.write_to_oam_data(value);
+            }
+            0x2005 => {
+                self.ppu_open_bus = value;
+                self.ppu.write_to_scroll_register(value);
+            }
+            0x2006 => {
+                self.ppu_open_bus = value;
+                self.ppu.write_to_addr_register(value);
+            }
+            0x2007 => {
+                self.ppu_open_bus = value;
+                self.ppu.write(value, self.rom.mapper.deref_mut())?;
+            }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
 
@@ -229,7 +311,7 @@ impl Memory for Bus {
             }
             0x4015 => self.apu.set_status_register(value),
             0x4016 => self.joypad.write(value),
-            0x4017 => {} // TODO: Frame Counter impl
+            0x4017 => self.apu.write_frame_counter(value),
             PRG_RAM_START..=PRG_RAM_END => {
                 let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index] = value;

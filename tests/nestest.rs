@@ -22,21 +22,17 @@ fn cpu_validation_test() -> Result<()> {
     // This specific value enables running the test ROM in "automation" mode.
     cpu.program_counter = Address::new(0xc000);
 
-    let mut traces = Vec::new();
-    loop {
+    let lines: Vec<String> = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?
+        .collect::<io::Result<_>>()?;
+
+    let mut traces = Vec::with_capacity(lines.len());
+    for _ in 0..lines.len() {
         traces.push(trace(&mut cpu)?);
-        if cpu.step()? {
-            break;
-        }
+        cpu.step()?;
     }
 
-    let lines = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?;
-    let traces = lines.zip(traces).enumerate();
-
-    for (line, (expected_trace, actual_trace)) in traces {
-        let expected_trace = expected_trace?;
+    for (line, (expected_trace, actual_trace)) in lines.iter().zip(traces.iter()).enumerate() {
         let line = line + 1;
-
         assert_eq!(expected_trace, actual_trace, "Mismatch at line#{line}");
     }
 

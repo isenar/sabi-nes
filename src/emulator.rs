@@ -24,29 +24,20 @@ where
         cpu.reset()?;
 
         loop {
-            if cpu.step()? {
-                break;
-            }
+            cpu.step()?;
 
             if cpu.bus().is_frame_ready() {
-                // Drain audio samples before rendering so the borrow on bus_mut
-                // is released before the immutable borrows below.
                 let samples = cpu.bus_mut().drain_audio_samples();
 
                 render(cpu.bus().ppu(), cpu.bus().mapper(), &mut self.frame)?;
 
-                // Render frame via frontend
                 self.frontend.render_frame(&self.frame)?;
-
-                // Push audio to the output device
                 self.frontend.queue_audio(&samples);
 
-                // Handle input events
                 if !self.frontend.handle_input(cpu.bus_mut().joypad_mut())? {
-                    break; // Frontend requested exit
+                    break;
                 }
 
-                // Frame rate limiting
                 self.frontend.frame_limit();
 
                 cpu.bus_mut().clear_frame_ready();

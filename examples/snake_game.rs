@@ -100,9 +100,7 @@ fn main() -> Result<()> {
     cpu.reset()?;
 
     loop {
-        if cpu.step()? {
-            break;
-        }
+        cpu.step()?;
 
         handle_user_input(&mut cpu, &mut event_pump)?;
 
@@ -118,6 +116,4 @@ fn main() -> Result<()> {
 
         std::thread::sleep(std::time::Duration::from_micros(50));
     }
-
-    Ok(())
 }
