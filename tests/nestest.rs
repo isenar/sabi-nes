@@ -4,12 +4,13 @@ use crate::common::trace;
 use pretty_assertions::assert_eq;
 use sabi_nes::{Address, Bus, Cpu, Result, Rom};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Lines};
+use std::io::{self, BufRead, BufReader};
+use std::iter;
 use std::path::Path;
 
-fn read_lines(filename: impl AsRef<Path>) -> io::Result<Lines<BufReader<File>>> {
+fn read_lines(filename: impl AsRef<Path>) -> Result<Vec<String>> {
     let file = File::open(filename)?;
-    Ok(BufReader::new(file).lines())
+    Ok(BufReader::new(file).lines().collect::<io::Result<_>>()?)
 }
 
 #[test]
@@ -22,16 +23,18 @@ fn cpu_validation_test() -> Result<()> {
     // This specific value enables running the test ROM in "automation" mode.
     cpu.program_counter = Address::new(0xc000);
 
-    let lines: Vec<String> = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?
-        .collect::<io::Result<_>>()?;
-
-    let mut traces = Vec::with_capacity(lines.len());
-    for _ in 0..lines.len() {
-        traces.push(trace(&mut cpu)?);
+    let collect_trace = || -> Result<String> {
+        let trace = trace(&mut cpu);
         cpu.step()?;
-    }
+        trace
+    };
+    let lines = read_lines("../sabi-nes/tests/test_data/nestest_expected_logs.txt")?;
+    let traces = iter::repeat_with(collect_trace)
+        .take(lines.len())
+        .collect::<Result<Vec<_>>>()?;
 
-    for (line, (expected_trace, actual_trace)) in lines.iter().zip(traces.iter()).enumerate() {
+    let results = lines.iter().zip(traces.iter()).enumerate();
+    for (line, (expected_trace, actual_trace)) in results {
         let line = line + 1;
         assert_eq!(expected_trace, actual_trace, "Mismatch at line#{line}");
     }

@@ -8,7 +8,7 @@ use crate::{Address, Byte, Memory, Result};
 use anyhow::bail;
 use log::{debug, warn};
 use std::mem;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 
 const VRAM_SIZE: usize = 2048;
 const PRG_RAM_SIZE: usize = 8192;
@@ -33,8 +33,11 @@ pub struct Bus {
     // Extra cycles to consume on the next tick, used for OAM DMA stall.
     pending_cycles: usize,
     // The PPU data bus retains the last value driven on it. Write-only register
-    // reads return this value; $2002 uses it for the lower 5 bits.
+    // reads return this value; $2002 uses it for the lower 5 bits. On real
+    // hardware the capacitors discharge over ~600ms; we model this as a full
+    // decay to 0 after DECAY_CPU_CYCLES CPU cycles with no PPU register access.
     ppu_open_bus: Byte,
+    ppu_open_bus_written_at: usize,
     // The CPU data bus retains the last value driven on it. Reads from unmapped
     // addresses return this value instead of driving the bus to zero.
     cpu_open_bus: Byte,
@@ -55,6 +58,7 @@ impl Bus {
             frame_ready: false,
             pending_cycles: 0,
             ppu_open_bus: Byte::default(),
+            ppu_open_bus_written_at: 0,
             cpu_open_bus: Byte::default(),
         }
     }
@@ -66,7 +70,8 @@ impl Bus {
         self.cycles += cycles;
 
         let nmi_before = self.ppu.nmi_status;
-        let nmi_after = self.ppu.tick(cycles * 3);
+        let mapper = self.rom.mapper.deref();
+        let nmi_after = self.ppu.tick(cycles * 3, mapper);
         self.apu.tick(cycles);
 
         if NmiStatus::activated(nmi_before, nmi_after) {
@@ -111,15 +116,34 @@ impl Bus {
         &mut self.joypad
     }
 
+    /// Returns the PPU open bus value, or 0 if it has fully decayed.
+    /// Real hardware capacitors discharge over ~600 ms; we model the full
+    /// byte as decayed after roughly one second of CPU cycles.
+    fn ppu_open_bus(&self) -> Byte {
+        // ~1 048 576 CPU cycles ≈ 586 ms at 1.789 MHz (NTSC)
+        const DECAY_CPU_CYCLES: usize = 1_048_576;
+        if self.cycles.saturating_sub(self.ppu_open_bus_written_at) >= DECAY_CPU_CYCLES {
+            Byte::default()
+        } else {
+            self.ppu_open_bus
+        }
+    }
+
+    /// Update the PPU open bus latch and reset its decay timer.
+    fn set_ppu_open_bus(&mut self, value: Byte) {
+        self.ppu_open_bus = value;
+        self.ppu_open_bus_written_at = self.cycles;
+    }
+
     /// Read a byte without triggering any side effects. Used by the trace/debugger
-    /// so display reads don't corrupt cpu_open_bus or other stateful registers.
+    /// This method is mostly intended for tests and in the future, for debugger.
     pub fn peek_byte(&self, address: Address) -> Byte {
         match address.value() {
             RAM..=RAM_MIRRORS_END => {
-                let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
+                let mirror_base_addr = address.mirror_cpu_vram_addr().as_usize();
                 self.cpu_vram[mirror_base_addr]
             }
-            0x2000..=0x2007 => self.ppu_open_bus,
+            0x2000..=0x2007 => self.ppu_open_bus(),
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
                 self.peek_byte(mirror_base_addr)
@@ -139,7 +163,7 @@ impl Bus {
             0x400e => self.apu.noise_channel.mode_and_period,
             0x400f => self.apu.noise_channel.len_counter_and_env_restart,
             0x4015 => self.apu.peek_status_register(),
-            0x4016 | 0x4017 => 0.into(),
+            0x4016 | 0x4017 => Byte::new(0x00),
             PRG_RAM_START..=PRG_RAM_END => {
                 let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index]
@@ -155,31 +179,31 @@ impl Bus {
 
 impl Memory for Bus {
     fn read_byte(&mut self, address: Address) -> Result<Byte> {
-        let value: Byte = match address.value() {
+        let value = match address.value() {
             RAM..=RAM_MIRRORS_END => {
-                let mirror_base_addr: usize = address.mirror_cpu_vram_addr().into();
+                let mirror_base_addr = address.mirror_cpu_vram_addr().as_usize();
                 self.cpu_vram[mirror_base_addr]
             }
             0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 => {
                 // Write-only registers — nothing drives the bus, so the latch value decays back.
                 debug!("Read from write-only PPU register ${address:04X}");
-                self.ppu_open_bus
+                self.ppu_open_bus()
             }
             0x2002 => {
-                // Bits 7–5 come from the PPU status register; bits 4–0 come from the open bus latch.
+                // Bits 7–5 come from the PPU status register; bits 4–†
                 let status = self.ppu.read_status_register();
-                let value = (status & 0xE0) | (self.ppu_open_bus & 0x1F);
-                self.ppu_open_bus = value;
+                let value = (status & 0xE0) | (self.ppu_open_bus() & 0x1F);
+                self.set_ppu_open_bus(value);
                 value
             }
             0x2004 => {
                 let value = self.ppu.read_oam_data();
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 value
             }
             0x2007 => {
                 let value = self.ppu.read(&*self.rom.mapper)?;
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 value
             }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
@@ -219,35 +243,35 @@ impl Memory for Bus {
                 self.cpu_vram[mirror_base_addr] = value;
             }
             0x2000 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write_to_control_register(value);
             }
             0x2001 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write_to_mask_register(value);
             }
             0x2002 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 warn!("Attempted to write to PPU status register");
             }
             0x2003 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write_to_oam_address_register(value);
             }
             0x2004 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write_to_oam_data(value);
             }
             0x2005 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write_to_scroll_register(value);
             }
             0x2006 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write_to_addr_register(value);
             }
             0x2007 => {
-                self.ppu_open_bus = value;
+                self.set_ppu_open_bus(value);
                 self.ppu.write(value, self.rom.mapper.deref_mut())?;
             }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {

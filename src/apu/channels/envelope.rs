@@ -28,14 +28,14 @@ impl Envelope {
     pub fn clock(&mut self, period: Byte, is_looping: bool) {
         if self.start_flag {
             self.start_flag = false;
-            self.decay = 15.into();
+            self.decay = Byte::new(15);
             self.divider = period;
         } else if self.divider == 0 {
             self.divider = period;
             if self.decay > 0 {
                 self.decay -= 1;
             } else if is_looping {
-                self.decay = 15.into();
+                self.decay = Byte::new(15);
             }
         } else {
             self.divider -= 1;
@@ -107,8 +107,8 @@ mod tests {
         let period = 1u8;
         let steps_to_zero = 1 + 15 * (period as usize + 1);
         // One divider expiry past zero with looping=true should wrap to 15.
-        let e = clocked(period, true, steps_to_zero + period as usize + 1);
-        assert_eq!(e.decay_level(), 15);
+        let envelope = clocked(period, true, steps_to_zero + period as usize + 1);
+        assert_eq!(envelope.decay_level(), 15);
     }
 
     #[test]
@@ -116,7 +116,7 @@ mod tests {
         // First step fires at clock period+2 (start-flag costs 1 clock, then
         // the divider counts period+1 more clocks before expiring).
         // Each subsequent step fires every period+1 clocks.
-        let period = 2u8;
+        let period = 2;
         let first_step = period as usize + 2; // = 4
         let interval = period as usize + 1; // = 3 (subsequent steps)
 
@@ -124,15 +124,11 @@ mod tests {
         assert_eq!(e.decay_level(), 14, "should be 14 after first step");
 
         // Still 14 one clock before the second step.
-        let e = clocked(period, false, first_step + interval - 1);
-        assert_eq!(
-            e.decay_level(),
-            14,
-            "should still be 14 just before second step"
-        );
+        let envelope = clocked(period, false, first_step + interval - 1);
+        assert_eq!(envelope.decay_level(), 14);
 
         // Drops to 13 exactly at the second step.
-        let e = clocked(period, false, first_step + interval);
-        assert_eq!(e.decay_level(), 13, "should be 13 after second step");
+        let envelope = clocked(period, false, first_step + interval);
+        assert_eq!(envelope.decay_level(), 13);
     }
 }

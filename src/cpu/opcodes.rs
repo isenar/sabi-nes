@@ -248,7 +248,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0xd4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
     Opcode::new(0xf4, "*NOP", 2, 4, AddressingMode::ZeroPageX, false),
     // *LAX
-    Opcode::new(0xab, "*LAX", 2, 2, AddressingMode::Immediate, false),
+    // note: $AB immediate is LXA (unstable) — handled separately below
     Opcode::new(0xaf, "*LAX", 3, 4, AddressingMode::Absolute, false),
     Opcode::new(0xbf, "*LAX", 3, 4, AddressingMode::AbsoluteY, true), // +1 cycle if page boundary crossed
     Opcode::new(0xa7, "*LAX", 2, 3, AddressingMode::ZeroPage, false),
@@ -302,6 +302,30 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x57, "*SRE", 2, 6, AddressingMode::ZeroPageX, false),
     Opcode::new(0x43, "*SRE", 2, 8, AddressingMode::IndirectX, false),
     Opcode::new(0x53, "*SRE", 2, 8, AddressingMode::IndirectY, false),
+    // *ANC (AND with carry set to bit 7)
+    Opcode::new(0x0b, "*ANC", 2, 2, AddressingMode::Immediate, false),
+    Opcode::new(0x2b, "*ANC", 2, 2, AddressingMode::Immediate, false),
+    // *ALR (AND + LSR)
+    Opcode::new(0x4b, "*ALR", 2, 2, AddressingMode::Immediate, false),
+    // *ARR (AND + ROR with special flags)
+    Opcode::new(0x6b, "*ARR", 2, 2, AddressingMode::Immediate, false),
+    // *ANE (unstable: (A | magic) & X & imm → A)
+    Opcode::new(0x8b, "*ANE", 2, 2, AddressingMode::Immediate, false),
+    // *LXA (unstable: (A | magic) & imm → A, X)
+    Opcode::new(0xab, "*LXA", 2, 2, AddressingMode::Immediate, false),
+    // *AXS (A & X - imm → X, sets N, Z, C)
+    Opcode::new(0xcb, "*AXS", 2, 2, AddressingMode::Immediate, false),
+    // *SHA (stores A & X & (addr_high + 1))
+    Opcode::new(0x93, "*SHA", 2, 6, AddressingMode::IndirectY, false),
+    Opcode::new(0x9f, "*SHA", 3, 5, AddressingMode::AbsoluteY, false),
+    // *SHX (stores X & (addr_high + 1))
+    Opcode::new(0x9e, "*SHX", 3, 5, AddressingMode::AbsoluteY, false),
+    // *SHY (stores Y & (addr_high + 1))
+    Opcode::new(0x9c, "*SHY", 3, 5, AddressingMode::AbsoluteX, false),
+    // *SHS (S = A & X; stores A & X & (addr_high + 1))
+    Opcode::new(0x9b, "*SHS", 3, 5, AddressingMode::AbsoluteY, false),
+    // *LAS (A = X = S = mem & S)
+    Opcode::new(0xbb, "*LAS", 3, 4, AddressingMode::AbsoluteY, true),
     // *RRA
     Opcode::new(0x6f, "*RRA", 3, 6, AddressingMode::Absolute, false),
     Opcode::new(0x7f, "*RRA", 3, 7, AddressingMode::AbsoluteX, false),

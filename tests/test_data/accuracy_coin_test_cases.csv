@@ -1,0 +1,138 @@
+name,address,known_failure
+ROM is not writable,0x0405,false
+RAM Mirroring,0x0403,false
+PC Wraparound,0x044D,false
+The Decimal Flag,0x0474,false
+The B Flag,0x0475,false
+Dummy read cycles,0x0406,false
+Dummy write cycles,0x0407,false
+Open Bus,0x0408,false
+All NOP instructions,0x047D,false
+Absolute Indexed,0x046E,false
+Zero Page Indexed,0x046F,false
+Indirect,0x0470,false
+Indirect X,0x0471,false
+Indirect Y,0x0472,false
+Relative,0x0473,false
+$03   SLO indirect X,0x0409,false
+$07   SLO zeropage,0x040A,false
+$0F   SLO absolute,0x040B,false
+$13   SLO indirect Y,0x040C,false
+$17   SLO zeropage X,0x040D,false
+$1B   SLO absolute Y,0x040E,false
+$1F   SLO absolute X,0x040F,false
+$23   RLA indirect X,0x0419,false
+$27   RLA zeropage,0x041A,false
+$2F   RLA absolute,0x041B,false
+$33   RLA indirect Y,0x041C,false
+$37   RLA zeropage X,0x041D,false
+$3B   RLA absolute Y,0x041E,false
+$3F   RLA absolute X,0x041F,false
+$43   SRE indirect X,0x0420,false
+$47   SRE zeropage,0x047F,false
+$4F   SRE absolute,0x0422,false
+$53   SRE indirect Y,0x0423,false
+$57   SRE zeropage X,0x0424,false
+$5B   SRE absolute Y,0x0425,false
+$5F   SRE absolute X,0x0426,false
+$63   RRA indirect X,0x0427,false
+$67   RRA zeropage,0x0428,false
+$6F   RRA absolute,0x0429,false
+$73   RRA indirect Y,0x042A,false
+$77   RRA zeropage X,0x042B,false
+$7B   RRA absolute Y,0x042C,false
+$7F   RRA absolute X,0x042D,false
+$83   SAX indirect X,0x042E,false
+$87   SAX zeropage,0x042F,false
+$8F   SAX absolute,0x0430,false
+$97   SAX zeropage Y,0x0431,false
+$A3   LAX indirect X,0x0432,false
+$A7   LAX zeropage,0x0433,false
+$AF   LAX absolute,0x0434,false
+$B3   LAX indirect Y,0x0435,false
+$B7   LAX zeropage Y,0x0436,false
+$BF   LAX absolute X,0x0437,false
+$C3   DCP indirect X,0x0438,false
+$C7   DCP zeropage,0x0439,false
+$CF   DCP absolute,0x043A,false
+$D3   DCP indirect Y,0x043B,false
+$D7   DCP zeropage X,0x043C,false
+$DB   DCP absolute Y,0x043D,false
+$DF   DCP absolute X,0x043E,false
+$E3   ISC indirect X,0x043F,false
+$E7   ISC zeropage,0x0440,false
+$EF   ISC absolute,0x0441,false
+$F3   ISC indirect Y,0x0442,false
+$F7   ISC zeropage X,0x0443,false
+$FB   ISC absolute Y,0x0444,false
+$FF   ISC absolute X,0x0445,false
+$93   SHA indirect Y,0x0446,true
+$9F   SHA absolute Y,0x0447,true
+$9B   SHS absolute Y,0x0448,true
+$9C   SHY absolute X,0x0449,true
+$9E   SHX absolute Y,0x044A,true
+$BB   LAE absolute Y,0x044B,true
+$0B   ANC Immediate,0x0410,false
+$2B   ANC Immediate,0x0411,false
+$4B   ASR Immediate,0x0412,false
+$6B   ARR Immediate,0x0413,false
+$8B   ANE Immediate,0x0414,false
+$AB   LXA Immediate,0x0415,false
+$CB   AXS Immediate,0x0416,false
+$EB   SBC Immediate,0x0417,false
+Interrupt flag latency,0x0461,true
+NMI Overlap BRK,0x0462,true
+NMI Overlap IRQ,0x0463,true
+DMA + Open Bus,0x046C,true
+DMA + $2002 Read,0x0488,true
+DMA + $2007 Read,0x044C,true
+DMA + $2007 Write,0x044F,true
+DMA + $4015 Read,0x045D,true
+DMA + $4016 Read,0x045E,true
+DMC DMA Bus Conflicts,0x046B,true
+DMC DMA + OAM DMA,0x0477,true
+Explicit DMA Abort,0x0479,true
+Implicit DMA Abort,0x0478,true
+Length Counter,0x0465,true
+Length Table,0x0466,true
+Frame Counter IRQ,0x0467,true
+Frame Counter 4-step,0x0468,true
+Frame Counter 5-step,0x0469,true
+Delta Modulation Channel,0x046A,true
+APU Register Activation,0x045C,true
+Controller Strobing,0x045F,true
+Controller Clocking,0x047A,true
+CHR ROM is not writable,0x0485,false
+PPU Register Mirroring,0x0404,false
+PPU Register Open Bus,0x044E,false
+PPU Read Buffer,0x0476,true
+Palette RAM Quirks,0x047E,true
+Rendering Flag Behavior,0x0486,true
+$2007 read w/ rendering,0x048A,true
+VBlank beginning,0x0450,true
+VBlank end,0x0451,true
+NMI Control,0x0452,true
+NMI Timing,0x0453,true
+NMI Suppression,0x0454,true
+NMI at VBlank end,0x0455,true
+NMI disabled at VBlank,0x0456,true
+Sprite overflow behavior,0x0459,false
+Sprite 0 Hit behavior,0x0457,false
+$2002 flag timing,0x048D,true
+Suddenly Resize Sprite,0x0489,true
+Arbitrary Sprite zero,0x0458,true
+Misaligned OAM behavior,0x045A,true
+Address $2004 behavior,0x045B,true
+OAM Corruption,0x047B,true
+INC $4014,0x0480,true
+Attributes As Tiles,0x0481,true
+T Register Quirks,0x0482,true
+Stale BG Shift Registers,0x0483,true
+BG Serial In,0x0487,true
+Sprites On Scanline 0,0x0484,true
+$2004 Stress Test,0x048C,true
+$2007 Stress Test,0x048E,true
+Instruction Timing,0x0460,true
+Implied Dummy Reads,0x046D,true
+Branch Dummy Reads,0x048B,true
+JSR Edge Cases,0x047C,true

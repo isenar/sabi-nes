@@ -113,7 +113,7 @@ impl Cpu {
 
         let code = self.read_byte(self.program_counter)?;
         let instruction_pc = self.program_counter;
-        self.program_counter += 1;
+        self.program_counter = self.program_counter.wrapping_add(1u16);
 
         let current_program_counter = self.program_counter;
         let opcode = OPCODES_MAPPING
@@ -138,7 +138,7 @@ impl Cpu {
             "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BRK" => {
-                self.program_counter += 1; // skip the padding byte (BRK is a 2-byte instruction)
+                self.program_counter = self.program_counter.wrapping_add(1u16); // skip the padding byte (BRK is a 2-byte instruction)
                 self.interrupt(&interrupts::BRK)?;
                 return Ok(());
             }
@@ -216,13 +216,21 @@ impl Cpu {
             "*RLA" => self.rla(address, opcode.addressing_mode)?,
             "*SRE" => self.sre(address)?,
             "*RRA" => self.rra(address, opcode.addressing_mode)?,
+            "*ANC" => self.anc(address)?,
+            "*ALR" => self.alr(address)?,
+            "*ARR" => self.arr(address)?,
+            "*ANE" => self.ane(address)?,
+            "*LXA" => self.lxa(address)?,
+            "*AXS" => self.axs(address)?,
+            "*SHA" | "*SHX" | "*SHY" | "*SHS" | "*LAS" => {} // unstable — treat as NOP
             _ => bail!("Unsupported opcode name: {opcode_name}"),
         }
 
         self.bus.tick(opcode.cycles)?;
 
         if current_program_counter == self.program_counter {
-            self.program_counter += opcode.length().try_into()?;
+            let len: u16 = opcode.length().try_into()?;
+            self.program_counter = self.program_counter.wrapping_add(len);
         }
 
         Ok(())
@@ -586,13 +594,10 @@ impl Cpu {
         if condition {
             self.bus.tick(1)?;
 
-            let jump = self.read_byte(self.program_counter)?.value() as i8;
+            let jump = self.read_byte(self.program_counter)?.value().cast_signed();
             // NOTE: This is intended!
             #[allow(clippy::cast_sign_loss)]
-            let jump_addr = self
-                .program_counter
-                .wrapping_add(1u16)
-                .wrapping_add(jump as u16);
+            let jump_addr = self.program_counter.wrapping_add(1 + jump as u16);
 
             if is_page_crossed(self.program_counter, jump_addr) {
                 self.bus.tick(1)?;
@@ -814,6 +819,74 @@ impl Cpu {
         let value = self.read_byte(address)?;
         self.add_to_acc(value);
 
+        Ok(())
+    }
+
+    fn anc(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        self.accumulator &= value;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        self.status_register.set(
+            StatusRegister::CARRY,
+            self.status_register.contains(StatusRegister::NEGATIVE),
+        );
+        Ok(())
+    }
+
+    fn alr(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let and = self.accumulator & value;
+        self.status_register
+            .set(StatusRegister::CARRY, (and & 1) == 1);
+        self.accumulator = and >> 1;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        Ok(())
+    }
+
+    fn arr(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let and = (self.accumulator & value).value();
+        let carry_in = u8::from(self.status_register.contains(StatusRegister::CARRY));
+        let result = (carry_in << 7) | (and >> 1);
+        self.accumulator = result.into();
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        let bit6 = (result >> 6) & 1 != 0;
+        let bit5 = (result >> 5) & 1 != 0;
+        self.status_register.set(StatusRegister::CARRY, bit6);
+        self.status_register
+            .set(StatusRegister::OVERFLOW, bit6 ^ bit5);
+        Ok(())
+    }
+
+    fn ane(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        self.accumulator = (self.accumulator | Byte::new(0xEE)) & self.register_x & value;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        Ok(())
+    }
+
+    fn lxa(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let result = (self.accumulator | Byte::new(0xEE)) & value;
+        self.accumulator = result;
+        self.register_x = result;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        Ok(())
+    }
+
+    fn axs(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let ax = self.accumulator & self.register_x;
+        let result = ax.wrapping_sub(value);
+        self.status_register.set(StatusRegister::CARRY, ax >= value);
+        self.register_x = result;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
         Ok(())
     }
 }

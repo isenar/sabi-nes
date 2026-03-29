@@ -7,6 +7,9 @@ authors = ["Dariusz Dajka <dariusz.dajka@gmail.com>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.dev]
+opt-level = 1
+
 [dependencies]
 anyhow = "~1.0.97"
 bitflags = "~2.11.0"
@@ -20,8 +23,10 @@ sdl2 = "~0.38.0"
 
 [dev-dependencies]
 assert_matches = "~1.5.0"
+csv = "~1.4.0"
 pretty_assertions = "~1.4.1"
 rand = "~0.10.0"
+serde = { version = "~1.0.228", features = ["derive"] }
 
 [lints.clippy]
 cast_sign_loss = "warn"

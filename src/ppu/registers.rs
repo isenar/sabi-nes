@@ -76,6 +76,10 @@ impl PpuRegisters {
         self.oam.write_address(value);
     }
 
+    pub fn reset_oam_address(&mut self) {
+        self.oam.write_address(Byte::default());
+    }
+
     pub fn write_oam_data(&mut self, value: Byte) {
         self.oam.write(value);
     }
@@ -110,6 +114,10 @@ impl PpuRegisters {
         self
     }
 
+    pub fn is_sprite_zero_hit_set(&self) -> bool {
+        self.status.contains(StatusRegister::SPRITE_ZERO_HIT)
+    }
+
     pub fn set_sprite_zero_hit(&mut self) -> &mut Self {
         self.status.insert(StatusRegister::SPRITE_ZERO_HIT);
         self
@@ -118,6 +126,20 @@ impl PpuRegisters {
     pub fn reset_sprite_zero_hit(&mut self) -> &mut Self {
         self.status.remove(StatusRegister::SPRITE_ZERO_HIT);
         self
+    }
+
+    pub fn set_sprite_overflow(&mut self) -> &mut Self {
+        self.status.insert(StatusRegister::SPRITE_OVERFLOW);
+        self
+    }
+
+    pub fn reset_sprite_overflow(&mut self) -> &mut Self {
+        self.status.remove(StatusRegister::SPRITE_OVERFLOW);
+        self
+    }
+
+    pub fn is_rendering_active(&self) -> bool {
+        self.mask.show_background() || self.mask.show_sprites()
     }
 
     pub fn is_generating_nmi(&self) -> bool {
@@ -143,6 +165,14 @@ impl PpuRegisters {
 
     pub fn show_sprites(&self) -> bool {
         self.mask.show_sprites()
+    }
+
+    pub fn show_sprites_left_column(&self) -> bool {
+        self.mask.show_sprites_left_column()
+    }
+
+    pub fn show_background_left_column(&self) -> bool {
+        self.mask.show_background_left_column()
     }
 
     pub fn show_background(&self) -> bool {

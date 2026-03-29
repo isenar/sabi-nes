@@ -54,19 +54,34 @@ impl Ppu {
         }
     }
 
-    pub fn tick(&mut self, cycles: usize) -> NmiStatus {
+    pub fn tick(&mut self, cycles: usize, mapper: &dyn Mapper) -> NmiStatus {
         self.cycles += cycles;
 
+        // Sprite zero hit fires at the specific PPU cycle within the scanline (X+1),
+        // not at the end of the scanline, so we check continuously here.
+        if !self.registers.is_sprite_zero_hit_set() && self.is_sprite_zero_hit(mapper) {
+            self.registers.set_sprite_zero_hit();
+        }
+
         if self.cycles >= 341 {
-            if self.is_sprite_zero_hit() {
-                self.registers.set_sprite_zero_hit();
+            if self.is_sprite_overflow() {
+                self.registers.set_sprite_overflow();
             }
 
             self.cycles -= 341;
             self.scanline += 1;
 
+            // On real hardware, OAMADDR is reset to 0 during dots 257-320 of
+            // every visible scanline (and the pre-render line) when rendering
+            // is enabled.  Approximate this by resetting it at each visible
+            // scanline boundary so that OAM DMA performed in vblank always
+            // writes to OAM starting at address 0, matching hardware behaviour.
+            if self.scanline <= 240 && self.registers.is_rendering_active() {
+                self.registers.reset_oam_address();
+            }
+
             if self.scanline == 241 {
-                self.registers.set_vblank().reset_sprite_zero_hit();
+                self.registers.set_vblank().reset_sprite_overflow();
                 if self.registers.is_generating_nmi() {
                     self.nmi_status = NmiStatus::Active;
                 }
@@ -75,7 +90,10 @@ impl Ppu {
             if self.scanline >= 262 {
                 self.scanline = 0;
                 self.nmi_status = NmiStatus::Inactive;
-                self.registers.reset_vblank().reset_sprite_zero_hit();
+                self.registers
+                    .reset_vblank()
+                    .reset_sprite_zero_hit()
+                    .reset_sprite_overflow();
             }
         }
 
@@ -212,13 +230,152 @@ impl Ppu {
         vram_index - offset
     }
 
-    fn is_sprite_zero_hit(&self) -> bool {
+    fn is_sprite_zero_hit(&self, mapper: &dyn Mapper) -> bool {
         let oam_data = self.registers.read_oam_dma();
-        let SpriteData { x, y, .. } = oam_data[0];
-        let y = y.as_usize();
-        let x = x.as_usize();
+        let sprite = oam_data[0];
+        let y = sprite.y.as_usize();
+        let x = sprite.x.as_usize();
 
-        y == self.scanline && x <= self.cycles && self.registers.show_sprites()
+        let sprite_height: usize = match self.registers.sprite_size() {
+            SpriteSize::Small => 8,
+            SpriteSize::Large => 16,
+        };
+
+        // Only fires during rendering (scanlines 0–239)
+        if self.scanline >= 240 {
+            return false;
+        }
+
+        // NES OAM Y = screen_Y − 1: sprite appears on scanlines y+1 through y+sprite_height
+        if !(self.scanline > y && self.scanline <= y + sprite_height) {
+            return false;
+        }
+
+        if !(self.cycles > x
+            && x != 255
+            && self.registers.show_sprites()
+            && self.registers.show_background())
+        {
+            return false;
+        }
+
+        // No hit at X=0 if either left-column mask hides pixels there
+        if x == 0
+            && (!self.registers.show_sprites_left_column()
+                || !self.registers.show_background_left_column())
+        {
+            return false;
+        }
+
+        // Per-pixel overlap check on this scanline row
+        let sprite_row = self.scanline - (y + 1);
+
+        let row_in_tile = if sprite.flip_vertically() {
+            (sprite_height - 1) - sprite_row
+        } else {
+            sprite_row
+        };
+
+        let sprite_pattern_base = self.registers.read_sprite_pattern_address().value() as usize;
+        let tile_base = sprite_pattern_base + sprite.index_number.as_usize() * 16;
+
+        let sprite_plane1 = mapper
+            .read_chr(Address::new((tile_base + row_in_tile) as u16))
+            .value();
+        let sprite_plane2 = mapper
+            .read_chr(Address::new((tile_base + row_in_tile + 8) as u16))
+            .value();
+
+        for sprite_col in 0..8usize {
+            let screen_x = x + sprite_col;
+            if screen_x >= 256 {
+                break;
+            }
+
+            // Per-pixel left column mask
+            if screen_x < 8
+                && (!self.registers.show_sprites_left_column()
+                    || !self.registers.show_background_left_column())
+            {
+                continue;
+            }
+
+            // Sprite pixel opacity (MSB = leftmost pixel; flip reverses column order)
+            let bit = if sprite.flip_horizontally() {
+                sprite_col
+            } else {
+                7 - sprite_col
+            };
+            let sprite_opaque = ((sprite_plane1 >> bit) | (sprite_plane2 >> bit)) & 1 != 0;
+            if !sprite_opaque {
+                continue;
+            }
+
+            if self.is_background_pixel_opaque(screen_x, self.scanline, mapper) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_background_pixel_opaque(
+        &self,
+        screen_x: usize,
+        scanline: usize,
+        mapper: &dyn Mapper,
+    ) -> bool {
+        let scroll_x = self.registers.read_scroll_x().as_usize();
+        let scroll_y = self.registers.read_scroll_y().as_usize();
+
+        let eff_x = (screen_x + scroll_x) % 512;
+        let eff_y = (scanline + scroll_y) % 480;
+
+        // Select one of the four nametables based on which 256x240 quadrant we land in
+        let nt_id = (eff_y / 240) * 2 + (eff_x / 256);
+        let nt_base_addr = 0x2000u16 + (nt_id as u16) * 0x400;
+
+        let local_x = eff_x % 256;
+        let local_y = eff_y % 240;
+        let tile_idx = (local_y / 8) * 32 + (local_x / 8);
+
+        let nt_addr = Address::new(nt_base_addr + tile_idx as u16);
+        let mirrored = self.mirror_vram_addr(nt_addr);
+        let tile_index = self.vram[mirrored.as_usize()].as_usize();
+
+        let bg_pattern_base = self.registers.background_pattern_address().value() as usize;
+        let tile_base = bg_pattern_base + tile_index * 16;
+        let pixel_row = eff_y % 8;
+        let pixel_col = eff_x % 8;
+
+        let plane1 = mapper
+            .read_chr(Address::new((tile_base + pixel_row) as u16))
+            .value();
+        let plane2 = mapper
+            .read_chr(Address::new((tile_base + pixel_row + 8) as u16))
+            .value();
+
+        let bit = 7 - pixel_col;
+        ((plane1 >> bit) | (plane2 >> bit)) & 1 != 0
+    }
+
+    fn is_sprite_overflow(&self) -> bool {
+        if !self.registers.is_rendering_active() {
+            return false;
+        }
+        let sprite_height: usize = match self.registers.sprite_size() {
+            SpriteSize::Small => 8,
+            SpriteSize::Large => 16,
+        };
+        self.registers
+            .read_oam_dma()
+            .iter()
+            .filter(|sprite| {
+                let y = sprite.y.as_usize();
+                self.scanline > y && self.scanline <= y + sprite_height
+            })
+            .count()
+            > 8
     }
 }
 
