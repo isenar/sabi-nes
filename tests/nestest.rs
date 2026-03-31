@@ -2,17 +2,15 @@ mod common;
 
 use crate::common::trace;
 use pretty_assertions::assert_eq;
-use sabi_nes::{Bus, Cpu, Result, Rom};
+use sabi_nes::{Address, Bus, Cpu, Result, Rom};
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Lines};
+use std::io::{self, BufRead, BufReader};
+use std::iter;
 use std::path::Path;
 
-// TODO: remove this once APU is implemented and whole test passes
-const VALID_LINES_SO_FAR: usize = 8980;
-
-fn read_lines(filename: impl AsRef<Path>) -> io::Result<Lines<BufReader<File>>> {
+fn read_lines(filename: impl AsRef<Path>) -> Result<Vec<String>> {
     let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+    Ok(BufReader::new(file).lines().collect::<io::Result<_>>()?)
 }
 
 #[test]
@@ -22,29 +20,23 @@ fn cpu_validation_test() -> Result<()> {
     let mut cpu = Cpu::new(bus);
 
     // PC starts here (as seen in nestest.log).
-    // If it's not set, the test ROM won't work properly.
-    cpu.program_counter = 0xc000.into();
+    // This specific value enables running the test ROM in "automation" mode.
+    cpu.program_counter = Address::new(0xc000);
 
-    let mut traces = Vec::with_capacity(VALID_LINES_SO_FAR);
-    loop {
-        traces.push(trace(&mut cpu)?);
-        if cpu.step()? {
-            break;
-        }
-    }
+    let collect_trace = || -> Result<String> {
+        let trace = trace(&mut cpu);
+        cpu.step()?;
+        trace
+    };
+    let lines = read_lines("../sabi-nes/tests/test_data/nestest_expected_logs.txt")?;
+    let traces = iter::repeat_with(collect_trace)
+        .take(lines.len())
+        .collect::<Result<Vec<_>>>()?;
 
-    let lines = read_lines("../sabi-nes/tests/expected_logs/nestest.log")?;
-    let expected_traces = lines.zip(traces).enumerate().take(VALID_LINES_SO_FAR);
-
-    for (line_num, (expected_trace, actual_trace)) in expected_traces {
-        let expected_trace = expected_trace?;
-
-        assert_eq!(
-            expected_trace,
-            actual_trace,
-            "Failed at line#{}",
-            line_num + 1
-        );
+    let results = lines.iter().zip(traces.iter()).enumerate();
+    for (line, (expected_trace, actual_trace)) in results {
+        let line = line + 1;
+        assert_eq!(expected_trace, actual_trace, "Mismatch at line#{line}");
     }
 
     Ok(())

@@ -48,6 +48,14 @@ impl MaskRegister {
         self.contains(MaskRegister::SHOW_SPRITES)
     }
 
+    pub fn show_sprites_left_column(&self) -> bool {
+        self.contains(MaskRegister::LEFTMOST_8PXL_SPRITE)
+    }
+
+    pub fn show_background_left_column(&self) -> bool {
+        self.contains(MaskRegister::LEFTMOST_8PXL_BACKGROUND)
+    }
+
     #[allow(unused)]
     pub fn emphasized_colors(&self) -> Vec<Color> {
         let mut colors = Vec::with_capacity(3);

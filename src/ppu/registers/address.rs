@@ -32,7 +32,7 @@ impl AddressRegister {
 
     pub fn increment(&mut self, increment: Byte) {
         let prev_low = self.low;
-        self.low = self.low.wrapping_add(increment.value());
+        self.low = self.low.wrapping_add(increment);
 
         if prev_low > self.low {
             self.high = self.high.wrapping_add(1);

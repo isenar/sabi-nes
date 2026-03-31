@@ -20,9 +20,9 @@ fn show_tiles(mapper: &dyn Mapper, bank: usize) -> Result<Frame> {
             tile_y += 10;
             tile_x = 0;
         }
-        let begin = bank + tile_n * 16;
+        let start = bank + tile_n * 16;
         let tile: [_; 16] =
-            std::array::from_fn(|i| mapper.read_chr(Address::new((begin + i) as u16)));
+            std::array::from_fn(|i| mapper.read_chr(Address::new((start + i) as u16)));
 
         for y in 0..=7 {
             let mut upper = tile[y];

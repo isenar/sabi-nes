@@ -233,6 +233,12 @@ fn render_sprite_tile(
             let x = sprite.x_pos(x_offset);
             let y = sprite.y_pos(y_offset + y_base_offset);
 
+            // Prevent out-of-screen bleeding. Without this, sprites
+            // on the right side of the screen might be drawn on the left side.
+            if x >= Frame::WIDTH || y >= Frame::HEIGHT {
+                continue;
+            }
+
             // Check sprite priority:
             // - If priority is behind, only draw if no background pixel exists
             // - If priority_behind is not behind, always draw (sprite in front)

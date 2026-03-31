@@ -51,10 +51,10 @@ impl From<Byte> for StatusRegister {
 
 impl StatusRegister {
     pub fn update_zero_and_negative_flags(&mut self, value: impl Into<Self>) -> &mut Self {
-        let value_bits = value.into();
+        let status = value.into();
 
-        self.set_zero_flag(value_bits.is_empty());
-        self.set_negative_flag(value_bits.contains(StatusRegister::NEGATIVE));
+        self.set_zero_flag(status.is_empty());
+        self.set_negative_flag(status.contains(StatusRegister::NEGATIVE));
 
         self
     }

@@ -32,8 +32,8 @@ pub struct Cpu {
     pub register_x: Byte,
     pub register_y: Byte,
     pub status_register: StatusRegister,
-    pub program_counter: Word,
-    pub stack_pointer: StackPointer,
+    pub program_counter: Address,
+    stack_pointer: StackPointer,
     bus: Bus,
 }
 
@@ -62,7 +62,7 @@ impl Cpu {
             register_x: Byte::default(),
             register_y: Byte::default(),
             status_register: StatusRegister::INIT,
-            program_counter: Word::default(),
+            program_counter: Address::default(),
             stack_pointer: StackPointer::default(),
             bus,
         }
@@ -72,34 +72,53 @@ impl Cpu {
         &self.bus
     }
 
+    /// Read a byte without side effects, for use by the trace/debugger.
+    pub fn peek_byte(&self, address: Address) -> Byte {
+        self.bus.peek_byte(address)
+    }
+
     pub fn bus_mut(&mut self) -> &mut Bus {
         &mut self.bus
     }
 
+    pub fn stack_pointer(&self) -> StackPointer {
+        self.stack_pointer
+    }
+
     pub fn load(&mut self, data: &[Byte]) -> Result<()> {
-        for (idx, &value) in data.iter().enumerate() {
-            let addr = Address::from(u16::try_from(idx)?); // TODO
+        for (index, &value) in data.iter().enumerate() {
+            let index = u16::try_from(index)?;
+            let addr = Address::from(index);
             self.write_byte(addr + PROGRAM_ROM_BEGIN_ADDR, value)?;
         }
 
         Ok(())
     }
 
-    /// Execute a single CPU instruction and return true if BRK was encountered
-    pub fn step(&mut self) -> Result<bool> {
+    /// Execute a single CPU instruction.
+    pub fn step(&mut self) -> Result<()> {
         // Handle NMI interrupt if pending
         if self.bus.poll_nmi_status() == NmiStatus::Active {
             self.interrupt(&interrupts::NMI)?;
         }
 
-        let code = self.read_byte(self.program_counter.as_address())?;
+        // Handle IRQ if pending and interrupt flag is clear
+        if self.bus.poll_irq_status()
+            && !self
+                .status_register
+                .contains(StatusRegister::INTERRUPT_DISABLE)
+        {
+            self.interrupt(&interrupts::IRQ)?;
+        }
+
+        let code = self.read_byte(self.program_counter)?;
         let instruction_pc = self.program_counter;
-        self.program_counter += 1;
+        self.program_counter = self.program_counter.wrapping_add(1u16);
 
         let current_program_counter = self.program_counter;
         let opcode = OPCODES_MAPPING
             .get(&code)
-            .ok_or_else(|| anyhow!("Unknown opcode: {code} at PC ${instruction_pc:04X}"))?;
+            .ok_or_else(|| anyhow!("Unknown opcode: {code:02X} at PC ${instruction_pc:04X}"))?;
         let address = self
             .pc_operand_address(opcode)
             .with_context(|| format!("Failed to fetch address for {}", opcode.name))?;
@@ -119,7 +138,9 @@ impl Cpu {
             "BVC" => self.branch(!self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BVS" => self.branch(self.status_register.contains(StatusRegister::OVERFLOW))?,
             "BRK" => {
-                return Ok(true);
+                self.program_counter = self.program_counter.wrapping_add(1u16); // skip the padding byte (BRK is a 2-byte instruction)
+                self.interrupt(&interrupts::BRK)?;
+                return Ok(());
             }
             "CLC" => {
                 self.status_register.set_carry_flag(false);
@@ -143,7 +164,7 @@ impl Cpu {
             "INC" => self.inc(address)?,
             "INX" => self.inx(),
             "INY" => self.iny(),
-            "JMP" => self.program_counter = address.as_word(),
+            "JMP" => self.program_counter = address,
             "JSR" => self.jsr()?,
             "LDA" => self.lda(address)?,
             "LDX" => self.ldx(address)?,
@@ -160,12 +181,12 @@ impl Cpu {
             "RTI" => {
                 self.rti()?;
                 self.bus.tick(opcode.cycles)?;
-                return Ok(false);
+                return Ok(());
             }
             "RTS" => {
                 self.rts()?;
                 self.bus.tick(opcode.cycles)?;
-                return Ok(false);
+                return Ok(());
             }
             "SBC" | "*SBC" => self.sbc(address)?,
             "SEC" => {
@@ -195,25 +216,30 @@ impl Cpu {
             "*RLA" => self.rla(address, opcode.addressing_mode)?,
             "*SRE" => self.sre(address)?,
             "*RRA" => self.rra(address, opcode.addressing_mode)?,
+            "*ANC" => self.anc(address)?,
+            "*ALR" => self.alr(address)?,
+            "*ARR" => self.arr(address)?,
+            "*ANE" => self.ane(address)?,
+            "*LXA" => self.lxa(address)?,
+            "*AXS" => self.axs(address)?,
+            "*SHA" | "*SHX" | "*SHY" | "*SHS" | "*LAS" => {} // unstable — treat as NOP
             _ => bail!("Unsupported opcode name: {opcode_name}"),
         }
 
         self.bus.tick(opcode.cycles)?;
 
         if current_program_counter == self.program_counter {
-            self.program_counter += opcode.length().try_into()?;
+            let len: u16 = opcode.length().try_into()?;
+            self.program_counter = self.program_counter.wrapping_add(len);
         }
 
-        Ok(false)
+        Ok(())
     }
 
     pub fn run(&mut self) -> Result<()> {
         loop {
-            if self.step()? {
-                break; // BRK encountered
-            }
+            self.step()?;
         }
-        Ok(())
     }
 
     pub fn reset(&mut self) -> Result<()> {
@@ -221,7 +247,7 @@ impl Cpu {
         self.register_x = Byte::default();
         self.register_y = Byte::default();
         self.status_register = StatusRegister::empty();
-        self.program_counter = self.read_word(RESET_VECTOR_BEGIN_ADDR)?;
+        self.program_counter = self.read_word(RESET_VECTOR_BEGIN_ADDR)?.as_address();
         debug!("CPU reset: PC set to ${:04X}", self.program_counter);
         self.stack_pointer.reset();
 
@@ -265,7 +291,7 @@ impl Cpu {
 
     fn compare(&mut self, address: Address, register: Byte) -> Result<()> {
         let value = self.read_byte(address)?;
-        let result = register.wrapping_sub(value.value());
+        let result = register.wrapping_sub(value);
 
         self.status_register
             .set_carry_flag(value <= register)
@@ -389,6 +415,8 @@ impl Cpu {
                 let value = self.read_byte(address)?;
                 let shifted = shift_op(value) | input_carry;
 
+                // RMW: dummy write of the original value before the real write.
+                self.write_byte(address, value)?;
                 self.write_byte(address, shifted)?;
 
                 ByteUpdate {
@@ -464,8 +492,10 @@ impl Cpu {
     }
 
     fn dec(&mut self, address: Address) -> Result<()> {
-        let decremented = self.read_byte(address)?.wrapping_sub(1);
+        let value = self.read_byte(address)?;
+        let decremented = value.wrapping_sub(1);
 
+        self.write_byte(address, value)?; // dummy write
         self.write_byte(address, decremented)?;
         self.status_register
             .update_zero_and_negative_flags(decremented);
@@ -486,8 +516,10 @@ impl Cpu {
     }
 
     fn inc(&mut self, address: Address) -> Result<()> {
-        let incremented = self.read_byte(address)?.wrapping_add(1);
+        let value = self.read_byte(address)?;
+        let incremented = value.wrapping_add(1);
 
+        self.write_byte(address, value)?; // dummy write
         self.write_byte(address, incremented)?;
         self.status_register
             .update_zero_and_negative_flags(incremented);
@@ -508,9 +540,9 @@ impl Cpu {
     }
 
     fn jsr(&mut self) -> Result<()> {
-        self.push_word_to_stack(self.program_counter + 1)?;
-        let target_address = self.read_word(self.program_counter.as_address())?;
-        self.program_counter = target_address;
+        self.push_word_to_stack((self.program_counter + 1).as_word())?;
+        let target_address = self.read_word(self.program_counter)?;
+        self.program_counter = target_address.as_address();
 
         Ok(())
     }
@@ -520,13 +552,13 @@ impl Cpu {
         self.status_register.remove(StatusRegister::BREAK);
         self.status_register.insert(StatusRegister::BREAK2);
 
-        self.program_counter = self.pop_word_from_stack()?;
+        self.program_counter = self.pop_word_from_stack()?.as_address();
 
         Ok(())
     }
 
     fn rts(&mut self) -> Result<()> {
-        self.program_counter = self.pop_word_from_stack()? + 1;
+        self.program_counter = (self.pop_word_from_stack()? + 1).as_address();
 
         Ok(())
     }
@@ -562,27 +594,23 @@ impl Cpu {
         if condition {
             self.bus.tick(1)?;
 
-            let jump = self.read_byte(self.program_counter.as_address())?.value() as i8;
+            let jump = self.read_byte(self.program_counter)?.value().cast_signed();
             // NOTE: This is intended!
             #[allow(clippy::cast_sign_loss)]
-            let jump_addr = self
-                .program_counter
-                .wrapping_add(1u16)
-                .wrapping_add(jump as u16)
-                .as_address();
+            let jump_addr = self.program_counter.wrapping_add(1 + jump as u16);
 
-            if is_page_crossed(self.program_counter.as_address(), jump_addr) {
+            if is_page_crossed(self.program_counter, jump_addr) {
                 self.bus.tick(1)?;
             }
 
-            self.program_counter = jump_addr.as_word();
+            self.program_counter = jump_addr;
         }
 
         Ok(())
     }
 
     pub fn pc_operand_address(&mut self, opcode: &Opcode) -> Result<Address> {
-        self.operand_address(opcode, self.program_counter.as_address())
+        self.operand_address(opcode, self.program_counter)
     }
 
     pub fn operand_address(&mut self, opcode: &Opcode, address: Address) -> Result<Address> {
@@ -592,40 +620,53 @@ impl Cpu {
             AddressingMode::Absolute => self.read_word(address)?.as_address(),
             AddressingMode::ZeroPageX => {
                 let pos = self.read_byte(address)?;
-                let addr = pos.wrapping_add(self.register_x.value());
+                let addr = pos.wrapping_add(self.register_x);
 
                 addr.into()
             }
 
             AddressingMode::ZeroPageY => {
                 let pos = self.read_byte(address)?;
-                let addr = pos.wrapping_add(self.register_y.value());
+                let addr = pos.wrapping_add(self.register_y);
 
                 addr.into()
             }
             AddressingMode::AbsoluteX => {
                 let base = self.read_word(address)?.as_address();
-                let incremented = base.wrapping_add(self.register_x.value());
+                let incremented = base.wrapping_add(self.register_x);
 
-                if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
+                if is_page_crossed(base, incremented) {
+                    // On a page cross the CPU reads the unfixed address first (dummy read),
+                    // then corrects to the real address. The read has side effects (e.g.
+                    // clearing PPU status vblank). For read-only ops this is the extra cycle;
+                    // for RMW/write ops (needs_page_cross_check=false) it also always fires.
+                    let unfixed = (base & 0xFF00) | (incremented & 0x00FF);
+                    self.read_byte(unfixed)?;
                     self.bus.tick(1)?;
+                } else if !opcode.needs_page_cross_check {
+                    // No page cross but RMW/write op: dummy read at the same address.
+                    self.read_byte(incremented)?;
                 }
 
                 incremented
             }
             AddressingMode::AbsoluteY => {
-                let base = self.read_word(address)?.as_address(); // TODO: Should use Word!
-                let incremented = base.wrapping_add(self.register_y.value());
+                let base = self.read_word(address)?.as_address();
+                let incremented = base.wrapping_add(self.register_y);
 
-                if opcode.needs_page_cross_check && is_page_crossed(base, incremented) {
+                if is_page_crossed(base, incremented) {
+                    let unfixed = (base & 0xFF00) | (incremented & 0x00FF);
+                    self.read_byte(unfixed)?;
                     self.bus.tick(1)?;
+                } else if !opcode.needs_page_cross_check {
+                    self.read_byte(incremented)?;
                 }
 
                 incremented
             }
             AddressingMode::IndirectX => {
                 let base = self.read_byte(address)?;
-                let ptr = base.wrapping_add(self.register_x.value());
+                let ptr = base.wrapping_add(self.register_x);
                 let low = self.read_byte(ptr.into())?;
                 let high = self.read_byte(ptr.wrapping_add(1).into())?;
 
@@ -636,10 +677,16 @@ impl Cpu {
                 let low = self.read_byte(base.into())?;
                 let high = self.read_byte(base.wrapping_add(1).into())?;
                 let deref_base = Word::from_le_bytes(low, high).as_address();
-                let incremented = deref_base.wrapping_add(self.register_y.value());
+                let incremented = deref_base.wrapping_add(self.register_y);
 
-                if opcode.needs_page_cross_check && is_page_crossed(deref_base, incremented) {
+                if is_page_crossed(deref_base, incremented) {
+                    let unfixed = Address::new(
+                        (deref_base.value() & 0xFF00) | (incremented.value() & 0x00FF),
+                    );
+                    self.read_byte(unfixed)?;
                     self.bus.tick(1)?;
+                } else if !opcode.needs_page_cross_check {
+                    self.read_byte(incremented)?;
                 }
 
                 incremented
@@ -651,9 +698,9 @@ impl Cpu {
                 // "The indirect jump instruction does not increment the page address when the indirect pointer
                 // crosses a page boundary.
                 // JMP ($xxFF) will fetch the address from $xxFF and $xx00."
-                if target_address.value() & 0x00ff == 0x00ff {
+                if target_address & 0x00ff == 0x00ff {
                     let low = self.read_byte(target_address)?;
-                    let buggy_address = Address::new(target_address.value() & 0xff00); // TODO: Support BitAnd?
+                    let buggy_address = target_address & 0xff00;
                     let high = self.read_byte(buggy_address)?;
 
                     Word::from_le_bytes(low, high).as_address()
@@ -702,16 +749,16 @@ impl Cpu {
     }
 
     fn interrupt(&mut self, interrupt: &Interrupt) -> Result<()> {
-        self.push_word_to_stack(self.program_counter)?;
+        self.push_word_to_stack(self.program_counter.as_word())?;
         let mut status = self.status_register;
-        status.remove(StatusRegister::BREAK);
-        status.insert(StatusRegister::BREAK2);
+        status.remove(StatusRegister::BREAK | StatusRegister::BREAK2);
+        status |= StatusRegister::from_bits_truncate(interrupt.break_flag_mask.value());
 
         self.push_byte_to_stack(status.bits().into())?;
-        self.status_register.disable_interrupt();
+        self.status_register.set_interrupt_flag(true);
 
         self.bus.tick(interrupt.cpu_cycles)?;
-        self.program_counter = self.read_word(interrupt.vector_addr)?;
+        self.program_counter = self.read_word(interrupt.vector_addr)?.as_address();
 
         Ok(())
     }
@@ -774,13 +821,78 @@ impl Cpu {
 
         Ok(())
     }
+
+    fn anc(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        self.accumulator &= value;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        self.status_register.set(
+            StatusRegister::CARRY,
+            self.status_register.contains(StatusRegister::NEGATIVE),
+        );
+        Ok(())
+    }
+
+    fn alr(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let and = self.accumulator & value;
+        self.status_register
+            .set(StatusRegister::CARRY, (and & 1) == 1);
+        self.accumulator = and >> 1;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        Ok(())
+    }
+
+    fn arr(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let and = (self.accumulator & value).value();
+        let carry_in = u8::from(self.status_register.contains(StatusRegister::CARRY));
+        let result = (carry_in << 7) | (and >> 1);
+        self.accumulator = result.into();
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        let bit6 = (result >> 6) & 1 != 0;
+        let bit5 = (result >> 5) & 1 != 0;
+        self.status_register.set(StatusRegister::CARRY, bit6);
+        self.status_register
+            .set(StatusRegister::OVERFLOW, bit6 ^ bit5);
+        Ok(())
+    }
+
+    fn ane(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        self.accumulator = (self.accumulator | Byte::new(0xEE)) & self.register_x & value;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        Ok(())
+    }
+
+    fn lxa(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let result = (self.accumulator | Byte::new(0xEE)) & value;
+        self.accumulator = result;
+        self.register_x = result;
+        self.status_register
+            .update_zero_and_negative_flags(self.accumulator);
+        Ok(())
+    }
+
+    fn axs(&mut self, address: Address) -> Result<()> {
+        let value = self.read_byte(address)?;
+        let ax = self.accumulator & self.register_x;
+        let result = ax.wrapping_sub(value);
+        self.status_register.set(StatusRegister::CARRY, ax >= value);
+        self.register_x = result;
+        self.status_register
+            .update_zero_and_negative_flags(self.register_x);
+        Ok(())
+    }
 }
 
 fn is_page_crossed(before: Address, after: Address) -> bool {
-    let page_before = before.value() & 0xff00; // TODO: BitAnd for Address?
-    let page_after = after.value() & 0xff00;
-
-    page_before != page_after
+    (before & 0xff00) != (after & 0xff00)
 }
 
 #[cfg(test)]
@@ -832,16 +944,6 @@ mod tests {
             self
         }
 
-        //     #[cfg(test)]
-        //     pub fn load_and_run(&mut self, data: &[Byte]) -> Result<()> {
-        //         self.load(data)?;
-        //         self.reset()?;
-        //         self.program_counter = PROGRAM_ROM_BEGIN_ADDR.value();
-        //         self.run()?;
-        //
-        //         Ok(())
-        //     }
-
         fn build_and_run(self, data: &[u8]) -> Cpu {
             let rom = Rom::from_bytes(&TEST_ROM).expect("Failed to parse test ROM");
             let bus = Bus::new(rom);
@@ -859,12 +961,20 @@ mod tests {
                 }
             }
 
-            let data = data.iter().map(|&byte| Byte::new(byte)).collect::<Vec<_>>(); // TODO?
+            let data = data.iter().map(|&byte| Byte::new(byte)).collect::<Vec<_>>();
 
             cpu.load(&data).expect("Failed to load");
             cpu.reset().expect("Failed to reset");
-            cpu.program_counter = PROGRAM_ROM_BEGIN_ADDR.as_word();
-            cpu.run().expect("Failed to run");
+            cpu.program_counter = PROGRAM_ROM_BEGIN_ADDR;
+            loop {
+                let code = cpu
+                    .read_byte(cpu.program_counter)
+                    .expect("Failed to read opcode");
+                if code == 0x00 {
+                    break; // BRK — test program is done
+                }
+                cpu.step().expect("Failed to step");
+            }
 
             cpu
         }
@@ -1341,7 +1451,7 @@ mod tests {
             let data = [0x4c, 0x33, 0x12, 0x00];
             let cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.program_counter, 0x1234);
+            assert_eq!(cpu.program_counter, 0x1233);
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
 
@@ -1352,7 +1462,7 @@ mod tests {
                 .write_word(0x1234u16, 0xbeee)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.program_counter, 0xbeef);
+            assert_eq!(cpu.program_counter, 0xbeee);
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
     }

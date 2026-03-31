@@ -22,7 +22,7 @@ pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
 });
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
-    let code = cpu.read_byte(cpu.program_counter.as_address())?;
+    let code = cpu.read_byte(cpu.program_counter)?;
     let opcode = OPCODES_MAPPING
         .get(&code)
         .ok_or_else(|| anyhow!("Opcode `{code:#x}` not supported"))?;
@@ -48,7 +48,7 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
         cpu.register_x,
         cpu.register_y,
         cpu.status_register,
-        cpu.stack_pointer,
+        cpu.stack_pointer(),
     ))
 }
 
@@ -58,7 +58,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
         1 => format!(
             "{:02X} {:02X}",
             opcode.code,
-            cpu.read_byte((cpu.program_counter + 1).as_address())?
+            cpu.read_byte(cpu.program_counter + 1)?
         ),
         2 => match opcode.addressing_mode {
             AddressingMode::Implied => {
@@ -68,8 +68,8 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 format!(
                     "{:02X} {:02X} {:02X}",
                     opcode.code,
-                    cpu.read_byte((cpu.program_counter + 1).as_address())?,
-                    cpu.read_byte((cpu.program_counter + 2).as_address())?,
+                    cpu.read_byte(cpu.program_counter + 1)?,
+                    cpu.read_byte(cpu.program_counter + 2)?,
                 )
             }
         },
@@ -78,22 +78,20 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 }
 
 fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
-    let value = cpu.read_byte((cpu.program_counter + 1).as_address())?;
-    let address = cpu
-        .read_word((cpu.program_counter + 1).as_address())?
-        .as_address();
-    let target_address = cpu.operand_address(opcode, (cpu.program_counter + 1).as_address())?;
+    let value = cpu.read_byte(cpu.program_counter + 1)?;
+    let address = cpu.read_word(cpu.program_counter + 1)?.as_address();
+    let target_address = cpu.operand_address(opcode, cpu.program_counter + 1)?;
 
     let opcode_asm_args = match opcode.addressing_mode {
         AddressingMode::Immediate => {
             format!("#${:02X}", value)
         }
         AddressingMode::ZeroPage => {
-            let stored_value = cpu.read_byte(value.into())?;
+            let stored_value = cpu.peek_byte(value.into());
             format!("${:02X} = {:02X}", value, stored_value)
         }
         AddressingMode::ZeroPageX => {
-            let stored_value = cpu.read_byte(target_address)?;
+            let stored_value = cpu.peek_byte(target_address);
 
             format!(
                 "${:02X},X @ {:02X} = {:02X}",
@@ -101,34 +99,34 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             )
         }
         AddressingMode::ZeroPageY => {
-            let stored_value = cpu.read_byte(target_address)?;
+            let stored_value = cpu.peek_byte(target_address);
             format!(
                 "${:02X},Y @ {:02X} = {:02X}",
                 value, target_address, stored_value
             )
         }
         AddressingMode::Absolute => {
-            let stored_value = cpu.read_byte(target_address)?;
+            let stored_value = cpu.peek_byte(target_address);
             match opcode.name {
                 "JMP" | "JSR" => format!("${:04X}", target_address),
                 _ => format!("${:04X} = {:02X}", target_address, stored_value),
             }
         }
         AddressingMode::AbsoluteX => {
-            let incremented = address.wrapping_add(cpu.register_x.value());
-            let value = cpu.read_byte(incremented)?;
+            let incremented = address.wrapping_add(cpu.register_x);
+            let value = cpu.peek_byte(incremented);
 
             format!("${:04X},X @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::AbsoluteY => {
-            let incremented = address.wrapping_add(cpu.register_y.value());
-            let value = cpu.read_byte(incremented)?;
+            let incremented = address.wrapping_add(cpu.register_y);
+            let value = cpu.peek_byte(incremented);
 
             format!("${:04X},Y @ {:04X} = {:02X}", address, incremented, value)
         }
         AddressingMode::IndirectX => {
-            let incremented = value.wrapping_add(cpu.register_x.value());
-            let target_cell_value = cpu.read_byte(target_address)?;
+            let incremented = value.wrapping_add(cpu.register_x);
+            let target_cell_value = cpu.peek_byte(target_address);
 
             format!(
                 "(${:02X},X) @ {:02X} = {:04X} = {:02X}",
@@ -136,8 +134,8 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             )
         }
         AddressingMode::IndirectY => {
-            let address = target_address.wrapping_sub(cpu.register_y.value());
-            let target_cell_value = cpu.read_byte(target_address)?;
+            let address = target_address.wrapping_sub(cpu.register_y);
+            let target_cell_value = cpu.peek_byte(target_address);
 
             format!(
                 "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
@@ -154,6 +152,8 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 .wrapping_add(2u16)
                 // NOTE: This is a quirky behaviour of what the NES CPU does
                 //       for branching instructions, and it's intended here.
+                //       We do 2 wrapping adds separately, since their sum itself
+                //       could overflow.
                 .wrapping_add(offset as u16);
 
             format!("${jump_address:04X}")
@@ -183,16 +183,19 @@ mod tests {
         bus.write_byte(Address::new(0x68), 0x00.into())?;
 
         let mut cpu = Cpu::new(bus);
-        cpu.program_counter = 0x64.into();
+        cpu.program_counter = Address::new(0x64);
         cpu.accumulator = 1.into();
         cpu.register_x = 2.into();
         cpu.register_y = 3.into();
 
         let mut traces = vec![];
         loop {
-            traces.push(trace(&mut cpu)?);
-            if cpu.step()? {
-                break; // BRK encountered
+            let t = trace(&mut cpu)?;
+            let at_brk = t.contains("BRK");
+            traces.push(t);
+            cpu.step()?;
+            if at_brk {
+                break;
             }
         }
         let expected = vec![
@@ -224,20 +227,15 @@ mod tests {
         bus.write_byte(Address::new(0x0405), 0xaa.into())?;
 
         let mut cpu = Cpu::new(bus);
-        cpu.program_counter = 0x64.into();
+        cpu.program_counter = Address::new(0x64);
         cpu.register_y = 0x05.into();
 
-        let mut traces = vec![];
-        loop {
-            traces.push(trace(&mut cpu)?);
-            if cpu.step()? {
-                break;
-            }
-        }
+        let trace = trace(&mut cpu)?;
+        cpu.step()?;
 
         assert_eq!(
             "0064  11 33     ORA ($33),Y = 0400 @ 0405 = AA  A:00 X:00 Y:05 P:24 SP:FD",
-            traces[0]
+            trace,
         );
 
         Ok(())
