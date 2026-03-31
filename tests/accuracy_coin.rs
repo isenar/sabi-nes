@@ -7,13 +7,17 @@ use serde::Deserialize;
 
 /// Result codes written by the AccuracyCoin test runner to CPU RAM.
 ///
-/// $00 = not started
-/// $03 = in progress
-/// $01 = pass
-/// >= $06 = fail (encoded as (error_code << 2) | 0x02)
+/// Results are encoded in the bottom 2 bits:
+///   xx_00 = not started  (only $00 in practice)
+///   xx_01 = pass         ($01 standard, $41 "revision G", etc.)
+///   xx_10 = fail         (error_code << 2) | 0x02; error_code >= 1
+///   xx_11 = in progress  (only $03 in practice)
 const RESULT_NOT_STARTED: Byte = Byte::new(0x00);
 const RESULT_IN_PROGRESS: Byte = Byte::new(0x03);
-const RESULT_PASS: Byte = Byte::new(0x01);
+
+fn has_passed(result: Byte) -> bool {
+    result.value() & 0x03 == 0x01
+}
 
 #[derive(Deserialize)]
 struct TestCase {
@@ -29,7 +33,7 @@ fn deserialize_hex_u16<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u16, D:
     u16::from_str_radix(hex, 16).map_err(serde::de::Error::custom)
 }
 
-fn load_tests() -> Vec<TestCase> {
+fn load_test_case_data() -> Vec<TestCase> {
     let csv = include_str!("test_data/accuracy_coin_test_cases.csv");
     csv::Reader::from_reader(csv.as_bytes())
         .deserialize()
@@ -49,61 +53,61 @@ fn run_frames(cpu: &mut Cpu, frames: usize) {
 }
 
 fn decode_result(result: Byte) -> String {
-    match result {
-        RESULT_PASS => "pass".to_owned(),
-        RESULT_IN_PROGRESS => "in progress".to_owned(),
-        RESULT_NOT_STARTED => "not started".to_owned(),
-        r if r & 0x03 == 0x02 => format!("failed (subtest {})", r >> 2),
-        other => format!("unknown ({other:#04x})"),
+    match result.value() & 0x03 {
+        0x01 => format!("pass ({:#04x})", result.value()),
+        0x02 => format!("failed (subtest {})", result.value() >> 2),
+        _ if result == RESULT_IN_PROGRESS => "in progress".to_owned(),
+        _ if result == RESULT_NOT_STARTED => "not started".to_owned(),
+        _ => format!("unknown ({:#04x})", result.value()),
     }
 }
 
 #[test]
 fn accuracy_coin_tests() {
-    let tests = load_tests();
+    let test_cases = load_test_case_data();
 
     let rom = Rom::from_file("tests/test_roms/AccuracyCoin.nes").unwrap();
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
     cpu.reset().unwrap();
 
-    // Let the ROM initialize and show its menu.
+    // Make sure the test ROM is initialised properly and ready to take input.
     run_frames(&mut cpu, 5);
 
     // Press Start once to trigger AutomaticallyRunEveryTestInROM.
     cpu.bus_mut().joypad_mut().press_button(JoypadButton::START);
 
-    let mut start_released = false;
+    loop {
+        cpu.step().unwrap();
+        if cpu.bus().is_frame_ready() {
+            cpu.bus_mut().clear_frame_ready();
+            cpu.bus_mut()
+                .joypad_mut()
+                .release_button(JoypadButton::START);
+            break;
+        }
+    }
 
     loop {
         cpu.step().unwrap();
-
         if cpu.bus().is_frame_ready() {
             cpu.bus_mut().clear_frame_ready();
-            if !start_released {
-                cpu.bus_mut()
-                    .joypad_mut()
-                    .release_button(JoypadButton::START);
-                start_released = true;
-            }
         }
-
-        let all_done = tests.iter().all(|t| {
-            let test_result = cpu.peek_byte(Address::new(t.address));
-            test_result != RESULT_NOT_STARTED && test_result != RESULT_IN_PROGRESS
+        let all_done = test_cases.iter().all(|t| {
+            let result = cpu.peek_byte(Address::new(t.address));
+            result != RESULT_NOT_STARTED && result != RESULT_IN_PROGRESS
         });
-
         if all_done {
             break;
         }
     }
 
-    let regressions: Vec<String> = tests
+    let regressions: Vec<String> = test_cases
         .iter()
         .filter(|t| !t.known_failure)
         .filter_map(|t| {
             let v = cpu.peek_byte(Address::new(t.address));
-            if v == RESULT_PASS {
+            if has_passed(v) {
                 None
             } else {
                 Some(format!(
@@ -118,12 +122,12 @@ fn accuracy_coin_tests() {
         .collect();
 
     // Known failures that unexpectedly passed — progress worth tracking.
-    let unexpected_passes: Vec<String> = tests
+    let unexpected_passes: Vec<String> = test_cases
         .iter()
         .filter(|t| t.known_failure)
         .filter_map(|t| {
             let test_result = cpu.peek_byte(Address::new(t.address));
-            (test_result == RESULT_PASS).then(|| format!("  '{}' (${:04X})", t.name, t.address))
+            has_passed(test_result).then(|| format!("  '{}' (${:04X})", t.name, t.address))
         })
         .collect();
 
@@ -135,11 +139,11 @@ fn accuracy_coin_tests() {
         );
     }
 
-    let total = tests.len();
-    let known_failures = tests.iter().filter(|t| t.known_failure).count();
-    let passed = tests
+    let total = test_cases.len();
+    let known_failures = test_cases.iter().filter(|t| t.known_failure).count();
+    let passed = test_cases
         .iter()
-        .filter(|t| cpu.peek_byte(Address::new(t.address)) == RESULT_PASS)
+        .filter(|t| has_passed(cpu.peek_byte(Address::new(t.address))))
         .count();
     eprintln!(
         "AccuracyCoin: {}/{} passed ({} known failures)",

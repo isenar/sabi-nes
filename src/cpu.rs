@@ -961,7 +961,7 @@ mod tests {
                 }
             }
 
-            let data = data.iter().map(|&byte| Byte::new(byte)).collect::<Vec<_>>(); // TODO?
+            let data = data.iter().map(|&byte| Byte::new(byte)).collect::<Vec<_>>();
 
             cpu.load(&data).expect("Failed to load");
             cpu.reset().expect("Failed to reset");
@@ -970,7 +970,7 @@ mod tests {
                 let code = cpu
                     .read_byte(cpu.program_counter)
                     .expect("Failed to read opcode");
-                if code.value() == 0x00 {
+                if code == 0x00 {
                     break; // BRK — test program is done
                 }
                 cpu.step().expect("Failed to step");

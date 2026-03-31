@@ -2,7 +2,7 @@ use crate::Byte;
 use crate::utils::NthBit;
 
 const OAM_DATA_SIZE: usize = 64;
-const SPRITE_DATA_SIZE: usize = size_of::<SpriteData>();
+const SPRITE_DATA_SIZE: usize = 4;
 
 /// Internal memory to keep state of sprites (Object Attribute Memory)
 #[derive(Debug)]
@@ -20,7 +20,6 @@ pub struct SpriteData {
 }
 
 impl SpriteData {
-    // TODO: Revise if we want to return usize here
     pub fn x_pos(&self, x_offset: usize) -> usize {
         if self.flip_horizontally() {
             self.x.as_usize() + 7 - x_offset
@@ -78,7 +77,7 @@ impl Oam {
             1 => sprite_data.index_number,
             2 => sprite_data.attributes,
             3 => sprite_data.x,
-            _ => unreachable!(),
+            _ => unreachable!("Result of mod 4 operation cannot exceed 3"),
         }
     }
 
@@ -90,13 +89,14 @@ impl Oam {
         let sprite_data = &mut self.sprites[self.address.as_usize().div_euclid(SPRITE_DATA_SIZE)];
         let sprite_data_index = self.address.as_usize() % SPRITE_DATA_SIZE;
 
-        match sprite_data_index {
-            0 => sprite_data.y = value,
-            1 => sprite_data.index_number = value,
-            2 => sprite_data.attributes = value,
-            3 => sprite_data.x = value,
-            _ => unreachable!(),
-        }
+        let target = match sprite_data_index {
+            0 => &mut sprite_data.y,
+            1 => &mut sprite_data.index_number,
+            2 => &mut sprite_data.attributes,
+            3 => &mut sprite_data.x,
+            _ => unreachable!("Result of mod 4 operation cannot exceed 3"),
+        };
+        *target = value;
 
         self.address = self.address.wrapping_add(1);
     }

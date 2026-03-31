@@ -134,7 +134,7 @@ impl SquareChannel {
         if self.enabled
             && self.sweep_divider == 0
             && self.is_sweep_enabled()
-            && self.sweep_shift().value() > 0
+            && self.sweep_shift() > 0
             && timer >= 8
             && target <= 0x7FF
         {
@@ -221,7 +221,7 @@ impl SquareChannel {
     fn compute_target_period(&self) -> u16 {
         let period = self.timer().value();
         let shift = self.sweep_shift().value();
-        if shift == 0 {
+        if shift == 0x00 {
             return period;
         }
 

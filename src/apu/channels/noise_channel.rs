@@ -53,10 +53,10 @@ impl NoiseChannel {
         }
     }
 
-    /// Called when $400F (length counter + envelope restart) is written.
+    /// Called when $400F (length counter plus envelope restart) is written.
     pub fn on_length_timer_write(&mut self) {
         if self.enabled {
-            let index = (self.len_counter_and_env_restart >> 3).value() as usize;
+            let index = (self.len_counter_and_env_restart >> 3).as_usize();
             self.length_counter = LENGTH_TABLE[index];
         }
         self.envelope.restart();
@@ -65,7 +65,7 @@ impl NoiseChannel {
     /// Advance the timer by one CPU cycle; clock the LFSR when it expires.
     pub fn tick(&mut self) {
         if self.timer_counter == 0 {
-            self.timer_counter = TIMER_TABLE[self.timer_period().value() as usize];
+            self.timer_counter = TIMER_TABLE[self.timer_period().as_usize()];
             self.clock_lfsr();
         } else {
             self.timer_counter -= 1;
@@ -91,7 +91,7 @@ impl NoiseChannel {
     /// Silenced if disabled, length counter is zero, or LFSR bit 0 is set.
     pub fn output(&self) -> Byte {
         if !self.enabled || self.length_counter == 0 || self.lfsr & 1 == 1 {
-            return 0x00.into();
+            return Byte::new(0x00);
         }
         if self.is_constant_volume() {
             self.volume_divider_period()
@@ -124,9 +124,9 @@ impl NoiseChannel {
         self.mode_and_period & 0b0000_1111
     }
 
-    /// Advance the LFSR by one step.
-    /// Long mode: feedback = bit 0 XOR bit 1  (produces 32,767-step white noise)
-    /// Short mode: feedback = bit 0 XOR bit 6  (produces 93-step periodic noise)
+    /// Advance the LFSR (Line Feedback Shift Register) by one step.
+    /// Long mode: feedback = bit 0 XOR bit 1 (produces 32,767-step white noise)
+    /// Short mode: feedback = bit 0 XOR bit 6 (produces 93-step periodic noise)
     fn clock_lfsr(&mut self) {
         let other_bit = match self.mode() {
             NoiseMode::Long => (self.lfsr >> 1) & 1,
@@ -138,7 +138,7 @@ impl NoiseChannel {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub enum NoiseMode {
+enum NoiseMode {
     Short,
     Long,
 }

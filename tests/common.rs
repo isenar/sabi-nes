@@ -152,6 +152,8 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 .wrapping_add(2u16)
                 // NOTE: This is a quirky behaviour of what the NES CPU does
                 //       for branching instructions, and it's intended here.
+                //       We do 2 wrapping adds separately, since their sum itself
+                //       could overflow.
                 .wrapping_add(offset as u16);
 
             format!("${jump_address:04X}")

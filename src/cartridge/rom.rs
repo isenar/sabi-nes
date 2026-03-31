@@ -100,9 +100,8 @@ impl RomHeader {
     }
 
     fn mapper(&self) -> Result<Box<dyn Mapper>> {
-        let ines_mapper_id =
-            self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi();
-        Ok(match ines_mapper_id.value() {
+        let mapper_id = self.mapper_id();
+        Ok(match mapper_id.value() {
             0 => {
                 debug!("NROM (id=000) mapper detected");
                 if self.prg_rom_banks == 1 {
@@ -115,8 +114,12 @@ impl RomHeader {
                 debug!("MMC1 (id=001) mapper detected");
                 Box::new(Mmc1::new(self.prg_rom_banks))
             }
-            _ => bail!("Unsupported mapper type (ID: {ines_mapper_id})"),
+            _ => bail!("Unsupported mapper type (ID: {mapper_id:0X})"),
         })
+    }
+
+    fn mapper_id(&self) -> Byte {
+        self.control_byte1.mapper_bits_lo() | self.control_byte2.mapper_bits_hi()
     }
 }
 
@@ -183,10 +186,8 @@ impl Rom {
 
         mapper.load_chr(chr_rom);
 
-        let mapper_n =
-            header.control_byte1.mapper_bits_lo() | header.control_byte2.mapper_bits_hi();
-
-        log::info!("ROM loaded: mapper={mapper_n}, mirroring={screen_mirroring:?}");
+        let mapper_id = header.mapper_id();
+        log::info!("ROM loaded: mapper={mapper_id}, mirroring={screen_mirroring:?}");
 
         Ok(Self {
             prg_rom,

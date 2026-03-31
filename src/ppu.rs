@@ -38,6 +38,25 @@ pub struct Ppu {
     pub nmi_status: NmiStatus,
 
     internal_data_buffer: Byte,
+
+    /// Whether the BG shift registers were loaded at the start of the current
+    /// scanline (i.e. rendering was active during the h-blank reload window of
+    /// the previous scanline, dots 321-336).  If false, the background appears
+    /// transparent for sprite-zero-hit purposes even if rendering is later
+    /// re-enabled mid-scanline.
+    bg_shift_regs_loaded: bool,
+
+    // The PPU data bus retains the last value driven on it. Write-only register
+    // reads return this value; $2002 uses it for the lower 5 bits. On real
+    // hardware the capacitors discharge over ~600ms; we model the full byte as
+    // decayed after roughly one second of PPU cycles.
+    open_bus: Byte,
+    open_bus_written_at: u64,
+    // Monotonically increasing PPU cycle counter, used for open bus decay.
+    // (self.cycles resets per scanline so cannot be used for this.)
+    // u64 to avoid overflow on 32-bit targets (e.g. wasm32), where usize
+    // would wrap after ~13 minutes at ~5.37M PPU cycles/sec.
+    total_cycles: u64,
 }
 
 impl Ppu {
@@ -51,11 +70,35 @@ impl Ppu {
             scanline: 0,
             nmi_status: NmiStatus::Inactive,
             internal_data_buffer: Byte::default(),
+            bg_shift_regs_loaded: false,
+            open_bus: Byte::default(),
+            open_bus_written_at: 0,
+            total_cycles: 0,
         }
+    }
+
+    /// Returns the PPU open bus value, or 0 if it has fully decayed.
+    /// Real hardware capacitors discharge over ~600 ms; we model the full
+    /// byte as decayed after roughly one second of PPU cycles.
+    pub fn open_bus(&self) -> Byte {
+        // 1_048_576 CPU cycles * 3 = 3_145_728 PPU cycles ≈ 586 ms at 1.789 MHz (NTSC)
+        const DECAY_PPU_CYCLES: u64 = 3_145_728;
+        if self.total_cycles.saturating_sub(self.open_bus_written_at) >= DECAY_PPU_CYCLES {
+            Byte::default()
+        } else {
+            self.open_bus
+        }
+    }
+
+    /// Update the PPU open bus latch and reset its decay timer.
+    pub fn set_open_bus(&mut self, value: Byte) {
+        self.open_bus = value;
+        self.open_bus_written_at = self.total_cycles;
     }
 
     pub fn tick(&mut self, cycles: usize, mapper: &dyn Mapper) -> NmiStatus {
         self.cycles += cycles;
+        self.total_cycles += cycles as u64;
 
         // Sprite zero hit fires at the specific PPU cycle within the scanline (X+1),
         // not at the end of the scanline, so we check continuously here.
@@ -67,6 +110,11 @@ impl Ppu {
             if self.is_sprite_overflow() {
                 self.registers.set_sprite_overflow();
             }
+
+            // Record whether rendering was active during the h-blank reload
+            // window (end of this scanline).  The next scanline's BG shift
+            // registers are only populated if rendering is active here.
+            self.bg_shift_regs_loaded = self.registers.is_rendering_active();
 
             self.cycles -= 341;
             self.scanline += 1;
@@ -166,16 +214,14 @@ impl Ppu {
                 let mut addr = addr;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
                 if MIRRORS.contains(&addr) {
-                    addr = addr - 0x10; // TODO?
+                    addr = addr - 0x10;
                 }
 
-                let offset_addr = addr - 0x3f00;
-                self.palette_table[offset_addr.as_usize()] = value;
+                let offset_address = (addr - 0x3F00) & 0x1F;
+                // Palette RAM is 6-bit; the upper 2 bits are not stored.
+                self.palette_table[offset_address.as_usize()] = value & 0x3F;
             }
-            0x4000.. => bail!(
-                "Unexpected access to mirrored space on PPU write ({:#x})",
-                addr
-            ),
+            0x4000.. => bail!("Unexpected access to mirrored space on PPU write ({addr:#x})"),
         }
 
         self.increment_vram_address();
@@ -206,11 +252,26 @@ impl Ppu {
                 let mut addr = addr;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
                 if MIRRORS.contains(&addr) {
-                    addr = addr - 0x10; // TODO?
+                    addr = addr - 0x10;
                 }
 
-                let offset_address = addr - 0x3f00;
-                Ok(self.palette_table[offset_address.as_usize()])
+                // Palette reads return data directly (no buffering), but the read
+                // buffer is loaded with nametable data from the mirrored address
+                // at $2F00–$2FFF (addr - $1000).
+                let nametable_addr = addr - 0x1000;
+                let mirrored = self.mirror_vram_addr(nametable_addr);
+                self.internal_data_buffer = self.vram[mirrored.as_usize()];
+
+                let offset_address = (addr - 0x3f00).value() & 0x1F;
+                // Palette RAM is 6-bit; upper 2 bits come from the PPU open bus.
+                // In greyscale mode the lower 4 bits are forced to zero.
+                let palette_data = self.palette_table[offset_address as usize];
+                let colour_bits = if self.registers.is_greyscale() {
+                    palette_data & 0x30
+                } else {
+                    palette_data & 0x3F
+                };
+                Ok((self.open_bus() & 0xC0) | colour_bits)
             }
             0x4000.. => bail!("Unexpected access to mirrored space on PPU read ({addr:#x})"),
         }
@@ -254,7 +315,8 @@ impl Ppu {
         if !(self.cycles > x
             && x != 255
             && self.registers.show_sprites()
-            && self.registers.show_background())
+            && self.registers.show_background()
+            && self.bg_shift_regs_loaded)
         {
             return false;
         }

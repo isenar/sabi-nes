@@ -175,6 +175,10 @@ impl PpuRegisters {
         self.mask.show_background_left_column()
     }
 
+    pub fn is_greyscale(&self) -> bool {
+        self.mask.contains(MaskRegister::GREYSCALE)
+    }
+
     pub fn show_background(&self) -> bool {
         self.mask.show_background()
     }

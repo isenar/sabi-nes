@@ -32,12 +32,6 @@ pub struct Bus {
     frame_ready: bool,
     // Extra cycles to consume on the next tick, used for OAM DMA stall.
     pending_cycles: usize,
-    // The PPU data bus retains the last value driven on it. Write-only register
-    // reads return this value; $2002 uses it for the lower 5 bits. On real
-    // hardware the capacitors discharge over ~600ms; we model this as a full
-    // decay to 0 after DECAY_CPU_CYCLES CPU cycles with no PPU register access.
-    ppu_open_bus: Byte,
-    ppu_open_bus_written_at: usize,
     // The CPU data bus retains the last value driven on it. Reads from unmapped
     // addresses return this value instead of driving the bus to zero.
     cpu_open_bus: Byte,
@@ -57,8 +51,6 @@ impl Bus {
             cycles: 0,
             frame_ready: false,
             pending_cycles: 0,
-            ppu_open_bus: Byte::default(),
-            ppu_open_bus_written_at: 0,
             cpu_open_bus: Byte::default(),
         }
     }
@@ -109,30 +101,11 @@ impl Bus {
     }
 
     pub fn mapper(&self) -> &dyn Mapper {
-        &*self.rom.mapper
+        self.rom.mapper.deref()
     }
 
     pub fn joypad_mut(&mut self) -> &mut Joypad {
         &mut self.joypad
-    }
-
-    /// Returns the PPU open bus value, or 0 if it has fully decayed.
-    /// Real hardware capacitors discharge over ~600 ms; we model the full
-    /// byte as decayed after roughly one second of CPU cycles.
-    fn ppu_open_bus(&self) -> Byte {
-        // ~1 048 576 CPU cycles ≈ 586 ms at 1.789 MHz (NTSC)
-        const DECAY_CPU_CYCLES: usize = 1_048_576;
-        if self.cycles.saturating_sub(self.ppu_open_bus_written_at) >= DECAY_CPU_CYCLES {
-            Byte::default()
-        } else {
-            self.ppu_open_bus
-        }
-    }
-
-    /// Update the PPU open bus latch and reset its decay timer.
-    fn set_ppu_open_bus(&mut self, value: Byte) {
-        self.ppu_open_bus = value;
-        self.ppu_open_bus_written_at = self.cycles;
     }
 
     /// Read a byte without triggering any side effects. Used by the trace/debugger
@@ -143,7 +116,7 @@ impl Bus {
                 let mirror_base_addr = address.mirror_cpu_vram_addr().as_usize();
                 self.cpu_vram[mirror_base_addr]
             }
-            0x2000..=0x2007 => self.ppu_open_bus(),
+            0x2000..=0x2007 => self.ppu.open_bus(),
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
                 self.peek_byte(mirror_base_addr)
@@ -187,23 +160,23 @@ impl Memory for Bus {
             0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 => {
                 // Write-only registers — nothing drives the bus, so the latch value decays back.
                 debug!("Read from write-only PPU register ${address:04X}");
-                self.ppu_open_bus()
+                self.ppu.open_bus()
             }
             0x2002 => {
-                // Bits 7–5 come from the PPU status register; bits 4–†
+                // Bits 7–5 come from the PPU status register; bits 4–0 come from the open bus.
                 let status = self.ppu.read_status_register();
-                let value = (status & 0xE0) | (self.ppu_open_bus() & 0x1F);
-                self.set_ppu_open_bus(value);
+                let value = (status & 0xE0) | (self.ppu.open_bus() & 0x1F);
+                self.ppu.set_open_bus(value);
                 value
             }
             0x2004 => {
                 let value = self.ppu.read_oam_data();
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 value
             }
             0x2007 => {
-                let value = self.ppu.read(&*self.rom.mapper)?;
-                self.set_ppu_open_bus(value);
+                let value = self.ppu.read(self.rom.mapper.deref())?;
+                self.ppu.set_open_bus(value);
                 value
             }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
@@ -243,48 +216,51 @@ impl Memory for Bus {
                 self.cpu_vram[mirror_base_addr] = value;
             }
             0x2000 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write_to_control_register(value);
             }
             0x2001 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write_to_mask_register(value);
             }
             0x2002 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 warn!("Attempted to write to PPU status register");
             }
             0x2003 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write_to_oam_address_register(value);
             }
             0x2004 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write_to_oam_data(value);
             }
             0x2005 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write_to_scroll_register(value);
             }
             0x2006 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write_to_addr_register(value);
             }
             0x2007 => {
-                self.set_ppu_open_bus(value);
+                self.ppu.set_open_bus(value);
                 self.ppu.write(value, self.rom.mapper.deref_mut())?;
             }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
-
                 self.write_byte(mirror_base_addr, value)?;
             }
-            0x4000 => self.apu.square_channel1.volume = value,
+            0x4000 => {
+                self.apu.square_channel1.volume = value;
+            }
             0x4001 => {
                 self.apu.square_channel1.sweep = value;
                 self.apu.square_channel1.on_sweep_write();
             }
-            0x4002 => self.apu.square_channel1.timer_low = value,
+            0x4002 => {
+                self.apu.square_channel1.timer_low = value;
+            }
             0x4003 => {
                 self.apu.square_channel1.length_and_timer_high = value;
                 self.apu.square_channel1.on_length_timer_write();
@@ -294,21 +270,31 @@ impl Memory for Bus {
                 self.apu.square_channel2.sweep = value;
                 self.apu.square_channel2.on_sweep_write();
             }
-            0x4006 => self.apu.square_channel2.timer_low = value,
+            0x4006 => {
+                self.apu.square_channel2.timer_low = value;
+            }
             0x4007 => {
                 self.apu.square_channel2.length_and_timer_high = value;
                 self.apu.square_channel2.on_length_timer_write();
             }
-            0x4008 => self.apu.triangle_channel.linear_counter = value,
+            0x4008 => {
+                self.apu.triangle_channel.linear_counter = value;
+            }
             // 0x4009 is unused
-            0x400a => self.apu.triangle_channel.timer_low = value,
+            0x400a => {
+                self.apu.triangle_channel.timer_low = value;
+            }
             0x400b => {
                 self.apu.triangle_channel.length_and_timer_high = value;
                 self.apu.triangle_channel.on_length_timer_write();
             }
-            0x400c => self.apu.noise_channel.volume = value,
+            0x400c => {
+                self.apu.noise_channel.volume = value;
+            }
             // 0x400d is unused
-            0x400e => self.apu.noise_channel.mode_and_period = value,
+            0x400e => {
+                self.apu.noise_channel.mode_and_period = value;
+            }
             0x400f => {
                 self.apu.noise_channel.len_counter_and_env_restart = value;
                 self.apu.noise_channel.on_length_timer_write();
@@ -320,8 +306,7 @@ impl Memory for Bus {
             0x4014 => {
                 let mut buffer = [Byte::default(); 256];
                 let high = Address::new((u16::from(value.value())) << 8);
-                // We could use std::array::try_from_fn to create the buffer once it gets stabilised,
-                // for now we'll use the good old for loop
+
                 for (offset, byte) in buffer.iter_mut().enumerate() {
                     let address = high + u16::try_from(offset)?;
                     *byte = self.read_byte(address)?;

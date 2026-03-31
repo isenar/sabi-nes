@@ -105,9 +105,9 @@ Controller Clocking,0x047A,true
 CHR ROM is not writable,0x0485,false
 PPU Register Mirroring,0x0404,false
 PPU Register Open Bus,0x044E,false
-PPU Read Buffer,0x0476,true
-Palette RAM Quirks,0x047E,true
-Rendering Flag Behavior,0x0486,true
+PPU Read Buffer,0x0476,false
+Palette RAM Quirks,0x047E,false
+Rendering Flag Behavior,0x0486,false
 $2007 read w/ rendering,0x048A,true
 VBlank beginning,0x0450,true
 VBlank end,0x0451,true
