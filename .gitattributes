@@ -1,0 +1,3 @@
+tests/test_roms/*.nes linguist-detectable=false
+tests/test_roms/AccuracyCoin.asm linguist-vendored=true
+examples/*.nes linguist-detectable=false
