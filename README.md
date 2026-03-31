@@ -1,3 +1,6 @@
 # SabiNES
 
-A toy NES emulator written in Rust.
+A toy NES emulator for learning purposes.
+
+## Credits
+See [CREDITS.md](CREDITS.md) for acknowledgements.
