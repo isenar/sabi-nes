@@ -61,7 +61,7 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
             cpu.read_byte(cpu.program_counter + 1)?
         ),
         2 => match opcode.addressing_mode {
-            AddressingMode::Implied => {
+            AddressingMode::Implied if opcode.name != "JSR" => {
                 format!("{:02X}", opcode.code)
             }
             _ => {
@@ -141,6 +141,10 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 "(${:02X}),Y = {:04X} @ {:04X} = {:02X}",
                 value, address, target_address, target_cell_value,
             )
+        }
+        AddressingMode::Implied if opcode.name == "JSR" => {
+            // JSR uses Implied mode internally (to control cycle order) but displays like Absolute.
+            format!("${:04X}", address)
         }
         AddressingMode::Implied => String::new(),
         AddressingMode::Accumulator => "A".into(),

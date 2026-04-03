@@ -339,3 +339,11 @@ impl AddAssign<u16> for Address {
         self.0 += rhs;
     }
 }
+
+impl Shl<u16> for Address {
+    type Output = Self;
+
+    fn shl(self, rhs: u16) -> Self::Output {
+        Self::new(self.0 << rhs)
+    }
+}

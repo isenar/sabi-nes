@@ -7,19 +7,23 @@ use crate::config::Config;
 use crate::emulator::Emulator;
 use crate::sdl_frontend::SdlFrontend;
 use clap::Parser;
-use log::debug;
+use log::info;
 use sabi_nes::{Result, Rom};
 
 fn main() -> Result<()> {
     env_logger::init();
 
-    debug!("Starting NES Emulator");
+    info!("Starting NES Emulator");
 
     let config = Config::parse();
     let rom = Rom::from_file(&config.rom_path)?;
-    let frontend = SdlFrontend::new(&config)?;
+    info!(
+        "Loaded ROM: `{}`",
+        config.rom_path.file_name().unwrap().display()
+    );
 
-    debug!("Initialised with SDL Frontend");
+    let frontend = SdlFrontend::new(&config)?;
+    info!("Initialised with SDL Frontend");
 
     let mut emulator = Emulator::new(frontend);
     emulator.run(rom)?;

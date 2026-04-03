@@ -5,6 +5,7 @@ use crate::apu::channels::noise_channel::NoiseChannel;
 use crate::apu::channels::square_channel::SquareChannel;
 use crate::apu::channels::triangle_channel::TriangleChannel;
 use crate::apu::frame_counter::{FrameCounter, FrameSignal};
+use crate::bus::DmaOperation;
 use once_cell::sync::Lazy;
 use std::mem;
 
@@ -108,8 +109,10 @@ impl Default for Apu {
 }
 
 impl Apu {
-    pub fn write_frame_counter(&mut self, value: Byte) {
-        self.frame_counter.write(value);
+    pub fn write_frame_counter(&mut self, value: Byte, dma_operation: DmaOperation) {
+        if let Some(signal) = self.frame_counter.write(value, dma_operation) {
+            self.dispatch_frame_signal(signal);
+        }
     }
 
     pub fn irq_status(&self) -> bool {
@@ -171,42 +174,52 @@ impl Apu {
         status
     }
 
+    fn dispatch_frame_signal(&mut self, signal: FrameSignal) {
+        match signal {
+            FrameSignal::QuarterFrame => {
+                self.square_channel1.clock_envelope();
+                self.square_channel2.clock_envelope();
+                self.noise_channel.clock_envelope();
+                self.triangle_channel.clock_linear_counter();
+            }
+            FrameSignal::HalfFrame => {
+                self.square_channel1.clock_envelope();
+                self.square_channel2.clock_envelope();
+                self.noise_channel.clock_envelope();
+                self.triangle_channel.clock_linear_counter();
+                self.square_channel1.clock_length_counter();
+                self.square_channel2.clock_length_counter();
+                self.triangle_channel.clock_length_counter();
+                self.noise_channel.clock_length_counter();
+                self.square_channel1.clock_sweep();
+                self.square_channel2.clock_sweep();
+            }
+        }
+    }
+
+    /// Advance the APU by exactly one CPU cycle with known parity.
+    pub fn tick_one(&mut self, dma_operation: DmaOperation) {
+        self.square_channel1.tick();
+        self.square_channel2.tick();
+        self.triangle_channel.tick();
+        self.noise_channel.tick();
+
+        if let Some(signal) = self.frame_counter.tick(dma_operation) {
+            self.dispatch_frame_signal(signal);
+        }
+
+        self.cycle_accumulator += 1.0;
+        if self.cycle_accumulator >= CYCLES_PER_SAMPLE {
+            self.cycle_accumulator -= CYCLES_PER_SAMPLE;
+            let mixed_output = self.mix();
+            self.samples.push(self.filter.filter(mixed_output));
+        }
+    }
+
     /// Advance the APU by `cycles` CPU cycles, accumulating audio samples.
     pub fn tick(&mut self, cycles: usize) {
         for _ in 0..cycles {
-            self.square_channel1.tick();
-            self.square_channel2.tick();
-            self.triangle_channel.tick();
-            self.noise_channel.tick();
-
-            match self.frame_counter.tick() {
-                Some(FrameSignal::QuarterFrame) => {
-                    self.square_channel1.clock_envelope();
-                    self.square_channel2.clock_envelope();
-                    self.noise_channel.clock_envelope();
-                    self.triangle_channel.clock_linear_counter();
-                }
-                Some(FrameSignal::HalfFrame) => {
-                    self.square_channel1.clock_envelope();
-                    self.square_channel2.clock_envelope();
-                    self.noise_channel.clock_envelope();
-                    self.triangle_channel.clock_linear_counter();
-                    self.square_channel1.clock_length_counter();
-                    self.square_channel2.clock_length_counter();
-                    self.triangle_channel.clock_length_counter();
-                    self.noise_channel.clock_length_counter();
-                    self.square_channel1.clock_sweep();
-                    self.square_channel2.clock_sweep();
-                }
-                None => {}
-            }
-
-            self.cycle_accumulator += 1.0;
-            if self.cycle_accumulator >= CYCLES_PER_SAMPLE {
-                self.cycle_accumulator -= CYCLES_PER_SAMPLE;
-                let mixed_output = self.mix();
-                self.samples.push(self.filter.filter(mixed_output));
-            }
+            self.tick_one(DmaOperation::Get);
         }
     }
 

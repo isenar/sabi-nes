@@ -37,8 +37,8 @@ impl SpriteData {
     }
 
     #[inline]
-    pub fn palette_index(&self) -> Byte {
-        self.attributes & 0b11
+    pub fn palette_index(&self) -> usize {
+        (self.attributes & 0b11).as_usize()
     }
 
     #[inline]

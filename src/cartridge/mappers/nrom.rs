@@ -64,5 +64,9 @@ impl<const N: usize> Mapper for Nrom<N> {
 }
 
 impl<const PRG_ROM_BANKS: usize> MapperId for Nrom<PRG_ROM_BANKS> {
-    const ID: u32 = 0;
+    const ID: u8 = 0;
+
+    fn name(&self) -> &'static str {
+        "NROM"
+    }
 }

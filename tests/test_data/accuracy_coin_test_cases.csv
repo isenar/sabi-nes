@@ -93,15 +93,15 @@ DMC DMA Bus Conflicts,0x046B,true
 DMC DMA + OAM DMA,0x0477,true
 Explicit DMA Abort,0x0479,true
 Implicit DMA Abort,0x0478,true
-Length Counter,0x0465,true
-Length Table,0x0466,true
+Length Counter,0x0465,false
+Length Table,0x0466,false
 Frame Counter IRQ,0x0467,true
-Frame Counter 4-step,0x0468,true
+Frame Counter 4-step,0x0468,false
 Frame Counter 5-step,0x0469,true
 Delta Modulation Channel,0x046A,true
 APU Register Activation,0x045C,true
 Controller Strobing,0x045F,true
-Controller Clocking,0x047A,true
+Controller Clocking,0x047A,false
 CHR ROM is not writable,0x0485,false
 PPU Register Mirroring,0x0404,false
 PPU Register Open Bus,0x044E,false
@@ -135,4 +135,4 @@ $2007 Stress Test,0x048E,true
 Instruction Timing,0x0460,true
 Implied Dummy Reads,0x046D,true
 Branch Dummy Reads,0x048B,true
-JSR Edge Cases,0x047C,true
+JSR Edge Cases,0x047C,false

@@ -1,13 +1,12 @@
-use anyhow::bail;
 use sabi_nes::cartridge::mappers::Mapper;
-use sabi_nes::render::{Frame, SYSTEM_PALETTE};
+use sabi_nes::render::{Frame, Palette, SystemPalette};
 use sabi_nes::{Address, Result, Rom};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use std::ops::Deref;
 
-fn show_tiles(mapper: &dyn Mapper, bank: usize) -> Result<Frame> {
+fn show_tiles(mapper: &dyn Mapper, bank: usize, palette: &impl Palette) -> Result<Frame> {
     assert!(bank <= 1);
 
     let mut frame = Frame::new();
@@ -33,11 +32,11 @@ fn show_tiles(mapper: &dyn Mapper, bank: usize) -> Result<Frame> {
                 upper >>= 1;
                 lower >>= 1;
                 let colour = match value.value() {
-                    0 => SYSTEM_PALETTE[0x02],
-                    1 => SYSTEM_PALETTE[0x23],
-                    2 => SYSTEM_PALETTE[0x27],
-                    3 => SYSTEM_PALETTE[0x30],
-                    _ => bail!("RGB color must fit within 2 bits! Got value: {value}"),
+                    0 => palette.get(0x02),
+                    1 => palette.get(0x23),
+                    2 => palette.get(0x27),
+                    3 => palette.get(0x30),
+                    _ => unreachable!("RGB color should fit within 2 bits already!"),
                 };
                 frame.set_pixel_colour(tile_x + x, tile_y + y, colour);
             }
@@ -76,8 +75,9 @@ fn main() -> Result<()> {
     )?;
 
     let rom = Rom::from_file("pacman.nes")?;
+    let palette = SystemPalette::new();
 
-    let right_bank = show_tiles(rom.mapper.deref(), 0)?;
+    let right_bank = show_tiles(rom.mapper.deref(), 0, &palette)?;
 
     texture.update(None, right_bank.pixel_data(), Frame::WIDTH * scale)?;
     canvas

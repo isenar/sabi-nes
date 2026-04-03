@@ -96,12 +96,12 @@ impl SquareChannel {
     /// The NES pulse timer runs at half the CPU clock, so we reload with
     /// 2*(period+1)-1 to get the correct sequencer frequency.
     pub fn tick(&mut self) {
-        if self.timer_counter == 0 {
+        if self.timer_counter > 0 {
+            self.timer_counter -= 1;
+        } else {
             let period = self.timer().value();
             self.timer_counter = Word::new(period * 2 + 1);
             self.sequencer_position = (self.sequencer_position + 1) % 8;
-        } else {
-            self.timer_counter -= 1;
         }
     }
 

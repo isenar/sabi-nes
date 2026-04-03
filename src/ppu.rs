@@ -1,4 +1,5 @@
 mod nmi_status;
+mod open_bus;
 mod registers;
 
 pub use nmi_status::NmiStatus;
@@ -6,6 +7,7 @@ pub use registers::{SpriteData, SpriteSize};
 
 use crate::cartridge::MirroringType;
 use crate::cartridge::mappers::Mapper;
+use crate::ppu::open_bus::OpenBus;
 use crate::ppu::registers::PpuRegisters;
 use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Result};
@@ -46,17 +48,10 @@ pub struct Ppu {
     /// re-enabled mid-scanline.
     bg_shift_regs_loaded: bool,
 
-    // The PPU data bus retains the last value driven on it. Write-only register
-    // reads return this value; $2002 uses it for the lower 5 bits. On real
-    // hardware the capacitors discharge over ~600ms; we model the full byte as
-    // decayed after roughly one second of PPU cycles.
-    open_bus: Byte,
-    open_bus_written_at: u64,
+    open_bus: OpenBus,
     // Monotonically increasing PPU cycle counter, used for open bus decay.
-    // (self.cycles resets per scanline so cannot be used for this.)
-    // u64 to avoid overflow on 32-bit targets (e.g. wasm32), where usize
-    // would wrap after ~13 minutes at ~5.37M PPU cycles/sec.
-    total_cycles: u64,
+    // We cannot use `self.cycles` as it resets per scanline.
+    total_cycles: usize,
 }
 
 impl Ppu {
@@ -71,8 +66,7 @@ impl Ppu {
             nmi_status: NmiStatus::Inactive,
             internal_data_buffer: Byte::default(),
             bg_shift_regs_loaded: false,
-            open_bus: Byte::default(),
-            open_bus_written_at: 0,
+            open_bus: OpenBus::new(),
             total_cycles: 0,
         }
     }
@@ -81,24 +75,17 @@ impl Ppu {
     /// Real hardware capacitors discharge over ~600 ms; we model the full
     /// byte as decayed after roughly one second of PPU cycles.
     pub fn open_bus(&self) -> Byte {
-        // 1_048_576 CPU cycles * 3 = 3_145_728 PPU cycles ≈ 586 ms at 1.789 MHz (NTSC)
-        const DECAY_PPU_CYCLES: u64 = 3_145_728;
-        if self.total_cycles.saturating_sub(self.open_bus_written_at) >= DECAY_PPU_CYCLES {
-            Byte::default()
-        } else {
-            self.open_bus
-        }
+        self.open_bus.read(self.total_cycles)
     }
 
     /// Update the PPU open bus latch and reset its decay timer.
-    pub fn set_open_bus(&mut self, value: Byte) {
-        self.open_bus = value;
-        self.open_bus_written_at = self.total_cycles;
+    pub fn write_to_open_bus(&mut self, value: Byte) {
+        self.open_bus.write(value, self.total_cycles);
     }
 
     pub fn tick(&mut self, cycles: usize, mapper: &dyn Mapper) -> NmiStatus {
         self.cycles += cycles;
-        self.total_cycles += cycles as u64;
+        self.total_cycles += cycles;
 
         // Sprite zero hit fires at the specific PPU cycle within the scanline (X+1),
         // not at the end of the scanline, so we check continuously here.
@@ -297,12 +284,7 @@ impl Ppu {
         let y = sprite.y.as_usize();
         let x = sprite.x.as_usize();
 
-        let sprite_height: usize = match self.registers.sprite_size() {
-            SpriteSize::Small => 8,
-            SpriteSize::Large => 16,
-        };
-
-        // Only fires during rendering (scanlines 0–239)
+        let sprite_height = self.registers.sprite_size().height();
         if self.scanline >= 240 {
             return false;
         }

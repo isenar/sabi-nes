@@ -1,7 +1,7 @@
 use crate::Byte;
 use crate::render::{Colour, MetaTile};
 
-pub const SYSTEM_PALETTE: [Colour; 64] = [
+const SYSTEM_PALETTE: [Colour; 64] = [
     Colour::new(0x80, 0x80, 0x80),
     Colour::new(0x00, 0x3D, 0xA6),
     Colour::new(0x00, 0x12, 0xB0),
@@ -68,6 +68,32 @@ pub const SYSTEM_PALETTE: [Colour; 64] = [
     Colour::new(0x11, 0x11, 0x11),
 ];
 
-pub fn system_palette_thingy(value: Byte, sprite_palette: &MetaTile) -> Colour {
-    SYSTEM_PALETTE[sprite_palette[value.as_usize()].as_usize()]
+pub trait Palette {
+    fn values(&self) -> &[Colour; 64];
+
+    fn get(&self, index: usize) -> Colour {
+        self.values()[index]
+    }
+
+    fn colour_by_meta_tile(&self, value: Byte, sprite_palette: &MetaTile) -> Colour {
+        self.get(sprite_palette[value.as_usize()].as_usize())
+    }
+}
+
+pub struct SystemPalette {
+    colours: [Colour; 64],
+}
+
+impl SystemPalette {
+    pub fn new() -> Self {
+        Self {
+            colours: SYSTEM_PALETTE,
+        }
+    }
+}
+
+impl Palette for SystemPalette {
+    fn values(&self) -> &[Colour; 64] {
+        &self.colours
+    }
 }
