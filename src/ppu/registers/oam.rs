@@ -4,7 +4,9 @@ use crate::utils::NthBit;
 const OAM_DATA_SIZE: usize = 64;
 const SPRITE_DATA_SIZE: usize = 4;
 
-/// Internal memory to keep state of sprites (Object Attribute Memory)
+/// Object Attribute Memory
+///
+/// Internal memory to keep the state of sprites.
 #[derive(Debug)]
 pub struct Oam {
     sprites: [SpriteData; OAM_DATA_SIZE],
@@ -28,9 +30,9 @@ impl SpriteData {
         }
     }
 
-    pub fn y_pos(&self, y_offset: usize) -> usize {
+    pub fn y_pos(&self, y_offset: usize, sprite_height: usize) -> usize {
         if self.flip_vertically() {
-            self.y.as_usize() + 7 - y_offset
+            self.y.as_usize() + (sprite_height - 1) - y_offset
         } else {
             self.y.as_usize() + y_offset
         }
@@ -47,6 +49,7 @@ impl SpriteData {
     pub fn priority(&self) -> bool {
         self.attributes.nth_bit::<5>()
     }
+
     #[inline]
     pub fn flip_horizontally(&self) -> bool {
         self.attributes.nth_bit::<6>()

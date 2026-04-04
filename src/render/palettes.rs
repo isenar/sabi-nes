@@ -1,5 +1,4 @@
-use crate::Byte;
-use crate::render::{Colour, MetaTile};
+use crate::render::Colour;
 
 const SYSTEM_PALETTE: [Colour; 64] = [
     Colour::new(0x80, 0x80, 0x80),
@@ -73,10 +72,6 @@ pub trait Palette {
 
     fn get(&self, index: usize) -> Colour {
         self.values()[index]
-    }
-
-    fn colour_by_meta_tile(&self, value: Byte, sprite_palette: &MetaTile) -> Colour {
-        self.get(sprite_palette[value.as_usize()].as_usize())
     }
 }
 
