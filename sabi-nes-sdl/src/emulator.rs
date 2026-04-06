@@ -1,6 +1,6 @@
-use crate::frontend::Frontend;
-use sabi_nes::render::{Frame, Renderer, SystemPalette};
-use sabi_nes::{Bus, Cpu, Result, Rom};
+use sabi_nes_core::frontend::Frontend;
+use sabi_nes_core::render::{Frame, Renderer, SystemPalette};
+use sabi_nes_core::{Bus, Cpu, Result, Rom};
 
 pub struct Emulator<F> {
     frontend: F,

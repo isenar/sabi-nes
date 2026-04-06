@@ -1,6 +1,6 @@
-use sabi_nes::cartridge::mappers::Mapper;
-use sabi_nes::render::{Frame, Palette, SystemPalette};
-use sabi_nes::{Address, Result, Rom};
+use sabi_nes_core::cartridge::mappers::Mapper;
+use sabi_nes_core::render::{Frame, Palette, SystemPalette};
+use sabi_nes_core::{Address, Result, Rom};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;

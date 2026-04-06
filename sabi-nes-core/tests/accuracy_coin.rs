@@ -1,8 +1,8 @@
 //! Integration tests using the AccuracyCoin test ROM.
 //! ROM source: https://github.com/100thCoin/AccuracyCoin (MIT License)
 
-use sabi_nes::input::joypad::JoypadButton;
-use sabi_nes::{Address, Bus, Byte, Cpu, Result, Rom};
+use sabi_nes_core::input::joypad::JoypadButton;
+use sabi_nes_core::{Address, Bus, Byte, Cpu, Result, Rom};
 use serde::Deserialize;
 
 /// Result codes written by the AccuracyCoin test runner to CPU RAM.

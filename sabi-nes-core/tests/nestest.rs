@@ -2,7 +2,7 @@ mod common;
 
 use crate::common::trace;
 use pretty_assertions::assert_eq;
-use sabi_nes::{Address, Bus, Cpu, Result, Rom};
+use sabi_nes_core::{Address, Bus, Cpu, Result, Rom};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::iter;
@@ -15,7 +15,7 @@ fn read_lines(filename: impl AsRef<Path>) -> Result<Vec<String>> {
 
 #[test]
 fn cpu_validation_test() -> Result<()> {
-    let rom = Rom::from_file("../sabi-nes/tests/test_roms/nestest.nes")?;
+    let rom = Rom::from_file("../sabi-nes-core/tests/test_roms/nestest.nes")?;
     let bus = Bus::new(rom);
     let mut cpu = Cpu::new(bus);
 
@@ -23,13 +23,13 @@ fn cpu_validation_test() -> Result<()> {
     // This specific value enables running the test ROM in "automation" mode.
     cpu.program_counter = Address::new(0xc000);
 
-    let collect_trace = || -> Result<String> {
+    let trace_step = || -> Result<String> {
         let trace = trace(&mut cpu);
         cpu.step()?;
         trace
     };
-    let lines = read_lines("../sabi-nes/tests/test_data/nestest_expected_logs.txt")?;
-    let traces = iter::repeat_with(collect_trace)
+    let lines = read_lines("../sabi-nes-core/tests/test_data/nestest_expected_logs.txt")?;
+    let traces = iter::repeat_with(trace_step)
         .take(lines.len())
         .collect::<Result<Vec<_>>>()?;
 

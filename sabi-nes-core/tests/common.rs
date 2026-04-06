@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use once_cell::sync::Lazy;
-use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
-use sabi_nes::cpu::AddressingMode;
-use sabi_nes::cpu::opcodes::{OPCODES_MAPPING, Opcode};
-use sabi_nes::{Address, Cpu, Memory, Result};
+use sabi_nes_core::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
+use sabi_nes_core::cpu::AddressingMode;
+use sabi_nes_core::cpu::opcodes::{OPCODES_MAPPING, Opcode};
+use sabi_nes_core::{Address, Cpu, Memory, Result};
 
 pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
     let mut rom = vec![];
@@ -174,7 +174,7 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use sabi_nes::{Bus, Rom};
+    use sabi_nes_core::{Bus, Rom};
 
     #[test]
     fn trace_format() -> Result<()> {

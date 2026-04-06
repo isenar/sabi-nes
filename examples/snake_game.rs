@@ -1,5 +1,5 @@
-use sabi_nes::cartridge::Rom;
-use sabi_nes::{Address, Bus, Byte, Cpu, Memory};
+use sabi_nes_core::cartridge::Rom;
+use sabi_nes_core::{Address, Bus, Byte, Cpu, Memory};
 
 use anyhow::Result;
 use rand::RngExt;

@@ -1,14 +1,13 @@
 mod config;
 mod emulator;
 mod frontend;
-mod sdl_frontend;
 
 use crate::config::Config;
 use crate::emulator::Emulator;
-use crate::sdl_frontend::SdlFrontend;
+use crate::frontend::SdlFrontend;
 use clap::Parser;
 use log::info;
-use sabi_nes::{Result, Rom};
+use sabi_nes_core::{Result, Rom};
 
 fn main() -> Result<()> {
     env_logger::init();
