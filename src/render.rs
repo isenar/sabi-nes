@@ -61,40 +61,40 @@ where
     }
 
     fn render_background(&mut self) -> Result<()> {
-        let name_table_address = self.ppu.registers.read_name_table_address();
-
-        // Determine the four nametable quadrants (top-left, top-right, bottom-left, bottom-right).
-        // Vertical mirroring: $2000=$2800, $2400=$2C00 → left/right differ, top/bottom same.
-        // Horizontal mirroring: $2000=$2400, $2800=$2C00 → top/bottom differ, left/right same.
-        let (top_left, top_right, bot_left, bot_right) =
-            match (self.ppu.mirroring, name_table_address.value()) {
-                (MirroringType::Vertical, 0x2000 | 0x2800) => {
-                    let a = &self.ppu.vram[0..0x0400];
-                    let b = &self.ppu.vram[0x0400..0x0800];
-                    (a, b, a, b)
-                }
-                (MirroringType::Vertical, 0x2400 | 0x2c00) => {
-                    let a = &self.ppu.vram[0x0400..0x0800];
-                    let b = &self.ppu.vram[0..0x0400];
-                    (a, b, a, b)
-                }
-                (MirroringType::Horizontal, 0x2000 | 0x2400) => {
-                    let a = &self.ppu.vram[0..0x0400];
-                    let b = &self.ppu.vram[0x0400..0x0800];
-                    (a, b, b, b)
-                }
-                (MirroringType::Horizontal, 0x2800 | 0x2c00) => {
-                    let a = &self.ppu.vram[0x0400..0x0800];
-                    let b = &self.ppu.vram[0..0x0400];
-                    (a, b, b, b)
-                }
-                _ => todo!("Four screen mirroring (used in e.g. Gauntlet"),
-            };
-
-        let scroll_x = self.ppu.registers.read_scroll_x().as_usize();
-        let scroll_y = self.ppu.registers.read_scroll_y().as_usize();
-
         for screen_y in 0..Frame::HEIGHT {
+            let (scroll_x_byte, scroll_y_byte, name_table_address) =
+                self.ppu.scanline_scroll()[screen_y];
+            let scroll_x = scroll_x_byte.as_usize();
+            let scroll_y = scroll_y_byte.as_usize();
+
+            // Determine the four nametable quadrants (top-left, top-right, bottom-left, bottom-right).
+            // Vertical mirroring: $2000=$2800, $2400=$2C00 → left/right differ, top/bottom same.
+            // Horizontal mirroring: $2000=$2400, $2800=$2C00 → top/bottom differ, left/right same.
+            let (top_left, top_right, bot_left, bot_right) =
+                match (self.ppu.mirroring, name_table_address.value()) {
+                    (MirroringType::Vertical, 0x2000 | 0x2800) => {
+                        let a = &self.ppu.vram[0..0x0400];
+                        let b = &self.ppu.vram[0x0400..0x0800];
+                        (a, b, a, b)
+                    }
+                    (MirroringType::Vertical, 0x2400 | 0x2c00) => {
+                        let a = &self.ppu.vram[0x0400..0x0800];
+                        let b = &self.ppu.vram[0..0x0400];
+                        (a, b, a, b)
+                    }
+                    (MirroringType::Horizontal, 0x2000 | 0x2400) => {
+                        let a = &self.ppu.vram[0..0x0400];
+                        let b = &self.ppu.vram[0x0400..0x0800];
+                        (a, b, b, b)
+                    }
+                    (MirroringType::Horizontal, 0x2800 | 0x2c00) => {
+                        let a = &self.ppu.vram[0x0400..0x0800];
+                        let b = &self.ppu.vram[0..0x0400];
+                        (a, b, b, b)
+                    }
+                    _ => todo!("Four screen mirroring (used in e.g. Gauntlet"),
+                };
+
             let total_y = screen_y + scroll_y;
             // When total_y >= 240 the visible row is in the nametable below the base.
             let (y_in_nametable, in_lower) = if total_y >= 240 {

@@ -108,6 +108,11 @@ impl BitOrAssign<u8> for Byte {
     }
 }
 
+impl AddAssign<u8> for Byte {
+    fn add_assign(&mut self, rhs: u8) {
+        self.0 += rhs;
+    }
+}
 impl SubAssign<u8> for Byte {
     fn sub_assign(&mut self, rhs: u8) {
         self.0 -= rhs;

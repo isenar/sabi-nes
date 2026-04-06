@@ -96,14 +96,12 @@ impl TriangleChannel {
 
     /// Current output level in the range 0–15, ready for mixing.
     pub fn output(&self) -> Byte {
-        if !self.enabled {
-            return 0x00.into();
-        }
         // Silence ultrasonic periods: very short periods produce a DC-offset
         // pop on real hardware; suppress them the same way square does.
-        if self.timer() < 2 {
+        if !self.enabled || self.timer() < 2 {
             return 0x00.into();
         }
+
         // When length or linear counter is 0, the sequencer is frozen (see tick()).
         // We output the held value rather than 0 to avoid a click on note-off.
         TRIANGLE_SEQUENCE[self.sequencer_pos as usize].into()

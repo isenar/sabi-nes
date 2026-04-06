@@ -1,5 +1,5 @@
-use crate::Byte;
 use super::{Colour, Palette};
+use crate::Byte;
 
 pub struct TilePalette(pub [Byte; 4]);
 

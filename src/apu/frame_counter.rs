@@ -48,12 +48,14 @@ impl FrameCounter {
             self.force_clear_irq();
         }
         // Schedule delayed reset.
-        // On real hardware a $4017 write delays the frame counter reset by 3 CPU cycles on a
-        // PUT (odd) cycle or 4 CPU cycles on a GET (even) cycle.
-        // In our emulation model read_byte() is called *before* the cycle's tick_one(), so
-        // the read of $4015 observes the APU state before the current tick.  We compensate by
-        // counting one extra tick in the delay (4 for PUT, 5 for GET) so that the boundary
-        // cycles visible to software match the hardware specification.
+        // NOTE: On real hardware a $4017 write delays the frame counter reset
+        //       by 3 CPU cycles on a PUT (odd) cycle or 4 CPU cycles on a GET
+        //       (even) cycle.
+        //       In our emulation model read_byte() is called *before* the
+        //       cycle's tick_one(), so the read of $4015 observes the APU state
+        //       before the current tick.  We compensate by counting one extra
+        //       tick in the delay (4 for PUT, 5 for GET) so that the boundary
+        //       cycles visible to software match the hardware specification.
         self.reset_delay = dma_operation.reset_delay();
 
         (self.mode == SequencerMode::FiveStep).then_some(FrameSignal::HalfFrame)
@@ -95,7 +97,6 @@ impl FrameCounter {
 
         match self.mode {
             SequencerMode::FourStep => {
-                // IRQ flag is set at cycles 29,828, 29,829, and 29,830.
                 if !self.irq.is_inhibited
                     && (self.cycles == 29_828 || self.cycles == 29_829 || self.cycles == 29_830)
                 {
@@ -112,18 +113,15 @@ impl FrameCounter {
                     _ => None,
                 }
             }
-            SequencerMode::FiveStep => {
-                // No IRQ in 5-step mode.
-                match self.cycles {
-                    7_457 | 22_371 => Some(FrameSignal::QuarterFrame),
-                    14_913 | 29_829 | 37_281 => Some(FrameSignal::HalfFrame),
-                    37_282.. => {
-                        self.cycles = 0;
-                        None
-                    }
-                    _ => None,
+            SequencerMode::FiveStep => match self.cycles {
+                7_457 | 22_371 => Some(FrameSignal::QuarterFrame),
+                14_913 | 29_829 | 37_281 => Some(FrameSignal::HalfFrame),
+                37_282.. => {
+                    self.cycles = 0;
+                    None
                 }
-            }
+                _ => None,
+            },
         }
     }
 }

@@ -393,11 +393,10 @@ impl Cpu {
     }
 
     fn lsr(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
-        let ByteUpdate { previous: old, new } =
-            self.shift(address, mode, 0.into(), |byte| byte >> 1)?;
+        let ByteUpdate { previous, new } = self.shift(address, mode, 0.into(), |byte| byte >> 1)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit::<0>())
+            .set_carry_flag(previous.nth_bit::<0>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -405,11 +404,11 @@ impl Cpu {
 
     fn rol(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = u8::from(self.status_register.contains(StatusRegister::CARRY)).into();
-        let ByteUpdate { previous: old, new } =
+        let ByteUpdate { previous, new } =
             self.shift(address, mode, input_carry, |byte| byte << 1)?;
 
         self.status_register
-            .set_carry_flag(old.nth_bit::<7>())
+            .set_carry_flag(previous.nth_bit::<7>())
             .update_zero_and_negative_flags(new);
 
         Ok(())
@@ -1124,7 +1123,7 @@ mod tests {
     use crate::cartridge::Rom;
     use once_cell::sync::Lazy;
 
-    pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
+    static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
         let mut rom = vec![];
         let header = vec![
             0x4e, 0x45, 0x53, 0x1a, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1155,8 +1154,8 @@ mod tests {
             Self { writes: vec![] }
         }
 
-        fn write_byte(mut self, address: Address, byte: Byte) -> Self {
-            self.writes.push(Write::Byte(address, byte));
+        fn write_byte(mut self, address: impl Into<Address>, byte: impl Into<Byte>) -> Self {
+            self.writes.push(Write::Byte(address.into(), byte.into()));
 
             self
         }
@@ -1228,7 +1227,7 @@ mod tests {
         fn load_from_memory() {
             let data = [0xa5, 0x10, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0x10), 0x55.into())
+                .write_byte(0x10u16, 0x55)
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0x55);
@@ -1250,7 +1249,7 @@ mod tests {
         fn ldy_zero_page() {
             let data = [0xa4, 0xaa, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0xaa), 0x66.into())
+                .write_byte(0xaa_u16, 0x66)
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_y, 0x66);
@@ -1280,7 +1279,7 @@ mod tests {
             let data = [0x86, 0xee, 0x00];
             let address = Address::new(0xee);
             let mut cpu = CpuBuilder::new()
-                .write_byte(address, 0x12.into())
+                .write_byte(address, 0x12)
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0x00);
@@ -1297,8 +1296,8 @@ mod tests {
             // 5. call STY with ZeroPageX addressing mode (store registry value Y in byte X on page zero
             let data = [0xa6, 0x01, 0xa4, 0x03, 0x94, 0x00];
             let mut cpu = CpuBuilder::new()
-                .write_byte(Address::new(0x01), 0x02.into())
-                .write_byte(Address::new(0x03), 0x04.into())
+                .write_byte(Address::new(0x01), 0x02)
+                .write_byte(Address::new(0x03), 0x04)
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 0x02);
@@ -1329,7 +1328,7 @@ mod tests {
             let data = [0xc6, 0x11, 0x00];
             let address = Address::new(0x11);
             let mut cpu = CpuBuilder::new()
-                .write_byte(address, 0xf1.into())
+                .write_byte(address, 0xf1)
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0xf0);
@@ -1399,7 +1398,7 @@ mod tests {
         fn bit_zero_page() {
             let data = [0xa9, 0b1101_1010, 0x24, 0xdd, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0xdd), 0b1110_1010.into())
+                .write_byte(Address::new(0xdd), 0b1110_1010)
                 .build_and_run(&data);
 
             // accumulator value should not change
@@ -1417,7 +1416,7 @@ mod tests {
             // 3. perform bitwise XOR on the accumulator with value under address 0xbeef
             let data = [0xa9, 0b1101_0110, 0x4d, 0xef, 0x1a, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0x1aef), 0b1010_0000.into())
+                .write_byte(Address::new(0x1aef), 0b1010_0000)
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0b0111_0110);
@@ -1431,7 +1430,7 @@ mod tests {
             // 3. perform bitwise OR on the accumulator with value under address 0xcc
             let data = [0xa9, 0b1101_0110, 0x05, 0xcc, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0xcc), 0b0011_1011.into())
+                .write_byte(Address::new(0xcc), 0b0011_1011)
                 .build_and_run(&data);
 
             assert_eq!(cpu.accumulator, 0b1111_1111);
@@ -1467,7 +1466,7 @@ mod tests {
             let data = [0xe8, 0x16, 0xaa, 0x00];
             let address = Address::new(0xab);
             let mut cpu = CpuBuilder::new()
-                .write_byte(address, 0b0100_1101.into())
+                .write_byte(address, 0b0100_1101)
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 1);
@@ -1497,7 +1496,7 @@ mod tests {
             let data = [0x4e, 0xda, 0x0a, 0x00];
             let address = Address::new(0x0ada);
             let mut cpu = CpuBuilder::new()
-                .write_byte(address, 0b0101_0111.into())
+                .write_byte(address, 0b0101_0111)
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0b0010_1011);
@@ -1526,7 +1525,7 @@ mod tests {
             let data = [0x38, 0x26, 0xff, 0x00];
             let address = Address::new(0xff);
             let mut cpu = CpuBuilder::new()
-                .write_byte(address, 0b1010_1101.into())
+                .write_byte(address, 0b1010_1101)
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0b0101_1011);
@@ -1555,7 +1554,7 @@ mod tests {
             let data = [0xe8, 0x7e, 0x33, 0x12, 0x00];
             let address = Address::new(0x1234);
             let mut cpu = CpuBuilder::new()
-                .write_byte(address, 0b0100_1101.into())
+                .write_byte(address, 0b0100_1101)
                 .build_and_run(&data);
 
             assert_eq!(cpu.read_byte(address).unwrap(), 0b0010_0110);
@@ -1604,7 +1603,7 @@ mod tests {
         fn adc_zero_page_with_wrapping() {
             let data = [0xa9, 0xfe, 0x38, 0x65, 0x11, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0x11), 0xaa.into())
+                .write_byte(Address::new(0x11), 0xaa)
                 .build_and_run(&data);
 
             // 0xfe + 0x1 + 0xaa wrapped
@@ -1620,7 +1619,7 @@ mod tests {
         fn cmp_absolute_same_values() {
             let data = [0xa9, 0x11, 0xcd, 0xde, 0x1e, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0x1ede), 0x11.into())
+                .write_byte(Address::new(0x1ede), 0x11)
                 .build_and_run(&data);
 
             // CMP should not change the value of accumulator
@@ -1648,7 +1647,7 @@ mod tests {
             // compare reg X = 0x2 with value 0xfe
             let data = [0xe8, 0xe8, 0xe4, 0xdd, 0x00];
             let cpu = CpuBuilder::new()
-                .write_byte(Address::new(0xdd), 0xfe.into())
+                .write_byte(0xdd_u16, 0xfe)
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 0x2);

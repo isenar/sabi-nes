@@ -5,7 +5,6 @@ use crate::input::joypad::Joypad;
 use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Memory, Result};
-use anyhow::bail;
 use derive_more::IsVariant;
 use log::{debug, trace, warn};
 use std::mem;
@@ -101,7 +100,19 @@ impl Bus {
         let nmi_before = self.ppu.nmi_status;
         let mapper = self.rom.mapper.deref();
         let nmi_after = self.ppu.tick(3, mapper);
-        self.apu.tick_one(dma_operation);
+        if let Some(dma_addr) = self.apu.tick_one(dma_operation) {
+            debug_assert!(
+                dma_addr >= 0x8000,
+                "DMC sample address must be in PRG ROM range ($8000–$FFFF)"
+            );
+            let saved_open_bus = self.cpu_open_bus;
+            let sample = self.read_byte(dma_addr)?;
+            self.cpu_open_bus = saved_open_bus; // DMC DMA is not a CPU cycle; don't pollute the open-bus latch
+            self.apu.dmc.deliver_sample(sample);
+            // 4-cycle stall approximation; real hardware uses 3–4 cycles depending
+            // on whether the CPU is in a read or write cycle.
+            self.pending_cycles += 4;
+        }
 
         if NmiStatus::activated(nmi_before, nmi_after) {
             self.frame_ready = true;
@@ -123,7 +134,7 @@ impl Bus {
     }
 
     pub fn poll_irq_status(&self) -> bool {
-        self.apu.irq_status()
+        self.apu.is_irq_pending()
     }
 
     pub fn poll_nmi_status(&mut self) -> NmiStatus {
@@ -229,7 +240,9 @@ impl Memory for Bus {
                 self.read_byte(mirror_base_addr)?
             }
             // $4000–$400F are write-only APU registers; reads return open bus.
-            0x4014 => bail!("Attempted to read from write-only PPU OAM DMA register"),
+            // $4014 is write-only; the real 2A03 does not drive the data bus on reads,
+            // so the open-bus value is returned (same as unmapped addresses).
+            0x4014 => return Ok(self.cpu_open_bus),
             // $4015 is internal to the 2A03; its value doesn't drive the external data bus.
             // Bit 5 is not driven by the 2A03 at all, so it remains whatever was on the bus.
             0x4015 => return Ok(self.apu.read_status_register() | (self.cpu_open_bus & 0x20)),
@@ -344,10 +357,10 @@ impl Memory for Bus {
                 self.apu.noise_channel.len_counter_and_env_restart = value;
                 self.apu.noise_channel.on_length_timer_write();
             }
-            0x4010 => self.apu.dmc.flags_and_rate = value,
-            0x4011 => self.apu.dmc.direct_load = value,
-            0x4012 => self.apu.dmc.sample_address = value,
-            0x4013 => self.apu.dmc.sample_length = value,
+            0x4010 => self.apu.dmc.write_flags_and_rate(value),
+            0x4011 => self.apu.dmc.write_direct_load(value),
+            0x4012 => self.apu.dmc.write_sample_address(value),
+            0x4013 => self.apu.dmc.write_sample_length(value),
             0x4014 => {
                 let mut buffer = [Byte::default(); 256];
                 let high = value.as_address() << 8;
@@ -439,5 +452,49 @@ mod tests {
         // NROM doesn't have writable registers, but the write should succeed
         // (mapper's default write implementation does nothing)
         assert_matches!(bus.write_byte(Address::new(0x9000), 0xef.into()), Ok(()));
+    }
+
+    #[test]
+    fn dmc_dma_stalls_cpu_by_4_cycles() {
+        let mut bus = test_bus();
+        // Exit APU open-bus mode and configure DMC:
+        // Rate index 15 = period 54 (fastest trigger), sample at $C000 (default, maps to PRG ROM = 0x10)
+        bus.write_byte(Address::new(0x4015), Byte::new(0x00))
+            .unwrap(); // exit open-bus
+        bus.write_byte(Address::new(0x4010), Byte::new(0x0F))
+            .unwrap(); // rate 15
+        bus.write_byte(Address::new(0x4012), Byte::new(0x00))
+            .unwrap(); // sample addr = $C000
+        bus.write_byte(Address::new(0x4013), Byte::new(0x00))
+            .unwrap(); // length = 1 byte
+        bus.write_byte(Address::new(0x4015), Byte::new(0x10))
+            .unwrap(); // enable DMC
+
+        let mut got_stall = false;
+        for _ in 0..200 {
+            let pending_before = bus.pending_cycles;
+            bus.tick_one().unwrap();
+            if bus.pending_cycles > pending_before {
+                got_stall = true;
+                assert_eq!(
+                    bus.pending_cycles - pending_before,
+                    4,
+                    "DMC DMA should add exactly 4 pending cycles"
+                );
+                // Verify sample was actually delivered to the DMC
+                assert_matches!(
+                    bus.apu.dmc.sample_buffer(),
+                    Some(_),
+                    "sample should be in DMC buffer after DMA"
+                );
+                assert_eq!(
+                    bus.apu.dmc.sample_buffer(),
+                    Some(Byte::new(0x10)),
+                    "sample should contain PRG ROM value (0x10)"
+                );
+                break;
+            }
+        }
+        assert!(got_stall, "DMC DMA should have fired within 200 cycles");
     }
 }

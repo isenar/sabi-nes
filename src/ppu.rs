@@ -52,6 +52,10 @@ pub struct Ppu {
     // Monotonically increasing PPU cycle counter, used for open bus decay.
     // We cannot use `self.cycles` as it resets per scanline.
     total_cycles: usize,
+
+    /// Per-scanline snapshot of (scroll_x, scroll_y, nametable_address) recorded
+    /// at the end of each visible scanline. Index = scanline number (0–239).
+    scanline_scroll: [(Byte, Byte, Address); 240],
 }
 
 impl Ppu {
@@ -68,6 +72,7 @@ impl Ppu {
             bg_shift_regs_loaded: false,
             open_bus: OpenBus::new(),
             total_cycles: 0,
+            scanline_scroll: [(Byte::new(0), Byte::new(0), Address::new(0x2000)); 240],
         }
     }
 
@@ -103,6 +108,16 @@ impl Ppu {
             // registers are only populated if rendering is active here.
             self.bg_shift_regs_loaded = self.registers.is_rendering_active();
 
+            // Record scroll state for this scanline so the renderer can apply
+            // per-scanline scroll instead of a single end-of-frame snapshot.
+            if self.scanline < 240 {
+                self.scanline_scroll[self.scanline] = (
+                    self.registers.read_scroll_x(),
+                    self.registers.read_scroll_y(),
+                    self.registers.read_name_table_address(),
+                );
+            }
+
             self.cycles -= 341;
             self.scanline += 1;
 
@@ -129,6 +144,9 @@ impl Ppu {
                     .reset_vblank()
                     .reset_sprite_zero_hit()
                     .reset_sprite_overflow();
+                // Reset per-scanline scroll snapshots so no stale data from the
+                // previous frame is visible if rendering is disabled mid-frame.
+                self.scanline_scroll = [(Byte::new(0), Byte::new(0), Address::new(0x2000)); 240];
             }
         }
 
@@ -183,6 +201,10 @@ impl Ppu {
 
     pub fn write_to_scroll_register(&mut self, value: Byte) {
         self.registers.write_scroll(value);
+    }
+
+    pub fn scanline_scroll(&self) -> &[(Byte, Byte, Address); 240] {
+        &self.scanline_scroll
     }
 
     pub fn write(&mut self, value: Byte, mapper: &mut dyn Mapper) -> Result<()> {
@@ -605,5 +627,23 @@ mod tests {
 
         ppu.write_to_oam_address_register(0x11.into());
         assert_eq!(ppu.read_oam_data(), 0x77);
+    }
+
+    #[test]
+    fn scanline_scroll_records_per_scanline() {
+        let mut ppu = Ppu::test_ppu();
+        let mapper = NullMapper;
+
+        // Set initial scroll state
+        ppu.write_to_scroll_register(Byte::new(10)); // scroll_x = 10
+        ppu.write_to_scroll_register(Byte::new(20)); // scroll_y = 20
+
+        // Tick through scanline 0 (341 PPU cycles)
+        ppu.tick(341, &mapper);
+
+        let (sx, sy, nt) = ppu.scanline_scroll()[0];
+        assert_eq!(sx, Byte::new(10));
+        assert_eq!(sy, Byte::new(20));
+        assert_eq!(nt, Address::new(0x2000)); // default nametable
     }
 }
