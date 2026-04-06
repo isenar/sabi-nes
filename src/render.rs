@@ -1,20 +1,23 @@
+mod chr_tile;
 mod frame;
 mod palettes;
+mod tile_palette;
 
 use crate::cartridge::MirroringType;
 use crate::cartridge::mappers::Mapper;
 use crate::ppu::{Ppu, SpriteData, SpriteSize};
 use crate::{Address, Byte, Result};
 
-use crate::render::palettes::system_palette_thingy;
 pub use frame::Frame;
-pub use palettes::SYSTEM_PALETTE;
+pub use palettes::{Palette, SystemPalette};
+
+use crate::utils::NthBit;
+use chr_tile::ChrTile;
+use tile_palette::TilePalette;
 
 const TRANSPARENT_PIXEL: Byte = Byte::new(0b00);
 
-type MetaTile = [Byte; 4];
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Colour(Byte, Byte, Byte);
 
 impl Colour {
@@ -23,235 +26,264 @@ impl Colour {
     }
 }
 
-pub fn render(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Result<()> {
-    frame.clear_background_mask();
-
-    if ppu.registers.show_background() {
-        render_background(ppu, mapper, frame)?;
-    }
-
-    if ppu.registers.show_sprites() {
-        render_sprites(ppu, mapper, frame)?;
-    }
-
-    Ok(())
+pub struct Renderer<'a, P> {
+    ppu: &'a Ppu,
+    mapper: &'a dyn Mapper,
+    frame: &'a mut Frame,
+    palette: &'a P,
 }
 
-fn render_background(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Result<()> {
-    let name_table_address = ppu.registers.read_name_table_address();
-
-    let (main_table, secondary_table) = match (ppu.mirroring, name_table_address.value()) {
-        (MirroringType::Vertical, 0x2000 | 0x2800)
-        | (MirroringType::Horizontal, 0x2000 | 0x2400) => {
-            (&ppu.vram[0..0x0400], &ppu.vram[0x0400..0x0800])
-        }
-        (MirroringType::Vertical, 0x2400 | 0x2c00)
-        | (MirroringType::Horizontal, 0x2800 | 0x2c00) => {
-            (&ppu.vram[0x400..0x800], &ppu.vram[0..0x400])
-        }
-        _ => todo!(),
-    };
-
-    let scroll_x = ppu.registers.read_scroll_x().as_usize();
-    let scroll_y = ppu.registers.read_scroll_y().as_usize();
-
-    for screen_y in 0..Frame::HEIGHT {
-        let y_in_nametable = (screen_y + scroll_y) % 240;
-
-        // Render main portion
-        render_scanline(
+impl<'a, P> Renderer<'a, P>
+where
+    P: Palette,
+{
+    pub fn new(ppu: &'a Ppu, mapper: &'a dyn Mapper, frame: &'a mut Frame, palette: &'a P) -> Self {
+        Self {
             ppu,
             mapper,
             frame,
-            main_table,
-            screen_y,
-            y_in_nametable,
-            scroll_x,
-            0,
-            Frame::WIDTH.saturating_sub(scroll_x),
-        )?;
-
-        // Render wrapped portion if scrolling
-        if scroll_x > 0 {
-            render_scanline(
-                ppu,
-                mapper,
-                frame,
-                secondary_table,
-                screen_y,
-                y_in_nametable,
-                0,
-                Frame::WIDTH - scroll_x,
-                scroll_x,
-            )?;
+            palette,
         }
     }
 
-    Ok(())
-}
+    pub fn render_frame(&mut self) -> Result<()> {
+        self.frame.clear_background_mask();
 
-#[allow(clippy::too_many_arguments)]
-fn render_scanline(
-    ppu: &Ppu,
-    mapper: &dyn Mapper,
-    frame: &mut Frame,
-    name_table: &[Byte],
-    screen_y: usize,
-    nametable_y: usize,
-    scroll_x_offset: usize,
-    screen_x_start: usize,
-    width: usize,
-) -> Result<()> {
-    if width == 0 {
-        return Ok(());
-    }
-
-    let bank_address = ppu.registers.background_pattern_address();
-    let attribute_table = &name_table[0x03c0..0x0400];
-
-    // Calculate which tile row we're in
-    let tile_row = nametable_y / 8;
-    let pixel_y_in_tile = nametable_y % 8;
-
-    // Render tiles across this scanline
-    for screen_x in screen_x_start..(screen_x_start + width) {
-        let x_in_nametable = (screen_x.saturating_sub(screen_x_start) + scroll_x_offset) % 256;
-        let tile_column = x_in_nametable / 8;
-        let pixel_x_in_tile = 7 - (x_in_nametable % 8);
-
-        let tile_addr = tile_row * 32 + tile_column;
-        if tile_addr >= 0x03c0 {
-            continue; // Skip attribute table area
+        if self.ppu.registers.show_background() {
+            self.render_background()?;
         }
 
-        let tile_index = name_table[tile_addr].as_usize();
-        let begin = bank_address.as_usize() + tile_index * 16;
-        let tile: [Byte; 16] =
-            std::array::from_fn(|i| mapper.read_chr(Address::new((begin + i) as u16)));
-        let bg_palette = bg_palette(ppu, attribute_table, tile_column, tile_row);
-
-        // Get pixel from tile
-        let upper = tile[pixel_y_in_tile];
-        let lower = tile[pixel_y_in_tile + 8];
-        let value = (((lower >> pixel_x_in_tile) & 1) << 1) | (upper >> pixel_x_in_tile) & 1;
-        let colour = system_palette_thingy(value, &bg_palette);
-
-        // Mark as background pixel if non-transparent (value != 0)
-        if value != TRANSPARENT_PIXEL {
-            frame.set_bg_pixel(screen_x, screen_y, colour);
-        } else {
-            frame.set_pixel_colour(screen_x, screen_y, colour);
+        if self.ppu.registers.show_sprites() {
+            self.render_sprites()?;
         }
+
+        Ok(())
     }
 
-    Ok(())
-}
+    fn render_background(&mut self) -> Result<()> {
+        for screen_y in 0..Frame::HEIGHT {
+            let (scroll_x_byte, scroll_y_byte, name_table_address) =
+                self.ppu.scanline_scroll()[screen_y];
+            let scroll_x = scroll_x_byte.as_usize();
+            let scroll_y = scroll_y_byte.as_usize();
 
-fn render_sprites(ppu: &Ppu, mapper: &dyn Mapper, frame: &mut Frame) -> Result<()> {
-    let oam_data = ppu.registers.read_oam_dma();
-    let sprite_size = ppu.registers.sprite_size();
-
-    for sprite in oam_data {
-        let palette_idx = sprite.palette_index();
-        let sprite_palette = sprite_palette(ppu, palette_idx);
-
-        match sprite_size {
-            SpriteSize::Large => {
-                // 8x16 mode: render two 8x8 tiles vertically
-                // Bit 0 of tile index determines which pattern table (ignored)
-                // Top tile: tile_idx & 0xFE
-                // Bottom tile: (tile_idx & 0xFE) + 1
-                let tile_idx_top = (sprite.index_number & 0xFE).as_usize();
-                let tile_idx_bottom = tile_idx_top + 1;
-
-                // In 8x16 mode, bit 0 of tile index selects pattern table
-                let bank = if sprite.index_number & 1 == 0 {
-                    Address::new(0)
-                } else {
-                    Address::new(0x1000)
+            // Determine the four nametable quadrants (top-left, top-right, bottom-left, bottom-right).
+            // Vertical mirroring: $2000=$2800, $2400=$2C00 → left/right differ, top/bottom same.
+            // Horizontal mirroring: $2000=$2400, $2800=$2C00 → top/bottom differ, left/right same.
+            let (top_left, top_right, bot_left, bot_right) =
+                match (self.ppu.mirroring, name_table_address.value()) {
+                    (MirroringType::Vertical, 0x2000 | 0x2800) => {
+                        let a = &self.ppu.vram[0..0x0400];
+                        let b = &self.ppu.vram[0x0400..0x0800];
+                        (a, b, a, b)
+                    }
+                    (MirroringType::Vertical, 0x2400 | 0x2c00) => {
+                        let a = &self.ppu.vram[0x0400..0x0800];
+                        let b = &self.ppu.vram[0..0x0400];
+                        (a, b, a, b)
+                    }
+                    (MirroringType::Horizontal, 0x2000 | 0x2400) => {
+                        let a = &self.ppu.vram[0..0x0400];
+                        let b = &self.ppu.vram[0x0400..0x0800];
+                        (a, b, b, b)
+                    }
+                    (MirroringType::Horizontal, 0x2800 | 0x2c00) => {
+                        let a = &self.ppu.vram[0x0400..0x0800];
+                        let b = &self.ppu.vram[0..0x0400];
+                        (a, b, b, b)
+                    }
+                    _ => todo!("Four screen mirroring (used in e.g. Gauntlet"),
                 };
 
-                // Render top half
-                render_sprite_tile(
-                    mapper,
-                    frame,
-                    sprite,
-                    tile_idx_top,
-                    bank,
-                    &sprite_palette,
+            let total_y = screen_y + scroll_y;
+            // When total_y >= 240 the visible row is in the nametable below the base.
+            let (y_in_nametable, in_lower) = if total_y >= 240 {
+                (total_y - 240, true)
+            } else {
+                (total_y, false)
+            };
+
+            let (left_table, right_table) = if in_lower {
+                (bot_left, bot_right)
+            } else {
+                (top_left, top_right)
+            };
+
+            // Render main portion (scroll_x pixels into the left nametable, to right edge)
+            self.render_scanline(
+                left_table,
+                screen_y,
+                y_in_nametable,
+                scroll_x,
+                0,
+                Frame::WIDTH - scroll_x,
+            )?;
+
+            // Render the horizontally-wrapped portion from the right nametable
+            if scroll_x > 0 {
+                self.render_scanline(
+                    right_table,
+                    screen_y,
+                    y_in_nametable,
                     0,
-                )?;
-                // Render bottom half
-                render_sprite_tile(
-                    mapper,
-                    frame,
-                    sprite,
-                    tile_idx_bottom,
-                    bank,
-                    &sprite_palette,
-                    8,
+                    Frame::WIDTH - scroll_x,
+                    scroll_x,
                 )?;
             }
-            SpriteSize::Small => {
-                // 8x8 mode: render single tile
-                let tile_idx = sprite.index_number.as_usize();
-                let bank = ppu.read_sprite_pattern_address();
-                render_sprite_tile(mapper, frame, sprite, tile_idx, bank, &sprite_palette, 0)?;
-            }
         }
+
+        Ok(())
     }
 
-    Ok(())
-}
+    fn render_sprites(&mut self) -> Result<()> {
+        let oam_data = self.ppu.registers.read_oam_dma();
+        let sprite_size = self.ppu.registers.sprite_size();
 
-fn render_sprite_tile(
-    mapper: &dyn Mapper,
-    frame: &mut Frame,
-    sprite: &SpriteData,
-    tile_idx: usize,
-    bank_address: Address,
-    sprite_palette: &MetaTile,
-    y_base_offset: usize,
-) -> Result<()> {
-    let begin = bank_address.as_usize() + tile_idx * 16;
-    let tile: [Byte; 16] =
-        std::array::from_fn(|i| mapper.read_chr(Address::new((begin + i) as u16)));
-    let is_sprite_in_background = sprite.priority();
+        for sprite in oam_data {
+            let palette_idx = sprite.palette_index();
+            let sprite_palette = self.sprite_palette(palette_idx);
 
-    for y_offset in 0..=7 {
-        let mut upper = tile[y_offset];
-        let mut lower = tile[y_offset + 8];
-        for x_offset in (0..=7).rev() {
-            let value = ((lower & 1) << 1) | (upper & 1);
-            upper >>= 1;
-            lower >>= 1;
+            match sprite_size {
+                SpriteSize::Large => {
+                    // 8x16 mode: render two 8x8 tiles vertically.
+                    // Bit 0 of tile index selects pattern table; top tile = idx & 0xFE, bottom = top + 1.
+                    let tile_idx_top = (sprite.index_number & 0xFE).as_usize();
+                    let tile_idx_bottom = tile_idx_top + 1;
 
-            if value == TRANSPARENT_PIXEL {
-                continue;
+                    let bank = if sprite.index_number.nth_bit::<0>() {
+                        Address::new(0x1000)
+                    } else {
+                        Address::new(0)
+                    };
+
+                    // Pass sprite_height=16 so vertical flip mirrors over the full 16-pixel range.
+                    // The formula `15 - (y_offset + y_base_offset)` naturally swaps tiles when flipped.
+                    self.render_sprite_tile(sprite, tile_idx_top, bank, 0, 16, &sprite_palette)?;
+                    self.render_sprite_tile(sprite, tile_idx_bottom, bank, 8, 16, &sprite_palette)?;
+                }
+                SpriteSize::Small => {
+                    let tile_idx = sprite.index_number.as_usize();
+                    let bank = self.ppu.read_sprite_pattern_address();
+                    self.render_sprite_tile(sprite, tile_idx, bank, 0, 8, &sprite_palette)?;
+                }
             }
-
-            let x = sprite.x_pos(x_offset);
-            let y = sprite.y_pos(y_offset + y_base_offset);
-
-            // Prevent out-of-screen bleeding. Without this, sprites
-            // on the right side of the screen might be drawn on the left side.
-            if x >= Frame::WIDTH || y >= Frame::HEIGHT {
-                continue;
-            }
-
-            // Check sprite priority:
-            // - If priority is behind, only draw if no background pixel exists
-            // - If priority_behind is not behind, always draw (sprite in front)
-            if is_sprite_in_background && frame.has_background(x, y) {
-                continue; // Skip this pixel, background takes priority
-            }
-
-            let colour = SYSTEM_PALETTE[sprite_palette[value.as_usize()].as_usize()]; // TODO: again - helper fn
-            frame.set_pixel_colour(x, y, colour);
         }
+
+        Ok(())
     }
 
-    Ok(())
+    fn render_sprite_tile(
+        &mut self,
+        sprite: &SpriteData,
+        tile_idx: usize,
+        bank_address: Address,
+        y_base_offset: usize,
+        sprite_height: usize,
+        sprite_palette: &TilePalette,
+    ) -> Result<()> {
+        let begin = bank_address.as_usize() + tile_idx * 16;
+        let tile = ChrTile(std::array::from_fn(|i| {
+            self.mapper.read_chr(Address::new((begin + i) as u16))
+        }));
+        let is_sprite_in_background = sprite.priority();
+
+        for y_offset in 0..=7 {
+            for x_offset in 0..=7 {
+                let value = tile.pixel(x_offset, y_offset);
+
+                if value == TRANSPARENT_PIXEL {
+                    continue;
+                }
+
+                let x = sprite.x_pos(x_offset);
+                let y = sprite.y_pos(y_offset + y_base_offset, sprite_height);
+
+                // Prevent out-of-screen bleeding. Without this, sprites
+                // on the right side of the screen might be drawn on the left side.
+                if x >= Frame::WIDTH || y >= Frame::HEIGHT {
+                    continue;
+                }
+
+                // Check sprite priority:
+                // - If priority is behind, only draw if no background pixel exists
+                // - If priority is not behind, always draw (sprite in front)
+                if is_sprite_in_background && self.frame.has_background(x, y) {
+                    continue;
+                }
+
+                let colour = sprite_palette.colour(value, self.palette);
+                self.frame.set_pixel_colour(x, y, colour);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn render_scanline(
+        &mut self,
+        name_table: &[Byte],
+        screen_y: usize,
+        nametable_y: usize,
+        scroll_x_offset: usize,
+        screen_x_start: usize,
+        width: usize,
+    ) -> Result<()> {
+        if width == 0 {
+            return Ok(());
+        }
+
+        let bank_address = self.ppu.registers.background_pattern_address();
+        let attribute_table = &name_table[0x03c0..0x0400];
+
+        // Calculate which tile row we're in
+        let tile_row = nametable_y / 8;
+        let pixel_y_in_tile = nametable_y % 8;
+
+        // Render tiles across this scanline
+        for screen_x in screen_x_start..(screen_x_start + width) {
+            // screen_x >= screen_x_start is guaranteed by the loop range, so plain subtraction is safe
+            let x_in_nametable = (screen_x - screen_x_start + scroll_x_offset) % 256;
+            let tile_column = x_in_nametable / 8;
+
+            let tile_addr = tile_row * 32 + tile_column;
+            if tile_addr >= 0x03c0 {
+                continue; // Skip attribute table area
+            }
+
+            let tile_index = name_table[tile_addr].as_usize();
+            let begin = bank_address.as_usize() + tile_index * 16;
+            let tile = ChrTile(std::array::from_fn(|i| {
+                self.mapper.read_chr(Address::new((begin + i) as u16))
+            }));
+            let bg_palette = bg_palette(self.ppu, attribute_table, tile_column, tile_row);
+
+            let value = tile.pixel(x_in_nametable % 8, pixel_y_in_tile);
+            let colour = bg_palette.colour(value, self.palette);
+
+            // Mark as background pixel if non-transparent
+            if value != TRANSPARENT_PIXEL {
+                self.frame.set_bg_pixel(screen_x, screen_y, colour);
+            } else {
+                self.frame.set_pixel_colour(screen_x, screen_y, colour);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn sprite_palette(&self, palette_index: usize) -> TilePalette {
+        debug_assert!(
+            palette_index < 4,
+            "palette_index must be 0-3, got {palette_index}"
+        );
+        let start = palette_index * 4 + 0x11;
+        TilePalette([
+            Byte::new(0x00),
+            self.ppu.palette_table[start],
+            self.ppu.palette_table[start + 1],
+            self.ppu.palette_table[start + 2],
+        ])
+    }
 }
 
 fn bg_palette(
@@ -259,7 +291,7 @@ fn bg_palette(
     attribute_table: &[Byte],
     tile_column: usize,
     tile_row: usize,
-) -> [Byte; 4] {
+) -> TilePalette {
     let attr_table_idx = tile_row / 4 * 8 + tile_column / 4;
     let attr_byte = attribute_table[attr_table_idx];
     let palette_idx = match (tile_column % 4 / 2, tile_row % 4 / 2) {
@@ -271,20 +303,10 @@ fn bg_palette(
     };
     let palette_idx = palette_idx & 0b11;
     let palette_start = 1 + palette_idx.as_usize() * 4;
-    [
+    TilePalette([
         ppu.palette_table[0],
         ppu.palette_table[palette_start],
         ppu.palette_table[palette_start + 1],
         ppu.palette_table[palette_start + 2],
-    ]
-}
-
-fn sprite_palette(ppu: &Ppu, palette_idx: Byte) -> MetaTile {
-    let start = palette_idx.as_usize() * 4 + 0x11;
-    [
-        Byte::default(),
-        ppu.palette_table[start],
-        ppu.palette_table[start + 1],
-        ppu.palette_table[start + 2],
-    ]
+    ])
 }

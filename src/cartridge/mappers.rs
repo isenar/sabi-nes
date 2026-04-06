@@ -7,7 +7,9 @@ pub use mmc1::Mmc1;
 pub use nrom::{Nrom128, Nrom256};
 
 pub trait MapperId {
-    const ID: u32;
+    const ID: u8;
+
+    fn name(&self) -> &'static str;
 }
 
 pub trait Mapper {

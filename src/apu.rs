@@ -1,10 +1,11 @@
-use crate::Byte;
 use crate::apu::apu_flags::ApuFlags;
 use crate::apu::channels::dmc::Dmc;
 use crate::apu::channels::noise_channel::NoiseChannel;
 use crate::apu::channels::square_channel::SquareChannel;
 use crate::apu::channels::triangle_channel::TriangleChannel;
 use crate::apu::frame_counter::{FrameCounter, FrameSignal};
+use crate::bus::DmaOperation;
+use crate::{Address, Byte};
 use once_cell::sync::Lazy;
 use std::mem;
 
@@ -14,9 +15,9 @@ mod frame_counter;
 
 // NES CPU runs at ~1.789773 MHz. We output at 44.1 kHz.
 // Every ~40.58 CPU cycles we emit one sample.
-const CPU_CLOCK: f64 = 1_789_773.0;
-const SAMPLE_RATE: f64 = 44_100.0;
-const CYCLES_PER_SAMPLE: f64 = CPU_CLOCK / SAMPLE_RATE;
+const CPU_CLOCK: f32 = 1_789_773.0;
+const SAMPLE_RATE: f32 = 44_100.0;
+const CYCLES_PER_SAMPLE: f32 = CPU_CLOCK / SAMPLE_RATE;
 
 // First-order IIR filter coefficients derived from the real NES hardware.
 // All use the matched-z formula: α = exp(-2π * fc / Fs).
@@ -26,12 +27,13 @@ const CYCLES_PER_SAMPLE: f64 = CPU_CLOCK / SAMPLE_RATE;
 //   HP2 ~440 Hz - faster drift removal
 // Low-pass filter softens high-frequency aliasing from the square/noise waveforms:
 //   LP ~14 kHz
-static SLOW_DRIFT_REMOVAL_COEFFICIENT: Lazy<f32> =
-    Lazy::new(|| (-2.0 * std::f32::consts::PI * 90.0 / SAMPLE_RATE as f32).exp());
-static FAST_DRIFT_REMOVAL_COEFFICIENT: Lazy<f32> =
-    Lazy::new(|| (-2.0 * std::f32::consts::PI * 90.0 / SAMPLE_RATE as f32).exp());
-static LOW_PASS_COEFFICIENT: Lazy<f32> =
-    Lazy::new(|| (-2.0 * std::f32::consts::PI * 14000.0 / SAMPLE_RATE as f32).exp());
+static SLOW_DRIFT_REMOVAL_COEFFICIENT: Lazy<f32> = Lazy::new(|| coefficient(90.0).exp());
+static FAST_DRIFT_REMOVAL_COEFFICIENT: Lazy<f32> = Lazy::new(|| coefficient(440.0).exp());
+static LOW_PASS_COEFFICIENT: Lazy<f32> = Lazy::new(|| coefficient(14000.0).exp());
+
+const fn coefficient(hz: f32) -> f32 {
+    -2.0 * std::f32::consts::PI * hz / SAMPLE_RATE
+}
 
 /// Three cascaded first-order IIR filters matching the NES analog output stage.
 ///
@@ -81,7 +83,7 @@ pub struct Apu {
     pub frame_counter: FrameCounter,
 
     // Audio synthesis state
-    cycle_accumulator: f64,
+    cycle_accumulator: f32,
     samples: Vec<f32>,
     filter: AudioFilter,
 
@@ -108,12 +110,14 @@ impl Default for Apu {
 }
 
 impl Apu {
-    pub fn write_frame_counter(&mut self, value: Byte) {
-        self.frame_counter.write(value);
+    pub fn write_frame_counter(&mut self, value: Byte, dma_operation: DmaOperation) {
+        if let Some(signal) = self.frame_counter.write(value, dma_operation) {
+            self.dispatch_frame_signal(signal);
+        }
     }
 
-    pub fn irq_status(&self) -> bool {
-        self.frame_counter.is_irq_pending()
+    pub fn is_irq_pending(&self) -> bool {
+        self.frame_counter.is_irq_pending() || self.dmc.irq_pending
     }
 
     pub fn set_status_register(&mut self, byte: Byte) {
@@ -127,6 +131,11 @@ impl Apu {
             .set_enabled(self.flags.contains(ApuFlags::TRIANGLE_CHANNEL_ENABLED));
         self.noise_channel
             .set_enabled(self.flags.contains(ApuFlags::NOISE_CHANNEL_ENABLED));
+        let dmc_enabled = self.flags.contains(ApuFlags::DMC_ENABLED);
+        if !dmc_enabled {
+            self.dmc.irq_pending = false;
+        }
+        self.dmc.set_enabled(dmc_enabled);
     }
 
     /// Read $4015: returns length counter and IRQ status, then clears the frame IRQ flag.
@@ -134,7 +143,7 @@ impl Apu {
     /// Bit 1: square 2 active,
     /// Bit 2: triangle active,
     /// Bit 3: noise active,
-    /// Bit 4: DMC active (unimplemented),
+    /// Bit 4: DMC active,
     /// Bit 6: frame counter IRQ pending.
     pub fn read_status_register(&mut self) -> Byte {
         if self.status_open_bus {
@@ -142,6 +151,7 @@ impl Apu {
         }
         let status = self.peek_status_register();
         self.frame_counter.clear_irq();
+        self.dmc.irq_pending = false;
 
         status
     }
@@ -164,49 +174,70 @@ impl Apu {
         if self.noise_channel.is_active() {
             status |= 0x08;
         }
+        if self.dmc.is_active() {
+            status |= 0x10;
+        }
         if self.frame_counter.is_irq_pending() {
             status |= 0x40;
+        }
+        if self.dmc.irq_pending {
+            status |= 0x80;
         }
 
         status
     }
 
+    fn dispatch_frame_signal(&mut self, signal: FrameSignal) {
+        match signal {
+            FrameSignal::QuarterFrame => {
+                self.square_channel1.clock_envelope();
+                self.square_channel2.clock_envelope();
+                self.noise_channel.clock_envelope();
+                self.triangle_channel.clock_linear_counter();
+            }
+            FrameSignal::HalfFrame => {
+                self.square_channel1.clock_envelope();
+                self.square_channel2.clock_envelope();
+                self.noise_channel.clock_envelope();
+                self.triangle_channel.clock_linear_counter();
+                self.square_channel1.clock_length_counter();
+                self.square_channel2.clock_length_counter();
+                self.triangle_channel.clock_length_counter();
+                self.noise_channel.clock_length_counter();
+                self.square_channel1.clock_sweep();
+                self.square_channel2.clock_sweep();
+            }
+        }
+    }
+
+    /// Advance the APU by exactly one CPU cycle with known parity.
+    pub fn tick_one(&mut self, dma_operation: DmaOperation) -> Option<Address> {
+        self.square_channel1.tick();
+        self.square_channel2.tick();
+        self.triangle_channel.tick();
+        self.noise_channel.tick();
+
+        let dma_request = self.dmc.tick();
+
+        if let Some(signal) = self.frame_counter.tick(dma_operation) {
+            self.dispatch_frame_signal(signal);
+        }
+
+        self.cycle_accumulator += 1.0;
+        if self.cycle_accumulator >= CYCLES_PER_SAMPLE {
+            self.cycle_accumulator -= CYCLES_PER_SAMPLE;
+            let mixed_output = self.mix();
+            self.samples.push(self.filter.filter(mixed_output));
+        }
+
+        dma_request
+    }
+
     /// Advance the APU by `cycles` CPU cycles, accumulating audio samples.
+    /// DMA requests from the DMC are ignored here; use `tick_one` directly for DMA handling.
     pub fn tick(&mut self, cycles: usize) {
         for _ in 0..cycles {
-            self.square_channel1.tick();
-            self.square_channel2.tick();
-            self.triangle_channel.tick();
-            self.noise_channel.tick();
-
-            match self.frame_counter.tick() {
-                Some(FrameSignal::QuarterFrame) => {
-                    self.square_channel1.clock_envelope();
-                    self.square_channel2.clock_envelope();
-                    self.noise_channel.clock_envelope();
-                    self.triangle_channel.clock_linear_counter();
-                }
-                Some(FrameSignal::HalfFrame) => {
-                    self.square_channel1.clock_envelope();
-                    self.square_channel2.clock_envelope();
-                    self.noise_channel.clock_envelope();
-                    self.triangle_channel.clock_linear_counter();
-                    self.square_channel1.clock_length_counter();
-                    self.square_channel2.clock_length_counter();
-                    self.triangle_channel.clock_length_counter();
-                    self.noise_channel.clock_length_counter();
-                    self.square_channel1.clock_sweep();
-                    self.square_channel2.clock_sweep();
-                }
-                None => {}
-            }
-
-            self.cycle_accumulator += 1.0;
-            if self.cycle_accumulator >= CYCLES_PER_SAMPLE {
-                self.cycle_accumulator -= CYCLES_PER_SAMPLE;
-                let mixed_output = self.mix();
-                self.samples.push(self.filter.filter(mixed_output));
-            }
+            self.tick_one(DmaOperation::Get);
         }
     }
 
@@ -218,7 +249,6 @@ impl Apu {
     /// in [NESDev wiki page][nes_dev].
     ///
     /// [nes_dev]: https://www.nesdev.org/wiki/APU_Mixer
-    // TODO: this does not include DMC yet!
     fn mix(&self) -> f32 {
         let square1_output = self.square_channel1.output().as_float();
         let square2_output = self.square_channel2.output().as_float();
@@ -231,7 +261,8 @@ impl Apu {
 
         let triangle_output = self.triangle_channel.output().as_float();
         let noise_output = self.noise_channel.output().as_float();
-        let tnd_sum = triangle_output / 8227.0 + noise_output / 12241.0;
+        let dmc_output = self.dmc.output().as_float();
+        let tnd_sum = triangle_output / 8227.0 + noise_output / 12241.0 + dmc_output / 22638.0;
         let tnd_out = if tnd_sum == 0.0 {
             0.0
         } else {
@@ -239,5 +270,80 @@ impl Apu {
         };
 
         square_out + tnd_out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bus::DmaOperation;
+
+    fn make_apu() -> Apu {
+        let mut apu = Apu::default();
+        // Write $4015 to exit open-bus mode
+        apu.set_status_register(Byte::new(0x00));
+        apu
+    }
+
+    #[test]
+    fn dmc_bit4_in_status_when_active() {
+        let mut apu = make_apu();
+        apu.dmc.write_sample_address(Byte::new(0x10));
+        apu.dmc.write_sample_length(Byte::new(0x01));
+        apu.set_status_register(Byte::new(0x10)); // enable DMC
+        let status = apu.peek_status_register();
+        assert_eq!(status & 0x10, 0x10, "bit 4 should be set when DMC active");
+    }
+
+    #[test]
+    fn dmc_bit4_cleared_when_disabled() {
+        let mut apu = make_apu();
+        apu.dmc.write_sample_address(Byte::new(0x10));
+        apu.dmc.write_sample_length(Byte::new(0x01));
+        apu.set_status_register(Byte::new(0x10));
+        apu.set_status_register(Byte::new(0x00)); // disable DMC
+        let status = apu.peek_status_register();
+        assert_eq!(
+            status & 0x10,
+            0x00,
+            "bit 4 should be clear when DMC inactive"
+        );
+    }
+
+    #[test]
+    fn dmc_irq_appears_in_status_bit7() {
+        let mut apu = make_apu();
+        apu.dmc.irq_pending = true;
+        let status = apu.peek_status_register();
+        assert_eq!(
+            status & 0x80,
+            0x80,
+            "bit 7 should be set when DMC IRQ pending"
+        );
+    }
+
+    #[test]
+    fn tick_one_returns_dma_request_when_dmc_needs_sample() {
+        let mut apu = make_apu();
+        apu.dmc.write_sample_address(Byte::new(0x00));
+        apu.dmc.write_sample_length(Byte::new(0x01));
+        apu.dmc.write_flags_and_rate(Byte::new(0x0F)); // rate index 15, period=54
+        apu.set_status_register(Byte::new(0x10)); // enable DMC
+        // Tick until we get a DMA request (should come on first output unit clock = ~54 ticks)
+        let mut dma_addr = None;
+        for _ in 0..200 {
+            if let Some(addr) = apu.tick_one(DmaOperation::Get) {
+                dma_addr = Some(addr);
+                break;
+            }
+        }
+        assert!(dma_addr.is_some(), "APU should request DMA for DMC sample");
+    }
+
+    #[test]
+    fn irq_status_includes_dmc_irq() {
+        let mut apu = make_apu();
+        apu.dmc.irq_pending = true;
+        assert!(apu.is_irq_pending(), "irq_status should reflect DMC IRQ");
     }
 }

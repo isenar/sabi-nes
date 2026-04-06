@@ -13,6 +13,7 @@
 //! - PPU $1000-$1FFF: 4KB CHR bank (switchable)
 
 use crate::cartridge::mappers::{Mapper, MapperId};
+use crate::utils::NthBit;
 use crate::{Address, Byte, Result};
 
 const CHR_RAM_SIZE: usize = 8192;
@@ -51,6 +52,14 @@ pub struct Mmc1 {
     /// CHR ROM or RAM data
     chr: Vec<Byte>,
     is_chr_ram: bool,
+}
+
+impl MapperId for Mmc1 {
+    const ID: u8 = 1;
+
+    fn name(&self) -> &'static str {
+        "MMC1"
+    }
 }
 
 impl Mmc1 {
@@ -142,32 +151,32 @@ impl Mmc1 {
         }
     }
 
-    fn map_chr_address(&self, address: Address) -> usize {
+    fn map_chr_address(&self, address: Address) -> Address {
         // CHR-RAM: pass through directly
         if self.is_chr_ram {
-            return address.as_usize();
+            return address;
         }
 
-        let chr_mode = (self.control >> 4) & 1;
+        let has_multiple_chr_banks = self.control.nth_bit::<4>();
 
-        match chr_mode.value() {
-            0 => {
+        let mapped = match has_multiple_chr_banks {
+            false => {
                 // 8KB mode: use CHR bank 0, ignore low bit
                 let bank = ((self.chr_bank_0 >> 1).as_usize()) % (self.chr_banks / 2).max(1);
-                bank * 0x2000 + address.as_usize()
+                (bank * 0x2000) + address.as_usize() // TODO
             }
-            1 => {
+            true => {
                 // 4KB mode: two separate 4KB banks
                 if address < 0x1000 {
                     let bank = self.chr_bank_0.as_usize() % self.chr_banks.max(1);
-                    bank * 0x1000 + (address.as_usize() & 0x0FFF)
+                    bank * 0x1000 + (address & 0x0FFF).as_usize()
                 } else {
                     let bank = self.chr_bank_1.as_usize() % self.chr_banks.max(1);
-                    bank * 0x1000 + (address.as_usize() & 0x0FFF)
+                    bank * 0x1000 + (address & 0x0FFF).as_usize()
                 }
             }
-            _ => unreachable!(),
-        }
+        };
+        Address::new(mapped as u16) // TODO
     }
 }
 
@@ -195,20 +204,16 @@ impl Mapper for Mmc1 {
     }
 
     fn read_chr(&self, address: Address) -> Byte {
-        let mapped = self.map_chr_address(address);
+        let mapped = self.map_chr_address(address).as_usize();
         self.chr.get(mapped).copied().unwrap_or_default()
     }
 
     fn write_chr(&mut self, address: Address, value: Byte) {
         if self.is_chr_ram {
-            let mapped = self.map_chr_address(address);
+            let mapped = self.map_chr_address(address).as_usize();
             if let Some(b) = self.chr.get_mut(mapped) {
                 *b = value;
             }
         }
     }
-}
-
-impl MapperId for Mmc1 {
-    const ID: u32 = 1;
 }

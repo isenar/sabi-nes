@@ -108,6 +108,11 @@ impl BitOrAssign<u8> for Byte {
     }
 }
 
+impl AddAssign<u8> for Byte {
+    fn add_assign(&mut self, rhs: u8) {
+        self.0 += rhs;
+    }
+}
 impl SubAssign<u8> for Byte {
     fn sub_assign(&mut self, rhs: u8) {
         self.0 -= rhs;
@@ -337,5 +342,13 @@ impl BitAndAssign<u16> for Address {
 impl AddAssign<u16> for Address {
     fn add_assign(&mut self, rhs: u16) {
         self.0 += rhs;
+    }
+}
+
+impl Shl<u16> for Address {
+    type Output = Self;
+
+    fn shl(self, rhs: u16) -> Self::Output {
+        Self::new(self.0 << rhs)
     }
 }

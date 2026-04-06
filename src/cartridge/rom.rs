@@ -103,10 +103,11 @@ impl RomHeader {
         let mapper_id = self.mapper_id();
         Ok(match mapper_id.value() {
             0 => {
-                debug!("NROM (id=000) mapper detected");
                 if self.prg_rom_banks == 1 {
+                    debug!("NROM128 (id=000) mapper detected");
                     Box::new(Nrom128::default())
                 } else {
+                    debug!("NROM256 (id=000) mapper detected");
                     Box::new(Nrom256::default())
                 }
             }
@@ -114,7 +115,7 @@ impl RomHeader {
                 debug!("MMC1 (id=001) mapper detected");
                 Box::new(Mmc1::new(self.prg_rom_banks))
             }
-            _ => bail!("Unsupported mapper type (ID: {mapper_id:0X})"),
+            _ => bail!("Unsupported mapper type (ID: {mapper_id:03})"),
         })
     }
 

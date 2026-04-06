@@ -30,7 +30,7 @@ serde = { version = "~1.0.228", features = ["derive"] }
 
 [lints.clippy]
 cast_sign_loss = "warn"
-match_bool = "warn"
+match_bool = "allow"
 redundant_closure_for_method_calls = "warn"
 enum_glob_use = "warn"
 needless_pass_by_value = "warn"

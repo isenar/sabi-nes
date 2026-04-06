@@ -29,12 +29,10 @@ pub enum SpriteSize {
 }
 
 impl SpriteSize {
-    // TODO: revise if we need it
-    #[allow(dead_code)]
-    const fn pattern_table_address(self) -> Address {
+    pub const fn height(self) -> usize {
         match self {
-            SpriteSize::Small => Address::new(0x0000),
-            SpriteSize::Large => Address::new(0x1000),
+            SpriteSize::Small => 8,
+            SpriteSize::Large => 16,
         }
     }
 }
@@ -54,17 +52,16 @@ bitflags! {
 }
 
 impl ControlRegister {
-    pub fn update(&mut self, value: Byte) {
-        *self = Self::from_bits_truncate(value.value()); // TODO: lol
+    pub fn update(&mut self, byte: Byte) {
+        *self = Self::from_bits_truncate(byte.value());
     }
 
     pub fn vram_addr_increment(&self) -> Byte {
         if self.contains(Self::VRAM_ADDR_INCREMENT) {
-            32
+            Byte::new(32)
         } else {
-            1
+            Byte::new(1)
         }
-        .into()
     }
 
     pub fn sprite_pattern_address(&self) -> Address {

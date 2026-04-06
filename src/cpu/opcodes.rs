@@ -215,7 +215,7 @@ const OPCODES: &[Opcode] = &[
     Opcode::new(0x00, "BRK", 1, 7, AddressingMode::Implied, false),
     Opcode::new(0x4c, "JMP", 3, 3, AddressingMode::Absolute, false),
     Opcode::new(0x6c, "JMP", 3, 5, AddressingMode::Indirect, false),
-    Opcode::new(0x20, "JSR", 3, 6, AddressingMode::Absolute, false),
+    Opcode::new(0x20, "JSR", 3, 6, AddressingMode::Implied, false),
     Opcode::new(0x40, "RTI", 3, 6, AddressingMode::Implied, false),
     Opcode::new(0x60, "RTS", 3, 6, AddressingMode::Implied, false),
     //------------------------------------- NON-STANDARD OPCODES -------------------------------------

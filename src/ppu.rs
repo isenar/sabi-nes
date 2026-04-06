@@ -1,4 +1,5 @@
 mod nmi_status;
+mod open_bus;
 mod registers;
 
 pub use nmi_status::NmiStatus;
@@ -6,6 +7,7 @@ pub use registers::{SpriteData, SpriteSize};
 
 use crate::cartridge::MirroringType;
 use crate::cartridge::mappers::Mapper;
+use crate::ppu::open_bus::OpenBus;
 use crate::ppu::registers::PpuRegisters;
 use crate::utils::MirroredAddress;
 use crate::{Address, Byte, Result};
@@ -46,17 +48,14 @@ pub struct Ppu {
     /// re-enabled mid-scanline.
     bg_shift_regs_loaded: bool,
 
-    // The PPU data bus retains the last value driven on it. Write-only register
-    // reads return this value; $2002 uses it for the lower 5 bits. On real
-    // hardware the capacitors discharge over ~600ms; we model the full byte as
-    // decayed after roughly one second of PPU cycles.
-    open_bus: Byte,
-    open_bus_written_at: u64,
+    open_bus: OpenBus,
     // Monotonically increasing PPU cycle counter, used for open bus decay.
-    // (self.cycles resets per scanline so cannot be used for this.)
-    // u64 to avoid overflow on 32-bit targets (e.g. wasm32), where usize
-    // would wrap after ~13 minutes at ~5.37M PPU cycles/sec.
-    total_cycles: u64,
+    // We cannot use `self.cycles` as it resets per scanline.
+    total_cycles: usize,
+
+    /// Per-scanline snapshot of (scroll_x, scroll_y, nametable_address) recorded
+    /// at the end of each visible scanline. Index = scanline number (0–239).
+    scanline_scroll: [(Byte, Byte, Address); 240],
 }
 
 impl Ppu {
@@ -71,9 +70,9 @@ impl Ppu {
             nmi_status: NmiStatus::Inactive,
             internal_data_buffer: Byte::default(),
             bg_shift_regs_loaded: false,
-            open_bus: Byte::default(),
-            open_bus_written_at: 0,
+            open_bus: OpenBus::new(),
             total_cycles: 0,
+            scanline_scroll: [(Byte::new(0), Byte::new(0), Address::new(0x2000)); 240],
         }
     }
 
@@ -81,24 +80,17 @@ impl Ppu {
     /// Real hardware capacitors discharge over ~600 ms; we model the full
     /// byte as decayed after roughly one second of PPU cycles.
     pub fn open_bus(&self) -> Byte {
-        // 1_048_576 CPU cycles * 3 = 3_145_728 PPU cycles ≈ 586 ms at 1.789 MHz (NTSC)
-        const DECAY_PPU_CYCLES: u64 = 3_145_728;
-        if self.total_cycles.saturating_sub(self.open_bus_written_at) >= DECAY_PPU_CYCLES {
-            Byte::default()
-        } else {
-            self.open_bus
-        }
+        self.open_bus.read(self.total_cycles)
     }
 
     /// Update the PPU open bus latch and reset its decay timer.
-    pub fn set_open_bus(&mut self, value: Byte) {
-        self.open_bus = value;
-        self.open_bus_written_at = self.total_cycles;
+    pub fn write_to_open_bus(&mut self, value: Byte) {
+        self.open_bus.write(value, self.total_cycles);
     }
 
     pub fn tick(&mut self, cycles: usize, mapper: &dyn Mapper) -> NmiStatus {
         self.cycles += cycles;
-        self.total_cycles += cycles as u64;
+        self.total_cycles += cycles;
 
         // Sprite zero hit fires at the specific PPU cycle within the scanline (X+1),
         // not at the end of the scanline, so we check continuously here.
@@ -115,6 +107,16 @@ impl Ppu {
             // window (end of this scanline).  The next scanline's BG shift
             // registers are only populated if rendering is active here.
             self.bg_shift_regs_loaded = self.registers.is_rendering_active();
+
+            // Record scroll state for this scanline so the renderer can apply
+            // per-scanline scroll instead of a single end-of-frame snapshot.
+            if self.scanline < 240 {
+                self.scanline_scroll[self.scanline] = (
+                    self.registers.read_scroll_x(),
+                    self.registers.read_scroll_y(),
+                    self.registers.read_name_table_address(),
+                );
+            }
 
             self.cycles -= 341;
             self.scanline += 1;
@@ -142,6 +144,9 @@ impl Ppu {
                     .reset_vblank()
                     .reset_sprite_zero_hit()
                     .reset_sprite_overflow();
+                // Reset per-scanline scroll snapshots so no stale data from the
+                // previous frame is visible if rendering is disabled mid-frame.
+                self.scanline_scroll = [(Byte::new(0), Byte::new(0), Address::new(0x2000)); 240];
             }
         }
 
@@ -196,6 +201,10 @@ impl Ppu {
 
     pub fn write_to_scroll_register(&mut self, value: Byte) {
         self.registers.write_scroll(value);
+    }
+
+    pub fn scanline_scroll(&self) -> &[(Byte, Byte, Address); 240] {
+        &self.scanline_scroll
     }
 
     pub fn write(&mut self, value: Byte, mapper: &mut dyn Mapper) -> Result<()> {
@@ -297,12 +306,7 @@ impl Ppu {
         let y = sprite.y.as_usize();
         let x = sprite.x.as_usize();
 
-        let sprite_height: usize = match self.registers.sprite_size() {
-            SpriteSize::Small => 8,
-            SpriteSize::Large => 16,
-        };
-
-        // Only fires during rendering (scanlines 0–239)
+        let sprite_height = self.registers.sprite_size().height();
         if self.scanline >= 240 {
             return false;
         }
@@ -623,5 +627,23 @@ mod tests {
 
         ppu.write_to_oam_address_register(0x11.into());
         assert_eq!(ppu.read_oam_data(), 0x77);
+    }
+
+    #[test]
+    fn scanline_scroll_records_per_scanline() {
+        let mut ppu = Ppu::test_ppu();
+        let mapper = NullMapper;
+
+        // Set initial scroll state
+        ppu.write_to_scroll_register(Byte::new(10)); // scroll_x = 10
+        ppu.write_to_scroll_register(Byte::new(20)); // scroll_y = 20
+
+        // Tick through scanline 0 (341 PPU cycles)
+        ppu.tick(341, &mapper);
+
+        let (sx, sy, nt) = ppu.scanline_scroll()[0];
+        assert_eq!(sx, Byte::new(10));
+        assert_eq!(sy, Byte::new(20));
+        assert_eq!(nt, Address::new(0x2000)); // default nametable
     }
 }
