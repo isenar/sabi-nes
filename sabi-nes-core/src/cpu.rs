@@ -38,20 +38,20 @@ pub struct Cpu {
 }
 
 impl Memory for Cpu {
-    fn read_byte(&mut self, addr: Address) -> Result<Byte> {
+    fn read_byte(&mut self, addr: Address) -> Byte {
         self.bus.read_byte(addr)
     }
 
-    fn write_byte(&mut self, addr: Address, value: Byte) -> Result<()> {
-        self.bus.write_byte(addr, value)
+    fn write_byte(&mut self, addr: Address, value: Byte) {
+        self.bus.write_byte(addr, value);
     }
 
-    fn read_word(&mut self, addr: Address) -> Result<Word> {
+    fn read_word(&mut self, addr: Address) -> Word {
         self.bus.read_word(addr)
     }
 
-    fn write_word(&mut self, addr: Address, word: Word) -> Result<()> {
-        self.bus.write_word(addr, word)
+    fn write_word(&mut self, addr: Address, word: Word) {
+        self.bus.write_word(addr, word);
     }
 }
 
@@ -85,14 +85,12 @@ impl Cpu {
         self.stack_pointer
     }
 
-    pub fn load(&mut self, data: &[Byte]) -> Result<()> {
+    pub fn load(&mut self, data: &[Byte]) {
         for (index, &value) in data.iter().enumerate() {
-            let index = u16::try_from(index)?;
+            let index = u16::try_from(index).unwrap();
             let addr = Address::from(index);
-            self.write_byte(addr + PROGRAM_ROM_BEGIN_ADDR, value)?;
+            self.write_byte(addr + PROGRAM_ROM_BEGIN_ADDR, value);
         }
-
-        Ok(())
     }
 
     /// Execute a single CPU instruction.
@@ -111,7 +109,7 @@ impl Cpu {
             self.interrupt(&interrupts::IRQ)?;
         }
 
-        let code = self.read_byte(self.program_counter)?;
+        let code = self.read_byte(self.program_counter);
         let instruction_pc = self.program_counter;
         self.program_counter = self.program_counter.wrapping_add(1u16);
         self.bus.tick_one()?; // opcode fetch cycle
@@ -182,7 +180,7 @@ impl Cpu {
             "ORA" => self.ora(address)?,
             "PHA" => {
                 self.bus.tick_one()?; // internal cycle
-                self.write_byte(self.stack_pointer.address(), self.accumulator)?;
+                self.write_byte(self.stack_pointer.address(), self.accumulator);
                 self.stack_pointer.decrement();
                 self.bus.tick_one()?; // push cycle
             }
@@ -215,15 +213,15 @@ impl Cpu {
                 self.status_register.set_interrupt_flag(true);
             }
             "STA" => {
-                self.write_byte(address, self.accumulator)?;
+                self.write_byte(address, self.accumulator);
                 self.bus.tick_one()?; // data write cycle
             }
             "STX" => {
-                self.write_byte(address, self.register_x)?;
+                self.write_byte(address, self.register_x);
                 self.bus.tick_one()?; // data write cycle
             }
             "STY" => {
-                self.write_byte(address, self.register_y)?;
+                self.write_byte(address, self.register_y);
                 self.bus.tick_one()?; // data write cycle
             }
             "TAX" => self.tax()?,
@@ -276,7 +274,7 @@ impl Cpu {
         self.register_x = Byte::default();
         self.register_y = Byte::default();
         self.status_register = StatusRegister::empty();
-        self.program_counter = self.read_word(RESET_VECTOR_BEGIN_ADDR)?.as_address();
+        self.program_counter = self.read_word(RESET_VECTOR_BEGIN_ADDR).as_address();
         debug!("CPU reset: PC set to ${:04X}", self.program_counter);
         self.stack_pointer.reset();
 
@@ -284,7 +282,7 @@ impl Cpu {
     }
 
     fn adc(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
         self.add_to_acc(value);
 
@@ -293,7 +291,7 @@ impl Cpu {
 
     fn sbc(&mut self, address: Address) -> Result<()> {
         let negated = self
-            .read_byte(address)?
+            .read_byte(address)
             .value()
             .cast_signed()
             .wrapping_neg()
@@ -321,7 +319,7 @@ impl Cpu {
     }
 
     fn compare(&mut self, address: Address, register: Byte) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
         let result = register.wrapping_sub(value);
 
@@ -360,7 +358,7 @@ impl Cpu {
         address: Address,
         logical_op: impl Fn(Byte, Byte) -> Byte,
     ) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
 
         self.accumulator = logical_op(self.accumulator, value);
@@ -371,7 +369,7 @@ impl Cpu {
     }
 
     fn bit(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
 
         self.status_register
@@ -416,7 +414,10 @@ impl Cpu {
 
     fn ror(&mut self, address: Address, mode: AddressingMode) -> Result<()> {
         let input_carry = self.status_register.contains(StatusRegister::CARRY);
-        let input_carry = Byte::new(u8::from(input_carry) * 0b1000_0000);
+        let input_carry = match input_carry {
+            true => Byte::new(0b1000_0000),
+            false => Byte::new(0b0000_0000),
+        };
         let ByteUpdate { previous, new } =
             self.shift(address, mode, input_carry, |byte| byte >> 1)?;
 
@@ -446,14 +447,14 @@ impl Cpu {
                 }
             }
             _ => {
-                let value = self.read_byte(address)?;
+                let value = self.read_byte(address);
                 self.bus.tick_one()?; // read cycle
                 let shifted = shift_op(value) | input_carry;
 
                 // RMW: dummy write of the original value before the real write.
-                self.write_byte(address, value)?;
+                self.write_byte(address, value);
                 self.bus.tick_one()?; // dummy write cycle
-                self.write_byte(address, shifted)?;
+                self.write_byte(address, shifted);
                 self.bus.tick_one()?; // real write cycle
 
                 ByteUpdate {
@@ -493,7 +494,7 @@ impl Cpu {
 
     fn sax(&mut self, address: Address) -> Result<()> {
         let result = self.accumulator & self.register_x;
-        self.write_byte(address, result)?;
+        self.write_byte(address, result);
         self.bus.tick_one()?; // data write cycle
 
         Ok(())
@@ -540,13 +541,13 @@ impl Cpu {
     }
 
     fn dec(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // read cycle
         let decremented = value.wrapping_sub(1);
 
-        self.write_byte(address, value)?; // dummy write
+        self.write_byte(address, value); // dummy write
         self.bus.tick_one()?; // dummy write cycle
-        self.write_byte(address, decremented)?;
+        self.write_byte(address, decremented);
         self.bus.tick_one()?; // real write cycle
         self.status_register
             .update_zero_and_negative_flags(decremented);
@@ -571,13 +572,13 @@ impl Cpu {
     }
 
     fn inc(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // read cycle
         let incremented = value.wrapping_add(1);
 
-        self.write_byte(address, value)?; // dummy write
+        self.write_byte(address, value); // dummy write
         self.bus.tick_one()?; // dummy write cycle
-        self.write_byte(address, incremented)?;
+        self.write_byte(address, incremented);
         self.bus.tick_one()?; // real write cycle
         self.status_register
             .update_zero_and_negative_flags(incremented);
@@ -616,12 +617,12 @@ impl Cpu {
 
         // Cycle 2: read addr_low
         let addr_low_pos = self.program_counter;
-        let addr_low = self.read_byte(addr_low_pos)?;
+        let addr_low = self.read_byte(addr_low_pos);
         self.bus.tick_one()?;
 
         // Cycle 3: internal read from stack pointer (the 6502 reads the stack here, updating
         // the data-bus latch, but discards the value).
-        self.read_byte(self.stack_pointer.address())?;
+        self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?;
 
         // The return address is the address of the high-byte operand (addr_low_pos + 1).
@@ -630,17 +631,17 @@ impl Cpu {
         let [ret_low, ret_high] = return_addr.to_le_bytes();
 
         // Cycle 4: push PCH (high byte of return address)
-        self.write_byte(self.stack_pointer.address(), ret_high)?;
+        self.write_byte(self.stack_pointer.address(), ret_high);
         self.stack_pointer.decrement();
         self.bus.tick_one()?;
 
         // Cycle 5: push PCL (low byte of return address)
-        self.write_byte(self.stack_pointer.address(), ret_low)?;
+        self.write_byte(self.stack_pointer.address(), ret_low);
         self.stack_pointer.decrement();
         self.bus.tick_one()?;
 
         // Cycle 6: read addr_high — this is the last bus access, so cpu_open_bus = addr_high
-        let addr_high = self.read_byte(addr_low_pos + 1u16)?;
+        let addr_high = self.read_byte(addr_low_pos + 1u16);
         self.bus.tick_one()?;
 
         let target = Word::from_le_bytes(addr_low, addr_high).as_address();
@@ -651,17 +652,17 @@ impl Cpu {
 
     fn rti(&mut self) -> Result<()> {
         // RTI: opcode(1) + dummy_read(1) + SP_inc(1) + pop_P(1) + pop_PCL(1) + pop_PCH(1) = 6
-        self.read_byte(self.program_counter)?;
+        self.read_byte(self.program_counter);
         self.bus.tick_one()?; // dummy read
         self.stack_pointer.increment();
         self.bus.tick_one()?; // SP increment
-        let status = self.read_byte(self.stack_pointer.address())?;
+        let status = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop P
         self.stack_pointer.increment();
-        let pcl = self.read_byte(self.stack_pointer.address())?;
+        let pcl = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop PCL
         self.stack_pointer.increment();
-        let pch = self.read_byte(self.stack_pointer.address())?;
+        let pch = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop PCH
 
         self.status_register = StatusRegister::from(status);
@@ -674,14 +675,14 @@ impl Cpu {
 
     fn rts(&mut self) -> Result<()> {
         // RTS: opcode(1) + dummy_read(1) + SP_inc(1) + pop_PCL(1) + pop_PCH(1) + inc_PC(1) = 6
-        self.read_byte(self.program_counter)?;
+        self.read_byte(self.program_counter);
         self.bus.tick_one()?; // dummy read
         self.stack_pointer.increment();
         self.bus.tick_one()?; // SP increment
-        let pcl = self.read_byte(self.stack_pointer.address())?;
+        let pcl = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop PCL
         self.stack_pointer.increment();
-        let pch = self.read_byte(self.stack_pointer.address())?;
+        let pch = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop PCH
         self.program_counter = (Word::from_le_bytes(pcl, pch) + 1).as_address();
         self.bus.tick_one()?; // increment PC
@@ -694,7 +695,7 @@ impl Cpu {
         self.bus.tick_one()?; // internal cycle
         self.stack_pointer.increment();
         self.bus.tick_one()?; // SP increment
-        let value = self.read_byte(self.stack_pointer.address())?;
+        let value = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop cycle
 
         self.accumulator = value;
@@ -709,7 +710,7 @@ impl Cpu {
         self.bus.tick_one()?; // internal cycle
         self.stack_pointer.increment();
         self.bus.tick_one()?; // SP increment
-        let value = self.read_byte(self.stack_pointer.address())?;
+        let value = self.read_byte(self.stack_pointer.address());
         self.bus.tick_one()?; // pop cycle
 
         self.status_register = StatusRegister::from(value);
@@ -727,14 +728,14 @@ impl Cpu {
         self.write_byte(
             self.stack_pointer.address(),
             status_register_with_b_flags.bits().into(),
-        )?;
+        );
         self.stack_pointer.decrement();
         self.bus.tick_one()?; // push cycle
         Ok(())
     }
 
     fn branch(&mut self, condition: bool) -> Result<()> {
-        let jump = self.read_byte(self.program_counter)?.value().cast_signed();
+        let jump = self.read_byte(self.program_counter).value().cast_signed();
         self.bus.tick_one()?; // offset byte read cycle
 
         if condition {
@@ -762,33 +763,33 @@ impl Cpu {
         Ok(match opcode.addressing_mode {
             AddressingMode::Immediate => address,
             AddressingMode::ZeroPage => {
-                let zp = self.read_byte(address)?;
+                let zp = self.read_byte(address);
                 self.bus.tick_one()?;
                 zp.into()
             }
             AddressingMode::ZeroPageX => {
-                let zp = self.read_byte(address)?;
+                let zp = self.read_byte(address);
                 self.bus.tick_one()?;
                 self.bus.tick_one()?; // add X (internal)
                 zp.wrapping_add(self.register_x).into()
             }
             AddressingMode::ZeroPageY => {
-                let zp = self.read_byte(address)?;
+                let zp = self.read_byte(address);
                 self.bus.tick_one()?;
                 self.bus.tick_one()?; // add Y (internal)
                 zp.wrapping_add(self.register_y).into()
             }
             AddressingMode::Absolute => {
-                let low = self.read_byte(address)?;
+                let low = self.read_byte(address);
                 self.bus.tick_one()?;
-                let high = self.read_byte(address.wrapping_add(1u16))?;
+                let high = self.read_byte(address.wrapping_add(1u16));
                 self.bus.tick_one()?;
                 Word::from_le_bytes(low, high).as_address()
             }
             AddressingMode::AbsoluteX => {
-                let low = self.read_byte(address)?;
+                let low = self.read_byte(address);
                 self.bus.tick_one()?;
-                let high = self.read_byte(address.wrapping_add(1u16))?;
+                let high = self.read_byte(address.wrapping_add(1u16));
                 self.bus.tick_one()?;
                 let base = Word::from_le_bytes(low, high).as_address();
                 let incremented = base.wrapping_add(self.register_x);
@@ -800,72 +801,71 @@ impl Cpu {
                     // for RMW/write ops (needs_page_cross_check=false) it also always fires.
                     let unfixed =
                         Address::new((base.value() & 0xFF00) | (incremented.value() & 0x00FF));
-                    self.read_byte(unfixed)?;
+                    self.read_byte(unfixed);
                     self.bus.tick_one()?;
                 } else if !opcode.needs_page_cross_check {
                     // No page cross but RMW/write op: dummy read at the same address.
-                    self.read_byte(incremented)?;
+                    self.read_byte(incremented);
                     self.bus.tick_one()?;
                 }
 
                 incremented
             }
             AddressingMode::AbsoluteY => {
-                let low = self.read_byte(address)?;
+                let low = self.read_byte(address);
                 self.bus.tick_one()?;
-                let high = self.read_byte(address.wrapping_add(1u16))?;
+                let high = self.read_byte(address.wrapping_add(1u16));
                 self.bus.tick_one()?;
                 let base = Word::from_le_bytes(low, high).as_address();
                 let incremented = base.wrapping_add(self.register_y);
 
                 if is_page_crossed(base, incremented) {
-                    let unfixed =
-                        Address::new((base.value() & 0xFF00) | (incremented.value() & 0x00FF));
-                    self.read_byte(unfixed)?;
+                    let unfixed = (base & 0xFF00) | (incremented & 0x00FF);
+                    self.read_byte(unfixed);
                     self.bus.tick_one()?;
                 } else if !opcode.needs_page_cross_check {
-                    self.read_byte(incremented)?;
+                    self.read_byte(incremented);
                     self.bus.tick_one()?;
                 }
 
                 incremented
             }
             AddressingMode::IndirectX => {
-                let base = self.read_byte(address)?;
+                let base = self.read_byte(address);
                 self.bus.tick_one()?;
                 self.bus.tick_one()?; // add X (internal)
                 let ptr = base.wrapping_add(self.register_x);
-                let low = self.read_byte(ptr.into())?;
+                let low = self.read_byte(ptr.into());
                 self.bus.tick_one()?;
-                let high = self.read_byte(ptr.wrapping_add(1).into())?;
+                let high = self.read_byte(ptr.wrapping_add(1).into());
                 self.bus.tick_one()?;
                 Word::from_le_bytes(low, high).as_address()
             }
             AddressingMode::IndirectY => {
-                let base = self.read_byte(address)?;
+                let base = self.read_byte(address);
                 self.bus.tick_one()?;
-                let low = self.read_byte(base.into())?;
+                let low = self.read_byte(base.into());
                 self.bus.tick_one()?;
-                let high = self.read_byte(base.wrapping_add(1).into())?;
+                let high = self.read_byte(base.wrapping_add(1).into());
                 self.bus.tick_one()?;
                 let deref_base = Word::from_le_bytes(low, high).as_address();
                 let incremented = deref_base.wrapping_add(self.register_y);
 
                 if is_page_crossed(deref_base, incremented) {
                     let unfixed = (deref_base & 0xFF00) | (incremented & 0x00FF);
-                    self.read_byte(unfixed)?;
+                    self.read_byte(unfixed);
                     self.bus.tick_one()?;
                 } else if !opcode.needs_page_cross_check {
-                    self.read_byte(incremented)?;
+                    self.read_byte(incremented);
                     self.bus.tick_one()?;
                 }
 
                 incremented
             }
             AddressingMode::Indirect => {
-                let low_addr = self.read_byte(address)?;
+                let low_addr = self.read_byte(address);
                 self.bus.tick_one()?;
-                let high_addr = self.read_byte(address.wrapping_add(1u16))?;
+                let high_addr = self.read_byte(address.wrapping_add(1u16));
                 self.bus.tick_one()?;
                 let target = Word::from_le_bytes(low_addr, high_addr).as_address();
 
@@ -873,10 +873,10 @@ impl Cpu {
                 // "The indirect jump instruction does not increment the page address
                 // when the indirect pointer crosses a page boundary.
                 // JMP ($xxFF) will fetch the address from $xxFF and $xx00."
-                let low = self.read_byte(target)?;
+                let low = self.read_byte(target);
                 self.bus.tick_one()?;
                 let high_bug_addr = (target & 0xFF00) | ((target + 1) & 0x00FF);
-                let high = self.read_byte(high_bug_addr)?;
+                let high = self.read_byte(high_bug_addr);
                 self.bus.tick_one()?;
                 Word::from_le_bytes(low, high).as_address()
             }
@@ -885,7 +885,7 @@ impl Cpu {
     }
 
     fn load_value(&mut self, address: Address) -> Result<Byte> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
         self.status_register.update_zero_and_negative_flags(value);
 
@@ -893,7 +893,7 @@ impl Cpu {
     }
 
     fn push_byte_to_stack(&mut self, byte: Byte) -> Result<()> {
-        self.write_byte(self.stack_pointer.address(), byte)?;
+        self.write_byte(self.stack_pointer.address(), byte);
 
         self.stack_pointer.decrement();
 
@@ -919,19 +919,19 @@ impl Cpu {
         self.status_register.set_interrupt_flag(true);
 
         self.bus.tick(interrupt.cpu_cycles)?;
-        self.program_counter = self.read_word(interrupt.vector_addr)?.as_address();
+        self.program_counter = self.read_word(interrupt.vector_addr).as_address();
 
         Ok(())
     }
 
     fn dcp(&mut self, address: Address) -> Result<()> {
         // RMW: read + dummy_write + real_write, then CMP using already-read (decremented) value
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // read cycle
         let decremented = value.wrapping_sub(1);
-        self.write_byte(address, value)?; // dummy write
+        self.write_byte(address, value); // dummy write
         self.bus.tick_one()?; // dummy write cycle
-        self.write_byte(address, decremented)?;
+        self.write_byte(address, decremented);
         self.bus.tick_one()?; // real write cycle
 
         // Inline CMP using the decremented value (no extra read)
@@ -945,12 +945,12 @@ impl Cpu {
 
     fn isb(&mut self, address: Address) -> Result<()> {
         // RMW: read + dummy_write + real_write, then SBC using already-read (incremented) value
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // read cycle
         let incremented = value.wrapping_add(1);
-        self.write_byte(address, value)?; // dummy write
+        self.write_byte(address, value); // dummy write
         self.bus.tick_one()?; // dummy write cycle
-        self.write_byte(address, incremented)?;
+        self.write_byte(address, incremented);
         self.bus.tick_one()?; // real write cycle
 
         // Inline SBC using the incremented value (no extra read)
@@ -967,13 +967,13 @@ impl Cpu {
 
     fn slo(&mut self, address: Address) -> Result<()> {
         // RMW: read + dummy_write + real_write, then ORA acc with shifted value (no extra read)
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // read cycle
         let shifted_left = value << 1;
         self.status_register.set_carry_flag(value.nth_bit::<7>());
-        self.write_byte(address, value)?; // dummy write
+        self.write_byte(address, value); // dummy write
         self.bus.tick_one()?; // dummy write cycle
-        self.write_byte(address, shifted_left)?;
+        self.write_byte(address, shifted_left);
         self.bus.tick_one()?; // real write cycle
 
         // Inline ORA using the shifted value (no extra read)
@@ -1004,13 +1004,13 @@ impl Cpu {
 
     fn sre(&mut self, address: Address) -> Result<()> {
         // RMW: read + dummy_write + real_write, then EOR acc with shifted value (no extra read)
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // read cycle
         let shifted_right = value >> 1;
         self.status_register.set_carry_flag(value.nth_bit::<0>());
-        self.write_byte(address, value)?; // dummy write
+        self.write_byte(address, value); // dummy write
         self.bus.tick_one()?; // dummy write cycle
-        self.write_byte(address, shifted_right)?;
+        self.write_byte(address, shifted_right);
         self.bus.tick_one()?; // real write cycle
 
         // Inline EOR using the shifted value (no extra read)
@@ -1039,7 +1039,7 @@ impl Cpu {
     }
 
     fn anc(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
         self.accumulator &= value;
         self.status_register
@@ -1052,11 +1052,11 @@ impl Cpu {
     }
 
     fn alr(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
         let and = self.accumulator & value;
         self.status_register
-            .set(StatusRegister::CARRY, (and & 1) == 1);
+            .set(StatusRegister::CARRY, and.nth_bit::<0>());
         self.accumulator = and >> 1;
         self.status_register
             .update_zero_and_negative_flags(self.accumulator);
@@ -1064,35 +1064,34 @@ impl Cpu {
     }
 
     fn arr(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
-        let and = (self.accumulator & value).value();
-        let carry_in = u8::from(self.status_register.contains(StatusRegister::CARRY));
+        let and = self.accumulator & value;
+        let carry_in = Byte::from(self.status_register.contains(StatusRegister::CARRY));
         let result = (carry_in << 7) | (and >> 1);
-        self.accumulator = result.into();
+        self.accumulator = result;
         self.status_register
             .update_zero_and_negative_flags(self.accumulator);
-        let bit6 = (result >> 6) & 1 != 0;
-        let bit5 = (result >> 5) & 1 != 0;
-        self.status_register.set(StatusRegister::CARRY, bit6);
+        let carry_bit = result.nth_bit::<6>();
+        self.status_register.set(StatusRegister::CARRY, carry_bit);
         self.status_register
-            .set(StatusRegister::OVERFLOW, bit6 ^ bit5);
+            .set(StatusRegister::OVERFLOW, carry_bit ^ result.nth_bit::<5>());
         Ok(())
     }
 
     fn ane(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
-        self.accumulator = (self.accumulator | Byte::new(0xEE)) & self.register_x & value;
+        self.accumulator = (self.accumulator | Byte::new(0xee)) & self.register_x & value;
         self.status_register
             .update_zero_and_negative_flags(self.accumulator);
         Ok(())
     }
 
     fn lxa(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
-        let result = (self.accumulator | Byte::new(0xEE)) & value;
+        let result = (self.accumulator | Byte::new(0xee)) & value;
         self.accumulator = result;
         self.register_x = result;
         self.status_register
@@ -1101,7 +1100,7 @@ impl Cpu {
     }
 
     fn axs(&mut self, address: Address) -> Result<()> {
-        let value = self.read_byte(address)?;
+        let value = self.read_byte(address);
         self.bus.tick_one()?; // data read cycle
         let ax = self.accumulator & self.register_x;
         let result = ax.wrapping_sub(value);
@@ -1174,24 +1173,18 @@ mod tests {
 
             for write in self.writes {
                 match write {
-                    Write::Byte(address, value) => cpu
-                        .write_byte(address, value)
-                        .expect("Failed to write byte"),
-                    Write::Word(address, value) => cpu
-                        .write_word(address, value)
-                        .expect("Failed to write word"),
+                    Write::Byte(address, value) => cpu.write_byte(address, value),
+                    Write::Word(address, value) => cpu.write_word(address, value),
                 }
             }
 
             let data = data.iter().map(|&byte| Byte::new(byte)).collect::<Vec<_>>();
 
-            cpu.load(&data).expect("Failed to load");
+            cpu.load(&data);
             cpu.reset().expect("Failed to reset");
             cpu.program_counter = PROGRAM_ROM_BEGIN_ADDR;
             loop {
-                let code = cpu
-                    .read_byte(cpu.program_counter)
-                    .expect("Failed to read opcode");
+                let code = cpu.read_byte(cpu.program_counter);
                 if code == 0x00 {
                     break; // BRK — test program is done
                 }
@@ -1268,7 +1261,7 @@ mod tests {
             let data = [0x0a9, 0x75, 0x8d, 0x34, 0x12, 0x00];
             let mut cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.read_word(Address::new(0x1234)).unwrap(), 0x75);
+            assert_eq!(cpu.read_word(Address::new(0x1234)), 0x75);
             assert!(cpu.status_register.is_empty());
         }
 
@@ -1282,7 +1275,7 @@ mod tests {
                 .write_byte(address, 0x12)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read_byte(address).unwrap(), 0x00);
+            assert_eq!(cpu.read_byte(address), 0x00);
             // STX does not modify any flags
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
@@ -1302,7 +1295,7 @@ mod tests {
 
             assert_eq!(cpu.register_x, 0x02);
             assert_eq!(cpu.register_y, 0x04);
-            assert_eq!(cpu.read_byte(Address::new(0x02)).unwrap(), 0x04);
+            assert_eq!(cpu.read_byte(Address::new(0x02)), 0x04);
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
     }
@@ -1331,7 +1324,7 @@ mod tests {
                 .write_byte(address, 0xf1)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read_byte(address).unwrap(), 0xf0);
+            assert_eq!(cpu.read_byte(address), 0xf0);
         }
 
         #[test]
@@ -1358,7 +1351,7 @@ mod tests {
             let data = [0xee, 0x34, 0x12, 0xee, 0x34, 0x12, 0x00];
             let mut cpu = CpuBuilder::new().build_and_run(&data);
 
-            assert_eq!(cpu.read_byte(Address::new(0x1234)).unwrap(), 0x02);
+            assert_eq!(cpu.read_byte(Address::new(0x1234)), 0x02);
             assert_eq!(cpu.status_register, StatusRegister::empty());
         }
 
@@ -1470,7 +1463,7 @@ mod tests {
                 .build_and_run(&data);
 
             assert_eq!(cpu.register_x, 1);
-            assert_eq!(cpu.read_byte(address).unwrap(), 0b1001_1010);
+            assert_eq!(cpu.read_byte(address), 0b1001_1010);
             // result bit7 = 1
             assert_eq!(cpu.status_register, StatusRegister::NEGATIVE);
         }
@@ -1499,7 +1492,7 @@ mod tests {
                 .write_byte(address, 0b0101_0111)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read_byte(address).unwrap(), 0b0010_1011);
+            assert_eq!(cpu.read_byte(address), 0b0010_1011);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
@@ -1528,7 +1521,7 @@ mod tests {
                 .write_byte(address, 0b1010_1101)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read_byte(address).unwrap(), 0b0101_1011);
+            assert_eq!(cpu.read_byte(address), 0b0101_1011);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
 
@@ -1557,7 +1550,7 @@ mod tests {
                 .write_byte(address, 0b0100_1101)
                 .build_and_run(&data);
 
-            assert_eq!(cpu.read_byte(address).unwrap(), 0b0010_0110);
+            assert_eq!(cpu.read_byte(address), 0b0010_0110);
             assert_eq!(cpu.status_register, StatusRegister::CARRY);
         }
     }

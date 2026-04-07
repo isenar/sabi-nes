@@ -76,6 +76,12 @@ impl From<Byte> for u16 {
     }
 }
 
+impl From<bool> for Byte {
+    fn from(value: bool) -> Self {
+        Self(value.into())
+    }
+}
+
 impl PartialEq<Address> for Byte {
     fn eq(&self, other: &Address) -> bool {
         self.0 as u16 == other.0

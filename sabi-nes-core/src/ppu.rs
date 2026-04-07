@@ -10,8 +10,8 @@ use crate::cartridge::mappers::Mapper;
 use crate::ppu::open_bus::OpenBus;
 use crate::ppu::registers::PpuRegisters;
 use crate::utils::MirroredAddress;
-use crate::{Address, Byte, Result};
-use anyhow::bail;
+use crate::{Address, Byte};
+use log::error;
 
 const VRAM_SIZE: usize = 2048;
 const PALETTE_TABLE_SIZE: usize = 64;
@@ -207,7 +207,7 @@ impl Ppu {
         &self.scanline_scroll
     }
 
-    pub fn write(&mut self, value: Byte, mapper: &mut dyn Mapper) -> Result<()> {
+    pub fn write(&mut self, value: Byte, mapper: &mut dyn Mapper) {
         let addr = self.registers.read_address();
 
         match addr.value() {
@@ -218,7 +218,12 @@ impl Ppu {
                 let mirrorred = self.mirror_vram_addr(addr);
                 self.vram[mirrorred.as_usize()] = value;
             }
-            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({addr:#x})"),
+            0x3000..=0x3eff => {
+                // Should not happen, so at least log an error if any niche
+                // mapper actually requests write access to this region.
+                error!("Requested invalid address from PPU ({addr:#x})");
+                unreachable!("Attempted to write to 0x3000-0x3eff, which should not happen");
+            }
             0x3f00..=0x3fff => {
                 let mut addr = addr;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
@@ -230,35 +235,46 @@ impl Ppu {
                 // Palette RAM is 6-bit; the upper 2 bits are not stored.
                 self.palette_table[offset_address.as_usize()] = value & 0x3F;
             }
-            0x4000.. => bail!("Unexpected access to mirrored space on PPU write ({addr:#x})"),
+            0x4000.. => {
+                unreachable!("Unexpected access to mirrored space on PPU write ({addr:#x})")
+            }
         }
 
         self.increment_vram_address();
-
-        Ok(())
     }
 
-    pub fn read(&mut self, mapper: &dyn Mapper) -> Result<Byte> {
-        let addr = self.registers.read_address();
+    pub fn read(&mut self, mapper: &dyn Mapper) -> Byte {
+        let address = self.registers.read_address();
         self.increment_vram_address();
 
-        match addr.value() {
+        match address.value() {
             0x0000..=0x1fff => {
                 let result = self.internal_data_buffer;
-                self.internal_data_buffer = mapper.read_chr(addr);
+                self.internal_data_buffer = mapper.read_chr(address);
 
-                Ok(result)
+                result
             }
             0x2000..=0x2fff => {
                 let result = self.internal_data_buffer;
-                let mirrored = self.mirror_vram_addr(addr);
+                let mirrored = self.mirror_vram_addr(address);
                 self.internal_data_buffer = self.vram[mirrored.as_usize()];
 
-                Ok(result)
+                result
             }
-            0x3000..=0x3eff => bail!("Requested invalid address from PPU ({addr:#x})"),
+            // these are mirrors of the above range, however:
+            // "$3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF.
+            // The PPU does not render from this address range,
+            // so this space has negligible utility." - NESDev wiki
+            0x3000..=0x3eff => {
+                let address = address - 0x1000;
+                let result = self.internal_data_buffer;
+                let mirrored = self.mirror_vram_addr(address);
+                self.internal_data_buffer = self.vram[mirrored.as_usize()];
+
+                result
+            }
             0x3f00..=0x3fff => {
-                let mut addr = addr;
+                let mut addr = address;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
                 if MIRRORS.contains(&addr) {
                     addr = addr - 0x10;
@@ -280,9 +296,12 @@ impl Ppu {
                 } else {
                     palette_data & 0x3F
                 };
-                Ok((self.open_bus() & 0xC0) | colour_bits)
+
+                (self.open_bus() & 0xC0) | colour_bits
             }
-            0x4000.. => bail!("Unexpected access to mirrored space on PPU read ({addr:#x})"),
+            0x4000.. => {
+                unreachable!("Unexpected access to mirrored space on PPU read ({address:#x})")
+            }
         }
     }
 
@@ -453,8 +472,8 @@ mod tests {
     struct NullMapper;
 
     impl Mapper for NullMapper {
-        fn map_address(&self, _: Address) -> Result<usize> {
-            Ok(0)
+        fn map_address(&self, _: Address) -> usize {
+            0
         }
         fn write(&mut self, _: Address, _: Byte) {}
         fn load_chr(&mut self, _: Vec<Byte>) {}
@@ -475,8 +494,7 @@ mod tests {
         let mut ppu = Ppu::test_ppu();
         ppu.write_to_addr_register(0x23.into());
         ppu.write_to_addr_register(0x05.into());
-        ppu.write(0x66.into(), &mut NullMapper)
-            .expect("Failed to write");
+        ppu.write(0x66.into(), &mut NullMapper);
 
         assert_eq!(ppu.vram[0x0305], 0x66);
     }
@@ -490,10 +508,10 @@ mod tests {
         ppu.write_to_addr_register(0x23.into());
         ppu.write_to_addr_register(0x05.into());
 
-        ppu.read(&NullMapper).expect("Failed to perform dummy read");
+        ppu.read(&NullMapper);
 
         assert_eq!(ppu.registers.read_address(), 0x2306);
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
+        assert_eq!(ppu.read(&NullMapper), 0x66);
     }
 
     #[test]
@@ -508,11 +526,11 @@ mod tests {
         ppu.registers.write_address(0x21.into());
         ppu.registers.write_address(0xff.into());
 
-        ppu.read(&NullMapper).expect("Failed to perform dummy read");
+        ppu.read(&NullMapper);
 
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x77);
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x88);
+        assert_eq!(ppu.read(&NullMapper), 0x66);
+        assert_eq!(ppu.read(&NullMapper), 0x77);
+        assert_eq!(ppu.read(&NullMapper), 0x88);
     }
 
     #[test]
@@ -522,24 +540,24 @@ mod tests {
         ppu.registers.write_address(0x24.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x66.into(), &mut NullMapper).unwrap();
+        ppu.write(0x66.into(), &mut NullMapper);
 
         ppu.registers.write_address(0x28.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x77.into(), &mut NullMapper).unwrap();
+        ppu.write(0x77.into(), &mut NullMapper);
 
         ppu.registers.write_address(0x20.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
+        ppu.read(&NullMapper);
+        assert_eq!(ppu.read(&NullMapper), 0x66);
 
         ppu.registers.write_address(0x2c.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x77);
+        ppu.read(&NullMapper);
+        assert_eq!(ppu.read(&NullMapper), 0x77);
     }
 
     #[test]
@@ -550,24 +568,24 @@ mod tests {
         ppu.registers.write_address(0x20.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x66.into(), &mut NullMapper).unwrap();
+        ppu.write(0x66.into(), &mut NullMapper);
 
         ppu.registers.write_address(0x2c.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.write(0x77.into(), &mut NullMapper).unwrap();
+        ppu.write(0x77.into(), &mut NullMapper);
 
         ppu.registers.write_address(0x28.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
+        ppu.read(&NullMapper);
+        assert_eq!(ppu.read(&NullMapper), 0x66);
 
         ppu.registers.write_address(0x24.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x77);
+        ppu.read(&NullMapper);
+        assert_eq!(ppu.read(&NullMapper), 0x77);
     }
 
     #[test]
@@ -579,16 +597,16 @@ mod tests {
         ppu.registers.write_address(0x23.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_ne!(ppu.read(&NullMapper).unwrap(), 0x66);
+        ppu.read(&NullMapper);
+        assert_ne!(ppu.read(&NullMapper), 0x66);
 
         ppu.read_status_register();
 
         ppu.registers.write_address(0x23.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
+        ppu.read(&NullMapper);
+        assert_eq!(ppu.read(&NullMapper), 0x66);
     }
 
     #[test]
@@ -600,8 +618,8 @@ mod tests {
         ppu.registers.write_address(0x63.into());
         ppu.registers.write_address(0x05.into());
 
-        ppu.read(&NullMapper).unwrap();
-        assert_eq!(ppu.read(&NullMapper).unwrap(), 0x66);
+        ppu.read(&NullMapper);
+        assert_eq!(ppu.read(&NullMapper), 0x66);
     }
 
     #[test]

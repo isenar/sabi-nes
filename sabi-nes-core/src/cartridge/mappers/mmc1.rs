@@ -14,7 +14,7 @@
 
 use crate::cartridge::mappers::{Mapper, MapperId};
 use crate::utils::NthBit;
-use crate::{Address, Byte, Result};
+use crate::{Address, Byte};
 
 const CHR_RAM_SIZE: usize = 8192;
 
@@ -181,8 +181,8 @@ impl Mmc1 {
 }
 
 impl Mapper for Mmc1 {
-    fn map_address(&self, address: Address) -> Result<usize> {
-        Ok(self.map_prg_address(address))
+    fn map_address(&self, address: Address) -> usize {
+        self.map_prg_address(address)
     }
 
     fn write(&mut self, address: Address, value: Byte) {

@@ -106,7 +106,7 @@ impl Bus {
                 "DMC sample address must be in PRG ROM range ($8000–$FFFF)"
             );
             let saved_open_bus = self.cpu_open_bus;
-            let sample = self.read_byte(dma_addr)?;
+            let sample = self.read_byte(dma_addr);
             self.cpu_open_bus = saved_open_bus; // DMC DMA is not a CPU cycle; don't pollute the open-bus latch
             self.apu.dmc.deliver_sample(sample);
             // 4-cycle stall approximation; real hardware uses 3–4 cycles depending
@@ -197,23 +197,17 @@ impl Bus {
                 let index = (address - PRG_RAM_START).as_usize();
                 self.prg_ram[index]
             }
-            ROM_START..=ROM_END => match self.rom.mapper.map_address(address - ROM_START) {
-                Ok(mapped) => self.rom.prg_rom[mapped],
-                Err(error) => {
-                    warn!(
-                        "Failed to map address {:04X}: `{error}`",
-                        address - ROM_START
-                    );
-                    self.cpu_open_bus
-                }
-            },
+            ROM_START..=ROM_END => {
+                let mapped = self.rom.mapper.map_address(address - ROM_START);
+                self.rom.prg_rom[mapped]
+            }
             _ => self.cpu_open_bus,
         }
     }
 }
 
 impl Memory for Bus {
-    fn read_byte(&mut self, address: Address) -> Result<Byte> {
+    fn read_byte(&mut self, address: Address) -> Byte {
         let value = match address.value() {
             RAM..=RAM_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_cpu_vram_addr().as_usize();
@@ -237,21 +231,21 @@ impl Memory for Bus {
                 value
             }
             0x2007 => {
-                let value = self.ppu.read(self.rom.mapper.deref())?;
+                let value = self.ppu.read(self.rom.mapper.deref());
                 self.ppu.write_to_open_bus(value);
                 value
             }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
-                self.read_byte(mirror_base_addr)?
+                self.read_byte(mirror_base_addr)
             }
             // $4000–$400F are write-only APU registers; reads return open bus.
             // $4014 is write-only; the real 2A03 does not drive the data bus on reads,
             // so the open-bus value is returned (same as unmapped addresses).
-            0x4014 => return Ok(self.cpu_open_bus),
+            0x4014 => return self.cpu_open_bus,
             // $4015 is internal to the 2A03; its value doesn't drive the external data bus.
             // Bit 5 is not driven by the 2A03 at all, so it remains whatever was on the bus.
-            0x4015 => return Ok(self.apu.read_status_register() | (self.cpu_open_bus & 0x20)),
+            0x4015 => return self.apu.read_status_register() | (self.cpu_open_bus & 0x20),
             0x4016 => (self.joypad.read() & 0x1F) | (self.cpu_open_bus & 0xE0),
             // TODO: For reads, this is actually Player 2's controller, not frame counter!
             0x4017 => self.cpu_open_bus & 0xE0,
@@ -260,19 +254,20 @@ impl Memory for Bus {
                 self.prg_ram[index]
             }
             ROM_START..=ROM_END => {
-                let mapped_address = self.rom.mapper.map_address(address - ROM_START)?;
+                let mapped_address = self.rom.mapper.map_address(address - ROM_START);
                 self.rom.prg_rom[mapped_address]
             }
             _ => {
                 trace!("Ignored attempt to read address ${address:0X}");
-                return Ok(self.cpu_open_bus);
+                return self.cpu_open_bus;
             }
         };
         self.cpu_open_bus = value;
-        Ok(value)
+
+        value
     }
 
-    fn write_byte(&mut self, address: Address, value: Byte) -> Result<()> {
+    fn write_byte(&mut self, address: Address, value: Byte) {
         self.cpu_open_bus = value;
         match address.value() {
             RAM..=RAM_MIRRORS_END => {
@@ -309,11 +304,11 @@ impl Memory for Bus {
             }
             0x2007 => {
                 self.ppu.write_to_open_bus(value);
-                self.ppu.write(value, self.rom.mapper.deref_mut())?;
+                self.ppu.write(value, self.rom.mapper.deref_mut());
             }
             PPU_REGISTERS_MIRRORS_START..=PPU_REGISTERS_MIRRORS_END => {
                 let mirror_base_addr = address.mirror_ppu_registers_addr();
-                self.write_byte(mirror_base_addr, value)?;
+                self.write_byte(mirror_base_addr, value);
             }
             0x4000 => {
                 self.apu.square_channel1.volume = value;
@@ -372,8 +367,9 @@ impl Memory for Bus {
                 let high = value.as_address() << 8;
 
                 for (offset, byte) in buffer.iter_mut().enumerate() {
-                    let address = high + u16::try_from(offset)?;
-                    *byte = self.read_byte(address)?;
+                    // We're iterating over 256 elements, so this conversion is lossless
+                    let offset = offset as u16;
+                    *byte = self.read_byte(high + offset);
                 }
 
                 self.ppu.write_to_oam_dma(&buffer);
@@ -395,8 +391,6 @@ impl Memory for Bus {
                 trace!("Ignored attempt to write to address ${address:0X}");
             }
         }
-
-        Ok(())
     }
 }
 
@@ -425,10 +419,9 @@ mod tests {
         let mut bus = test_bus();
         let address = Address::new(0x0012);
         let byte = 0xaa.into();
-        bus.write_byte(address, byte)
-            .expect("Failed to write to RAM");
+        bus.write_byte(address, byte);
 
-        assert_eq!(bus.read_byte(address).unwrap(), byte);
+        assert_eq!(bus.read_byte(address), byte);
     }
 
     #[test]
@@ -436,28 +429,18 @@ mod tests {
         let mut bus = test_bus();
         let address = Address::new(0x1eff);
         let byte = 0xaa.into();
-        bus.write_byte(address, byte)
-            .expect("Failed to write to RAM");
+        bus.write_byte(address, byte);
 
-        assert_eq!(bus.read_byte(address).unwrap(), byte);
+        assert_eq!(bus.read_byte(address), byte);
         // 0x1eff truncated to 11 bits == 0x06ff
-        assert_eq!(bus.read_byte(Address::new(0x06ff)).unwrap(), byte);
+        assert_eq!(bus.read_byte(Address::new(0x06ff)), byte);
     }
 
     #[test]
     fn read_from_cartridge_rom() {
         let mut bus = test_bus();
 
-        assert_eq!(bus.read_byte(Address::new(0x9000)).unwrap(), 0x10);
-    }
-
-    #[test]
-    fn write_to_cartridge_rom_passes_to_mapper() {
-        let mut bus = test_bus();
-
-        // NROM doesn't have writable registers, but the write should succeed
-        // (mapper's default write implementation does nothing)
-        assert_matches!(bus.write_byte(Address::new(0x9000), 0xef.into()), Ok(()));
+        assert_eq!(bus.read_byte(Address::new(0x9000)), 0x10);
     }
 
     #[test]
@@ -465,16 +448,11 @@ mod tests {
         let mut bus = test_bus();
         // Exit APU open-bus mode and configure DMC:
         // Rate index 15 = period 54 (fastest trigger), sample at $C000 (default, maps to PRG ROM = 0x10)
-        bus.write_byte(Address::new(0x4015), Byte::new(0x00))
-            .unwrap(); // exit open-bus
-        bus.write_byte(Address::new(0x4010), Byte::new(0x0F))
-            .unwrap(); // rate 15
-        bus.write_byte(Address::new(0x4012), Byte::new(0x00))
-            .unwrap(); // sample addr = $C000
-        bus.write_byte(Address::new(0x4013), Byte::new(0x00))
-            .unwrap(); // length = 1 byte
-        bus.write_byte(Address::new(0x4015), Byte::new(0x10))
-            .unwrap(); // enable DMC
+        bus.write_byte(Address::new(0x4015), Byte::new(0x00)); // exit open-bus
+        bus.write_byte(Address::new(0x4010), Byte::new(0x0F)); // rate 15
+        bus.write_byte(Address::new(0x4012), Byte::new(0x00)); // sample addr = $C000
+        bus.write_byte(Address::new(0x4013), Byte::new(0x00)); // length = 1 byte
+        bus.write_byte(Address::new(0x4015), Byte::new(0x10)); // enable DMC
 
         let mut got_stall = false;
         for _ in 0..200 {
