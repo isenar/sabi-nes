@@ -199,7 +199,13 @@ impl Bus {
             }
             ROM_START..=ROM_END => match self.rom.mapper.map_address(address - ROM_START) {
                 Ok(mapped) => self.rom.prg_rom[mapped],
-                Err(_) => self.cpu_open_bus,
+                Err(error) => {
+                    warn!(
+                        "Failed to map address {:04X}: `{error}`",
+                        address - ROM_START
+                    );
+                    self.cpu_open_bus
+                }
             },
             _ => self.cpu_open_bus,
         }
