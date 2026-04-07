@@ -4,7 +4,7 @@ use crate::cartridge::mappers::Mapper;
 use crate::input::joypad::Joypad;
 use crate::ppu::{NmiStatus, Ppu};
 use crate::utils::MirroredAddress;
-use crate::{Address, Byte, Memory, Result};
+use crate::{Address, Byte, Memory};
 use derive_more::IsVariant;
 use log::{debug, trace, warn};
 use std::mem;
@@ -92,7 +92,7 @@ impl Bus {
     }
 
     /// Advance the emulator by exactly one CPU cycle and toggle cycle parity.
-    pub fn tick_one(&mut self) -> Result<()> {
+    pub fn tick_one(&mut self) {
         let dma_operation = self.dma_operation;
         self.dma_operation = !self.dma_operation;
         self.cycles += 1;
@@ -117,16 +117,14 @@ impl Bus {
         if NmiStatus::activated(nmi_before, nmi_after) {
             self.frame_ready = true;
         }
-
-        Ok(())
     }
 
-    pub fn tick(&mut self, cycles: usize) -> Result<()> {
+    // TODO?
+    pub fn tick(&mut self, cycles: usize) {
         let total = cycles + mem::take(&mut self.pending_cycles);
         for _ in 0..total {
-            self.tick_one()?;
+            self.tick_one();
         }
-        Ok(())
     }
 
     pub fn drain_audio_samples(&mut self) -> Vec<f32> {
@@ -457,7 +455,7 @@ mod tests {
         let mut got_stall = false;
         for _ in 0..200 {
             let pending_before = bus.pending_cycles;
-            bus.tick_one().unwrap();
+            bus.tick_one();
             if bus.pending_cycles > pending_before {
                 got_stall = true;
                 assert_eq!(

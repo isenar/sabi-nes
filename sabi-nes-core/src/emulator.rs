@@ -39,7 +39,7 @@ where
                     &mut self.frame,
                     &self.palette,
                 );
-                renderer.render_frame()?;
+                renderer.render_frame();
 
                 self.frontend.render_frame(&self.frame)?;
                 self.frontend.queue_audio(&samples);

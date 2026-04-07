@@ -274,23 +274,23 @@ impl Ppu {
                 result
             }
             0x3f00..=0x3fff => {
-                let mut addr = address;
+                let mut address = address;
                 // "Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C"
-                if MIRRORS.contains(&addr) {
-                    addr = addr - 0x10;
+                if MIRRORS.contains(&address) {
+                    address = address - 0x10;
                 }
 
                 // Palette reads return data directly (no buffering), but the read
                 // buffer is loaded with nametable data from the mirrored address
                 // at $2F00–$2FFF (addr - $1000).
-                let nametable_addr = addr - 0x1000;
+                let nametable_addr = address - 0x1000;
                 let mirrored = self.mirror_vram_addr(nametable_addr);
                 self.internal_data_buffer = self.vram[mirrored.as_usize()];
 
-                let offset_address = (addr - 0x3f00).value() & 0x1F;
+                let offset = ((address - 0x3f00) & 0x1F).as_usize();
                 // Palette RAM is 6-bit; upper 2 bits come from the PPU open bus.
                 // In greyscale mode the lower 4 bits are forced to zero.
-                let palette_data = self.palette_table[offset_address as usize];
+                let palette_data = self.palette_table[offset];
                 let colour_bits = if self.registers.is_greyscale() {
                     palette_data & 0x30
                 } else {
