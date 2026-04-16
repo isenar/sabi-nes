@@ -3,7 +3,7 @@
 //! The suffixes 128 and 256 refer to kilobits by Nintendo's own designation;
 
 use crate::cartridge::mappers::{Mapper, MapperId};
-use crate::{Address, Byte, Result};
+use crate::{Address, Byte};
 
 const CHR_RAM_SIZE: usize = 8192;
 
@@ -44,8 +44,8 @@ impl<const N: usize> Nrom<N> {
 }
 
 impl<const N: usize> Mapper for Nrom<N> {
-    fn map_address(&self, address: Address) -> Result<usize> {
-        Ok(address.value() as usize % (N * 0x4000))
+    fn map_address(&self, address: Address) -> usize {
+        address.value() as usize % (N * 0x4000)
     }
 
     fn write(&mut self, _: Address, _: Byte) {}

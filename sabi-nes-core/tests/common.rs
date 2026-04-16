@@ -1,9 +1,9 @@
 use anyhow::anyhow;
 use once_cell::sync::Lazy;
-use sabi_nes::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
-use sabi_nes::cpu::AddressingMode;
-use sabi_nes::cpu::opcodes::{OPCODES_MAPPING, Opcode};
-use sabi_nes::{Address, Cpu, Memory, Result};
+use sabi_nes_core::cartridge::{CHR_ROM_BANK_SIZE, PRG_ROM_BANK_SIZE};
+use sabi_nes_core::cpu::AddressingMode;
+use sabi_nes_core::cpu::opcodes::{OPCODES_MAPPING, Opcode};
+use sabi_nes_core::{Address, Cpu, Memory, Result};
 
 pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
     let mut rom = vec![];
@@ -22,11 +22,11 @@ pub static TEST_ROM: Lazy<Vec<u8>> = Lazy::new(|| {
 });
 
 pub fn trace(cpu: &mut Cpu) -> Result<String> {
-    let code = cpu.read_byte(cpu.program_counter)?;
+    let code = cpu.read_byte(cpu.program_counter);
     let opcode = OPCODES_MAPPING
         .get(&code)
         .ok_or_else(|| anyhow!("Opcode `{code:#x}` not supported"))?;
-    let opcode_hex = opcode_hex_representation(opcode, cpu)?;
+    let opcode_hex = opcode_hex_representation(opcode, cpu);
     let opcode_asm = opcode_asm_representation(opcode, cpu)?;
 
     // Unofficial opcodes (starting with '*') use a 9-char hex field and 33-char ASM field.
@@ -52,13 +52,13 @@ pub fn trace(cpu: &mut Cpu) -> Result<String> {
     ))
 }
 
-fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
-    Ok(match opcode.length() {
+fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> String {
+    match opcode.length() {
         0 => format!("{:02X}", opcode.code),
         1 => format!(
             "{:02X} {:02X}",
             opcode.code,
-            cpu.read_byte(cpu.program_counter + 1)?
+            cpu.read_byte(cpu.program_counter + 1)
         ),
         2 => match opcode.addressing_mode {
             AddressingMode::Implied if opcode.name != "JSR" => {
@@ -68,18 +68,18 @@ fn opcode_hex_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
                 format!(
                     "{:02X} {:02X} {:02X}",
                     opcode.code,
-                    cpu.read_byte(cpu.program_counter + 1)?,
-                    cpu.read_byte(cpu.program_counter + 2)?,
+                    cpu.read_byte(cpu.program_counter + 1),
+                    cpu.read_byte(cpu.program_counter + 2),
                 )
             }
         },
         _ => unreachable!("Got opcode with more than 2 args"),
-    })
+    }
 }
 
 fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
-    let value = cpu.read_byte(cpu.program_counter + 1)?;
-    let address = cpu.read_word(cpu.program_counter + 1)?.as_address();
+    let value = cpu.read_byte(cpu.program_counter + 1);
+    let address = cpu.read_word(cpu.program_counter + 1).as_address();
     let target_address = cpu.operand_address(opcode, cpu.program_counter + 1)?;
 
     let opcode_asm_args = match opcode.addressing_mode {
@@ -174,17 +174,17 @@ fn opcode_asm_representation(opcode: &Opcode, cpu: &mut Cpu) -> Result<String> {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    use sabi_nes::{Bus, Rom};
+    use sabi_nes_core::{Bus, Rom};
 
     #[test]
     fn trace_format() -> Result<()> {
         let rom = Rom::from_bytes(&TEST_ROM)?;
         let mut bus = Bus::new(rom);
-        bus.write_byte(Address::new(0x64), 0xa2.into())?;
-        bus.write_byte(Address::new(0x65), 0x01.into())?;
-        bus.write_byte(Address::new(0x66), 0xca.into())?;
-        bus.write_byte(Address::new(0x67), 0x88.into())?;
-        bus.write_byte(Address::new(0x68), 0x00.into())?;
+        bus.write_byte(Address::new(0x64), 0xa2.into());
+        bus.write_byte(Address::new(0x65), 0x01.into());
+        bus.write_byte(Address::new(0x66), 0xca.into());
+        bus.write_byte(Address::new(0x67), 0x88.into());
+        bus.write_byte(Address::new(0x68), 0x00.into());
 
         let mut cpu = Cpu::new(bus);
         cpu.program_counter = Address::new(0x64);
@@ -220,15 +220,15 @@ mod tests {
         let mut bus = Bus::new(rom);
 
         // ORA ($33),Y
-        bus.write_byte(Address::new(0x64), 0x11.into())?;
-        bus.write_byte(Address::new(0x65), 0x33.into())?;
+        bus.write_byte(Address::new(0x64), 0x11.into());
+        bus.write_byte(Address::new(0x65), 0x33.into());
 
         //data
-        bus.write_byte(Address::new(0x33), 0x00.into())?;
-        bus.write_byte(Address::new(0x34), 0x04.into())?;
+        bus.write_byte(Address::new(0x33), 0x00.into());
+        bus.write_byte(Address::new(0x34), 0x04.into());
 
         //target cell
-        bus.write_byte(Address::new(0x0405), 0xaa.into())?;
+        bus.write_byte(Address::new(0x0405), 0xaa.into());
 
         let mut cpu = Cpu::new(bus);
         cpu.program_counter = Address::new(0x64);

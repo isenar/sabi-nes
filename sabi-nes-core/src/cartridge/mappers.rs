@@ -1,7 +1,7 @@
 mod mmc1;
 mod nrom;
 
-use crate::{Address, Byte, Result};
+use crate::{Address, Byte};
 
 pub use mmc1::Mmc1;
 pub use nrom::{Nrom128, Nrom256};
@@ -14,7 +14,7 @@ pub trait MapperId {
 
 pub trait Mapper {
     /// Maps a CPU address to a PRG ROM offset
-    fn map_address(&self, address: Address) -> Result<usize>;
+    fn map_address(&self, address: Address) -> usize;
 
     /// Write to mapper registers (for mappers with registers like MMC1)
     fn write(&mut self, address: Address, value: Byte);

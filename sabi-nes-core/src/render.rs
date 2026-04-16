@@ -6,7 +6,7 @@ mod tile_palette;
 use crate::cartridge::MirroringType;
 use crate::cartridge::mappers::Mapper;
 use crate::ppu::{Ppu, SpriteData, SpriteSize};
-use crate::{Address, Byte, Result};
+use crate::{Address, Byte};
 
 pub use frame::Frame;
 pub use palettes::{Palette, SystemPalette};
@@ -46,21 +46,19 @@ where
         }
     }
 
-    pub fn render_frame(&mut self) -> Result<()> {
+    pub fn render_frame(&mut self) {
         self.frame.clear_background_mask();
 
         if self.ppu.registers.show_background() {
-            self.render_background()?;
+            self.render_background();
         }
 
         if self.ppu.registers.show_sprites() {
-            self.render_sprites()?;
+            self.render_sprites();
         }
-
-        Ok(())
     }
 
-    fn render_background(&mut self) -> Result<()> {
+    fn render_background(&mut self) {
         for screen_y in 0..Frame::HEIGHT {
             let (scroll_x_byte, scroll_y_byte, name_table_address) =
                 self.ppu.scanline_scroll()[screen_y];
@@ -117,7 +115,7 @@ where
                 scroll_x,
                 0,
                 Frame::WIDTH - scroll_x,
-            )?;
+            );
 
             // Render the horizontally-wrapped portion from the right nametable
             if scroll_x > 0 {
@@ -128,14 +126,12 @@ where
                     0,
                     Frame::WIDTH - scroll_x,
                     scroll_x,
-                )?;
+                );
             }
         }
-
-        Ok(())
     }
 
-    fn render_sprites(&mut self) -> Result<()> {
+    fn render_sprites(&mut self) {
         let oam_data = self.ppu.registers.read_oam_dma();
         let sprite_size = self.ppu.registers.sprite_size();
 
@@ -158,18 +154,16 @@ where
 
                     // Pass sprite_height=16 so vertical flip mirrors over the full 16-pixel range.
                     // The formula `15 - (y_offset + y_base_offset)` naturally swaps tiles when flipped.
-                    self.render_sprite_tile(sprite, tile_idx_top, bank, 0, 16, &sprite_palette)?;
-                    self.render_sprite_tile(sprite, tile_idx_bottom, bank, 8, 16, &sprite_palette)?;
+                    self.render_sprite_tile(sprite, tile_idx_top, bank, 0, 16, &sprite_palette);
+                    self.render_sprite_tile(sprite, tile_idx_bottom, bank, 8, 16, &sprite_palette);
                 }
                 SpriteSize::Small => {
                     let tile_idx = sprite.index_number.as_usize();
                     let bank = self.ppu.read_sprite_pattern_address();
-                    self.render_sprite_tile(sprite, tile_idx, bank, 0, 8, &sprite_palette)?;
+                    self.render_sprite_tile(sprite, tile_idx, bank, 0, 8, &sprite_palette);
                 }
             }
         }
-
-        Ok(())
     }
 
     fn render_sprite_tile(
@@ -180,7 +174,7 @@ where
         y_base_offset: usize,
         sprite_height: usize,
         sprite_palette: &TilePalette,
-    ) -> Result<()> {
+    ) {
         let begin = bank_address.as_usize() + tile_idx * 16;
         let tile = ChrTile(std::array::from_fn(|i| {
             self.mapper.read_chr(Address::new((begin + i) as u16))
@@ -215,8 +209,6 @@ where
                 self.frame.set_pixel_colour(x, y, colour);
             }
         }
-
-        Ok(())
     }
 
     fn render_scanline(
@@ -227,9 +219,9 @@ where
         scroll_x_offset: usize,
         screen_x_start: usize,
         width: usize,
-    ) -> Result<()> {
+    ) {
         if width == 0 {
-            return Ok(());
+            return;
         }
 
         let bank_address = self.ppu.registers.background_pattern_address();
@@ -267,8 +259,6 @@ where
                 self.frame.set_pixel_colour(screen_x, screen_y, colour);
             }
         }
-
-        Ok(())
     }
 
     fn sprite_palette(&self, palette_index: usize) -> TilePalette {

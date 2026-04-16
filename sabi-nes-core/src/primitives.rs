@@ -76,6 +76,12 @@ impl From<Byte> for u16 {
     }
 }
 
+impl From<bool> for Byte {
+    fn from(value: bool) -> Self {
+        Self(value.into())
+    }
+}
+
 impl PartialEq<Address> for Byte {
     fn eq(&self, other: &Address) -> bool {
         self.0 as u16 == other.0
@@ -289,27 +295,11 @@ impl Add<u16> for Address {
     }
 }
 
-impl Add<Byte> for Address {
-    type Output = Self;
-
-    fn add(self, rhs: Byte) -> Self::Output {
-        Self(self.0 + rhs.0 as u16)
-    }
-}
-
 impl Sub<u16> for Address {
     type Output = Self;
 
     fn sub(self, rhs: u16) -> Self::Output {
         Self(self.0 - rhs)
-    }
-}
-
-impl Sub<Address> for u16 {
-    type Output = Address;
-
-    fn sub(self, rhs: Address) -> Self::Output {
-        Address::new(self) - rhs
     }
 }
 

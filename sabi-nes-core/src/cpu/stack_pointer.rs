@@ -34,7 +34,7 @@ impl StackPointer {
     }
 
     pub fn address(&self) -> Address {
-        STACK_BEGIN_ADDR + self.0
+        STACK_BEGIN_ADDR + self.0.as_address()
     }
 
     pub fn set(&mut self, value: Byte) {

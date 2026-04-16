@@ -1,6 +1,6 @@
-use sabi_nes::Result;
-use sabi_nes::input::joypad::Joypad;
-use sabi_nes::render::Frame;
+use crate::Result;
+use crate::input::joypad::Joypad;
+use crate::render::Frame;
 
 /// Trait for emulator frontends (rendering, input, timing, audio)
 pub trait Frontend {

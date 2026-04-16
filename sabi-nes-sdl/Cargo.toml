@@ -1,0 +1,18 @@
+[package]
+name = "sabi-nes-sdl"
+version = "0.1.0"
+edition = { workspace = true }
+
+[dependencies]
+sabi-nes-core = { path = "../sabi-nes-core" }
+
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive", "std"] }
+env_logger = { workspace = true }
+once_cell = { workspace = true }
+log = { workspace = true }
+maplit = { workspace = true }
+sdl2 = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,14 +1,11 @@
 mod config;
-mod emulator;
 mod frontend;
-mod sdl_frontend;
 
 use crate::config::Config;
-use crate::emulator::Emulator;
-use crate::sdl_frontend::SdlFrontend;
+use crate::frontend::SdlFrontend;
 use clap::Parser;
 use log::info;
-use sabi_nes::{Result, Rom};
+use sabi_nes_core::{Emulator, Result, Rom};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -25,8 +22,8 @@ fn main() -> Result<()> {
     let frontend = SdlFrontend::new(&config)?;
     info!("Initialised with SDL Frontend");
 
-    let mut emulator = Emulator::new(frontend);
-    emulator.run(rom)?;
+    let mut emulator = Emulator::new(frontend, rom)?;
+    while emulator.step_frame()? {}
 
     Ok(())
 }

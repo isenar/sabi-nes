@@ -197,7 +197,7 @@ impl Dmc {
             return;
         }
         self.dma_state.bytes_remaining -= 1;
-        if self.dma_state.current_address == 0xFFFF {
+        if self.dma_state.current_address == 0xffff {
             self.dma_state.current_address = Address::new(0x8000);
         } else {
             self.dma_state.current_address += 1;

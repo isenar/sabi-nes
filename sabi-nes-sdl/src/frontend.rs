@@ -1,11 +1,11 @@
 use crate::Config;
-use crate::frontend::Frontend;
 use anyhow::Error;
 use maplit::hashmap;
 use once_cell::sync::Lazy;
-use sabi_nes::Result;
-use sabi_nes::input::joypad::{Joypad, JoypadButton};
-use sabi_nes::render::Frame;
+use sabi_nes_core::Result;
+use sabi_nes_core::frontend::Frontend;
+use sabi_nes_core::input::joypad::{Joypad, JoypadButton};
+use sabi_nes_core::render::Frame;
 use sdl2::EventPump;
 use sdl2::audio::{AudioQueue, AudioSpecDesired};
 use sdl2::event::Event;
