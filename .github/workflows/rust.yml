@@ -11,9 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-          components: rustfmt
       - name: Check formatting
         run: cargo fmt -- --check
       - name: Cargo check
@@ -24,11 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
       - name: Install dependencies
         run: |
-          sudo add-apt-repository -y "deb http://archive.ubuntu.com/ubuntu `lsb_release -sc` main universe restricted multiverse"
           sudo apt-get update -y -qq
           sudo apt-get install libsdl2-dev
       - name: Build
@@ -41,8 +35,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.94.0
-          components: clippy
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
