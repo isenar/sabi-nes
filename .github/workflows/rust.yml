@@ -40,3 +40,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  wasm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'v0.14.0'
+      - name: Build WASM
+        run: wasm-pack build sabi-nes-wasm --target web

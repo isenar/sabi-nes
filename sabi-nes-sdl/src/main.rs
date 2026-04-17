@@ -19,11 +19,17 @@ fn main() -> Result<()> {
         config.rom_path.file_name().unwrap().display()
     );
 
-    let frontend = SdlFrontend::new(&config)?;
+    let mut frontend = SdlFrontend::new(&config)?;
     info!("Initialised with SDL Frontend");
 
-    let mut emulator = Emulator::new(frontend, rom)?;
-    while emulator.step_frame()? {}
+    let mut emulator = Emulator::new(rom)?;
+    while let Some(buttons) = frontend.poll_events() {
+        emulator.set_joypad(buttons);
+        emulator.step_frame()?;
+        frontend.render(emulator.frame())?;
+        frontend.push_audio(&emulator.drain_audio());
+        frontend.frame_limit();
+    }
 
     Ok(())
 }

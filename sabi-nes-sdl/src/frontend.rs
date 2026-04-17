@@ -3,8 +3,7 @@ use anyhow::Error;
 use maplit::hashmap;
 use once_cell::sync::Lazy;
 use sabi_nes_core::Result;
-use sabi_nes_core::frontend::Frontend;
-use sabi_nes_core::input::joypad::{Joypad, JoypadButton};
+use sabi_nes_core::input::joypad::JoypadButton;
 use sabi_nes_core::render::Frame;
 use sdl2::EventPump;
 use sdl2::audio::{AudioQueue, AudioSpecDesired};
@@ -42,6 +41,7 @@ pub struct SdlFrontend {
     audio_queue: AudioQueue<f32>,
     fps_counter: u32,
     fps_timer: Instant,
+    current_buttons: JoypadButton,
 }
 
 impl SdlFrontend {
@@ -76,62 +76,64 @@ impl SdlFrontend {
             audio_queue,
             fps_counter: 0,
             fps_timer: Instant::now(),
+            current_buttons: JoypadButton::empty(),
         })
     }
-}
 
-impl Frontend for SdlFrontend {
-    fn render_frame(&mut self, frame: &Frame) -> Result<()> {
-        let texture_creator = self.canvas.texture_creator();
-        let mut texture = texture_creator.create_texture_streaming(
-            PixelFormatEnum::RGB24,
-            Frame::WIDTH as u32,
-            Frame::HEIGHT as u32,
-        )?;
-
-        texture.update(None, frame.pixel_data(), Frame::WIDTH * 3)?;
-        self.canvas.copy(&texture, None, None).map_err(Error::msg)?;
-        self.canvas.present();
-        Ok(())
-    }
-
-    fn handle_input(&mut self, joypad: &mut Joypad) -> Result<bool> {
+    /// Drains the SDL event queue. Updates internal button state on key events.
+    /// Returns `None` on quit (Escape or window close), `Some(buttons)` otherwise.
+    pub fn poll_events(&mut self) -> Option<JoypadButton> {
         for event in self.event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
-                } => return Ok(false),
+                } => return None,
                 Event::KeyDown {
                     keycode: Some(keycode),
                     ..
-                } => {
-                    if let Some(&button) = JOYPAD_BUTTON_MAP.get(&keycode) {
-                        joypad.press_button(button);
-                    }
+                } if let Some(&button) = JOYPAD_BUTTON_MAP.get(&keycode) => {
+                    self.current_buttons.insert(button);
                 }
+
                 Event::KeyUp {
                     keycode: Some(keycode),
                     ..
-                } => {
-                    if let Some(&button) = JOYPAD_BUTTON_MAP.get(&keycode) {
-                        joypad.release_button(button);
-                    }
+                } if let Some(&button) = JOYPAD_BUTTON_MAP.get(&keycode) => {
+                    self.current_buttons.remove(button);
                 }
                 _ => {}
             }
         }
-        Ok(true)
+        Some(self.current_buttons)
     }
 
-    fn frame_limit(&mut self) {
+    pub fn render(&mut self, frame: &Frame) -> Result<()> {
+        let texture_creator = self.canvas.texture_creator();
+        let mut texture = texture_creator.create_texture_streaming(
+            PixelFormatEnum::RGB24,
+            Frame::WIDTH as u32,
+            Frame::HEIGHT as u32,
+        )?;
+        texture.update(None, frame.pixel_data(), Frame::WIDTH * 3)?;
+        self.canvas.copy(&texture, None, None).map_err(Error::msg)?;
+        self.canvas.present();
+        Ok(())
+    }
+
+    pub fn push_audio(&mut self, samples: &[f32]) {
+        if self.audio_queue.size() < MAX_AUDIO_QUEUE_BYTES {
+            let _ = self.audio_queue.queue_audio(samples);
+        }
+    }
+
+    pub fn frame_limit(&mut self) {
         let elapsed = self.last_frame_time.elapsed();
         if elapsed < FRAME_DURATION {
             let remaining = FRAME_DURATION - elapsed;
-            // Sleep for most of the time (OS sleep is coarse-grained, typically
-            // 1–10 ms on macOS/Linux). Leave the last 2 ms for a spin-wait so
-            // we don't overshoot the target by a full scheduler quantum.
+            // Sleep for most of the time, spin-wait the last 2 ms to avoid
+            // overshooting by a full OS scheduler quantum.
             if remaining > Duration::from_millis(2) {
                 std::thread::sleep(remaining - Duration::from_millis(2));
             }
@@ -141,7 +143,6 @@ impl Frontend for SdlFrontend {
         }
         self.last_frame_time = Instant::now();
 
-        // Update window title with measured FPS once per second.
         self.fps_counter += 1;
         let fps_elapsed = self.fps_timer.elapsed();
         if fps_elapsed >= Duration::from_secs(1) {
@@ -152,14 +153,6 @@ impl Frontend for SdlFrontend {
                 .set_title(&format!("Sabi NES — {fps:.1} fps"));
             self.fps_counter = 0;
             self.fps_timer = Instant::now();
-        }
-    }
-
-    fn queue_audio(&mut self, samples: &[f32]) {
-        // Don't let the queue grow unboundedly if the emulator runs faster than
-        // the audio device drains it.
-        if self.audio_queue.size() < MAX_AUDIO_QUEUE_BYTES {
-            let _ = self.audio_queue.queue_audio(samples);
         }
     }
 }

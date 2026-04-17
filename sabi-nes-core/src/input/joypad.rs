@@ -2,7 +2,7 @@ use crate::Byte;
 use bitflags::bitflags;
 
 bitflags! {
-    #[derive(Debug, Copy, Clone, Default)]
+    #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
     pub struct JoypadButton: u8 {
         const RIGHT             = 0b1000_0000;
         const LEFT              = 0b0100_0000;
@@ -54,7 +54,24 @@ impl Joypad {
         self.set_button_pressed_status(button, false);
     }
 
+    pub fn set_all_buttons(&mut self, buttons: JoypadButton) {
+        self.button_status = buttons;
+    }
+
     fn set_button_pressed_status(&mut self, button: JoypadButton, pressed: bool) {
         self.button_status.set(button, pressed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_all_buttons_replaces_entire_state() {
+        let mut joypad = Joypad::default();
+        joypad.press_button(JoypadButton::BUTTON_A);
+        joypad.set_all_buttons(JoypadButton::UP | JoypadButton::DOWN);
+        assert_eq!(joypad.button_status, JoypadButton::UP | JoypadButton::DOWN);
     }
 }

@@ -2,6 +2,9 @@
 name = "sabi-nes-sdl"
 version = "0.1.0"
 edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+description = "TODO"
 
 [dependencies]
 sabi-nes-core = { path = "../sabi-nes-core" }

@@ -3,7 +3,6 @@ pub mod bus;
 pub mod cartridge;
 pub mod cpu;
 pub mod emulator;
-pub mod frontend;
 pub mod input;
 pub mod ppu;
 mod primitives;

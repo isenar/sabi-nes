@@ -1,38 +1,51 @@
-use crate::frontend::Frontend;
+use crate::input::joypad::JoypadButton;
 use crate::render::{Frame, Renderer, SystemPalette};
 use crate::{Bus, Cpu, Result, Rom};
 
-pub struct Emulator<F> {
-    frontend: F,
+pub struct Emulator {
     frame: Frame,
     cpu: Cpu,
     palette: SystemPalette,
+    audio_buffer: Vec<f32>,
+    joypad_state: JoypadButton,
 }
 
-impl<F> Emulator<F>
-where
-    F: Frontend,
-{
-    pub fn new(frontend: F, rom: Rom) -> Result<Self> {
+impl Emulator {
+    pub fn new(rom: Rom) -> Result<Self> {
         let bus = Bus::new(rom);
         let mut cpu = Cpu::new(bus);
         cpu.reset()?;
         Ok(Self {
-            frontend,
             frame: Frame::new(),
             cpu,
             palette: SystemPalette::new(),
+            audio_buffer: Vec::new(),
+            joypad_state: JoypadButton::empty(),
         })
     }
 
-    /// Advances emulation until one frame is complete.
-    /// Returns `Ok(true)` to continue, `Ok(false)` to quit.
-    pub fn step_frame(&mut self) -> Result<bool> {
+    pub fn set_joypad(&mut self, buttons: JoypadButton) {
+        self.joypad_state = buttons;
+    }
+
+    pub fn frame(&self) -> &Frame {
+        &self.frame
+    }
+
+    pub fn drain_audio(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.audio_buffer)
+    }
+
+    pub fn step_frame(&mut self) -> Result<()> {
+        self.cpu
+            .bus_mut()
+            .joypad_mut()
+            .set_all_buttons(self.joypad_state);
         loop {
             self.cpu.step()?;
-
             if self.cpu.bus().is_frame_ready() {
                 let samples = self.cpu.bus_mut().drain_audio_samples();
+                self.audio_buffer.extend_from_slice(&samples);
                 let mut renderer = Renderer::new(
                     self.cpu.bus().ppu(),
                     self.cpu.bus().mapper(),
@@ -40,18 +53,8 @@ where
                     &self.palette,
                 );
                 renderer.render_frame();
-
-                self.frontend.render_frame(&self.frame)?;
-                self.frontend.queue_audio(&samples);
-
-                let should_continue = self
-                    .frontend
-                    .handle_input(self.cpu.bus_mut().joypad_mut())?;
-
-                self.frontend.frame_limit();
                 self.cpu.bus_mut().clear_frame_ready();
-
-                return Ok(should_continue);
+                return Ok(());
             }
         }
     }
